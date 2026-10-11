@@ -17,6 +17,23 @@ const STORAGE_ADD_TYPES = [
   ['esxi','ESXi']
 ];
 
+// randomUUID() is only exposed in secure browser contexts. Local NAS dashboards
+// are often served by HTTP IP address, so use getRandomValues when available.
+function storageUploadId() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+  }
+  // Older HTTP-only browsers: this identifier is for upload coordination,
+  // not authentication or authorization. Generate a long collision-resistant ID.
+  return `${Date.now().toString(36)}-${Array.from({length:6}, () => Math.random().toString(36).slice(2).padEnd(8,'0')).join('')}`;
+}
+
 function storageAddMenu() {
   return '<div class="storage-add-menu" data-storage-add-menu>' +
     '<button class="secondary storage-add-toggle" type="button" data-storage-add-toggle aria-haspopup="menu" aria-expanded="false">Add <span aria-hidden="true">⌄</span></button>' +
@@ -361,7 +378,7 @@ document.addEventListener('submit',async event=>{
       // Blob.slice() is lazy, so a larger chunk reduces HTTP round trips
       // without buffering the whole ISO in browser or server memory.
       const chunkSize=(type==='iso'?64:32)*1024**2;
-      const uploadId=crypto.randomUUID();
+      const uploadId=storageUploadId();
       const startedAt=performance.now();
       let offset=0;
       while(offset<file.size){
