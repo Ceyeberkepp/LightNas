@@ -279,31 +279,11 @@ const lightnasTasks = (() => {
 
 window.LightNASTasks = lightnasTasks;
 
-// Capture user-triggered API mutations even when a feature did not explicitly
-// create a progress task. This keeps the bottom Tasks dock consistent across
-// storage, networking, VM/container, backup and administration operations.
-const lightnasOriginalFetch = window.fetch.bind(window);
-window.fetch = async (input, init = {}) => {
-  const url = typeof input === 'string' ? input : String(input?.url || '');
-  const method = String(init.method || (typeof input !== 'string' ? input?.method : '') || 'GET').toUpperCase();
-  const sameApi = url.startsWith('/api/') || url.startsWith(location.origin + '/api/');
-  let action = '';
-  try { if (typeof init.body === 'string' && init.body.startsWith('{')) action = String(JSON.parse(init.body)?.action || ''); } catch {}
-  const headers = new Headers(init.headers || {});
-  const managedTask = headers.get('X-LightNAS-Task-Managed') === '1';
-  const background = managedTask || (method === 'PUT' && /\/api\/storage\/pools\/[^/]+\/upload(?:\?|$)/.test(url)) || action === 'auto-publish' || /\/api\/(?:overview|storage\/scan|login\/options|console)\b/.test(url);
-  const mutation = sameApi && ['POST','PATCH','PUT','DELETE'].includes(method) && !background;
-  const labelPath = url.replace(location.origin,'').split('?')[0];
-  const task = mutation ? lightnasTasks.create(action ? `${action} · ${labelPath}` : `${method} ${labelPath}`, 'Request submitted') : null;
-  try {
-    const response = await lightnasOriginalFetch(input, init);
-    if (task) response.ok ? task.success(`Completed · HTTP ${response.status}`) : task.error(`Failed · HTTP ${response.status}`);
-    return response;
-  } catch (error) {
-    task?.error(error?.message || 'Request failed');
-    throw error;
-  }
-};
+// The Tasks dock contains user-facing operations only. Feature controllers
+// explicitly register meaningful tasks (uploads, installs, VM operations, etc.).
+// Do not intercept every fetch: API calls are implementation details and one
+// operation can make many requests. Network diagnostics remain in browser
+// developer tools and server logs.
 
 function openProgressDialog(title, detail, options = {}) {
   const task = lightnasTasks.create(title, detail || 'Starting…', { cancel: options.cancel });
