@@ -938,14 +938,22 @@ export async function runtimeInventory() {
           ? 'Hardware virtualization is unavailable, so LightNAS will use QEMU software emulation (TCG). VMs work, but they run slower than KVM.'
           : 'Hardware virtualization and /dev/net/tun are unavailable. LightNAS will use QEMU software emulation (TCG) with user-mode NAT. VMs still work, but they run slower than KVM and use NAT networking.';
       }
-    } else if (runtime.virtualization.acceleration === 'tcg') {
-      runtime.virtualization.provider = 'libvirt-qemu';
-      runtime.virtualization.warning = 'Hardware virtualization is unavailable, so LightNAS will use QEMU software emulation (TCG).';
     } else {
-      runtime.virtualization.provider = 'libvirt-kvm';
+      // Probe KVM on bare metal and in VMs too; 'auto' must never silently
+      // choose software emulation simply because LightNAS is not nested.
+      const kvmUsable = runtime.containers.diagnostics?.kvm?.usable === true;
+      const forcedTcg = process.env.LIGHTNAS_VM_ACCELERATION === 'tcg';
+      runtime.virtualization.acceleration = !forcedTcg && kvmUsable ? 'kvm' : 'tcg';
+      runtime.virtualization.provider = kvmUsable && !forcedTcg ? 'libvirt-kvm' : 'libvirt-qemu';
+      if (!kvmUsable || forcedTcg) runtime.virtualization.warning = 'KVM acceleration is unavailable or disabled; VMs use QEMU software emulation and may run more slowly.';
     }
   } catch (error) {
-    runtime.containers = { available: false, enabled: false, provider: 'local-lxc', reason: `Native LXC host agent unavailable: ${error.message}`, containers: [], images: [], networks: [], storageRoot: null, diagnostics: null };
+    runtime.containers = { available: false, enabled: false, provider: 'local-lxc', reason: `Native container host agent unavailable: ${error.message}`, containers: [], images: [], networks: [], storageRoot: null, diagnostics: null };
+    // Never claim KVM when capability probing is unavailable. Users may still
+    // create slower software-emulated VMs without hardware virtualization.
+    runtime.virtualization.acceleration = 'tcg';
+    runtime.virtualization.provider = 'libvirt-qemu';
+    runtime.virtualization.warning = 'Hardware acceleration could not be verified. Using compatible QEMU software emulation.';
   }
 
   if (runtime.virtualization.available) {
