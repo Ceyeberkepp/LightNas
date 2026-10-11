@@ -3207,7 +3207,10 @@ def nested_libvirt_repair() -> dict:
     except FileNotFoundError:
         original = ""
 
-    keys = ("remember_owner", "dynamic_ownership", "user", "group")
+    # An explicit AppArmor security driver can prevent libvirtd from starting
+    # inside containers where AppArmor is enforced by the parent but not
+    # available as a libvirt security driver. Let libvirt autodetect it.
+    keys = ("remember_owner", "dynamic_ownership", "user", "group", "security_driver")
     kept = []
     for line in original.splitlines():
         stripped = line.strip()
