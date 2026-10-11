@@ -443,9 +443,9 @@ async function showRuntimeWizard(kind) {
         <div class="wizard-grid">
           <label>Storage<select name="pool" required>${storages.map((item, index) => wizardOption(item.id, `${item.name || item.id}${item.availableBytes !== undefined ? ` · ${Math.round(item.availableBytes / 1073741824)} GiB free` : ''}`, index === 0)).join('')}</select></label>
           <label>${isContainer ? 'Root disk allocation' : 'Virtual disk size'} (GiB)<input name="diskGiB" type="number" min="${isContainer ? 2 : 10}" max="2048" value="${isContainer ? 8 : 32}" required></label>
-          <label>Memory (MiB)<input name="memoryMiB" type="number" min="${isContainer ? 256 : 1024}" max="65536" value="2048" required></label>
-          <label>Virtual CPUs<input name="cpus" type="number" min="1" max="32" value="2" required></label>
-          ${!isContainer ? `<label>CPU model<select name="cpuMode"><option value="host-model">Host model · balanced compatibility</option><option value="host-passthrough">Host passthrough · best native CPU features</option><option value="default">QEMU default · compatibility</option></select></label><label>Memory ballooning<select name="memoryBalloon"><option value="virtio">VirtIO · dynamic guest memory reporting</option><option value="none">Disabled · fixed allocation</option></select></label><label>Virtual graphics<select name="videoModel"><option value="vga">Standard VGA · installer compatible</option><option value="virtio">VirtIO GPU · modern Linux</option><option value="qxl">QXL · SPICE-compatible guests</option></select></label>` : ``}
+          <label>RAM (MiB)<input name="memoryMiB" type="number" min="${isContainer ? 256 : 1024}" max="65536" value="2048" required></label>
+          <label>CPU<input name="cpus" type="number" min="1" max="32" value="2" required></label>
+          ${!isContainer ? `<label>CPU model<select name="cpuMode"><option value="host-model">Host model · balanced compatibility</option><option value="host-passthrough">Host passthrough · best native CPU features</option><option value="default">QEMU default · compatibility</option></select></label><label>Virtual graphics<select name="videoModel"><option value="vga">Standard VGA · installer compatible</option><option value="virtio">VirtIO GPU · modern Linux</option><option value="qxl">QXL · SPICE-compatible guests</option></select></label>` : ``}
         </div>
       </section>
       <section class="wizard-page" data-wizard-page="2">
@@ -768,8 +768,8 @@ async function showContainerManager(id) {
             <p class="muted">CPU and memory limits are applied immediately and persist after restart.</p>
             <div class="form-grid">
               <label>Container ID<input name="name" value="${dialogEsc(item.name || id)}" readonly></label>
-              <label>Memory (MiB)<input name="memoryMiB" type="number" min="256" max="262144" value="${memoryMiB}" required></label>
-              <label>Virtual CPUs<input name="cpus" type="number" min="1" max="128" value="${Number(item.cpus) || 2}" required></label>
+              <label>RAM (MiB)<input name="memoryMiB" type="number" min="256" max="262144" value="${memoryMiB}" required></label>
+              <label>CPU<input name="cpus" type="number" min="1" max="128" value="${Number(item.cpus) || 2}" required></label>
               <label>Root disk allocation<input value="${Number(item.diskGiB) || '—'} GiB" readonly></label>
               <label>Storage<input value="${dialogEsc(item.storageId || 'Local container storage')}" readonly></label>
               <label>Image<input value="${dialogEsc(item.imageId || 'Installed system image')}" readonly></label>
