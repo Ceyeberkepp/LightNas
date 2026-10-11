@@ -485,7 +485,7 @@ function overviewComputeInventory() {
       detail:`${item.cpus || '—'} vCPU · ${item.memory ? bytes(item.memory) : 'RAM unknown'}`, view:'vms'
     })),
     ...nativeContainers.map(item => ({
-      type:'LXC', name:item.name || item.id, status:item.status || 'unknown',
+      type:'Container', name:item.name || item.id, status:item.status || 'unknown',
       detail:`${item.cpus || '—'} vCPU · ${item.memory ? bytes(item.memory) : 'RAM unknown'} · ${item.ipv4 || 'No IP'}`, view:'containers'
     })),
     ...appContainers.map(item => {
@@ -642,7 +642,7 @@ function hypervisorResourceTree(nodeName, pools, networks, vms, containers, acti
         <div class="hv-tree-branch">
           <details class="hv-inventory-group" open>
             <summary>
-              <span class="hv-tree-chevron"></span><span class="hv-tree-resource-icon ct">⬡</span><b>LXC Containers</b><small>${containers.length}</small>
+              <span class="hv-tree-chevron"></span><span class="hv-tree-resource-icon ct">⬡</span><b>Containers</b><small>${containers.length}</small>
             </summary>
             <div class="hv-tree-children">${ctItems || '<span class="hv-tree-empty">No containers</span>'}</div>
           </details>
@@ -971,6 +971,7 @@ async function openUserManager(username) {
         <h3>Reset password</h3>
         <div class="form-grid">
           <label>New password<input name="newPassword" type="password" minlength="4" autocomplete="new-password" placeholder="At least 4 characters"></label>
+           <label>Confirm new password<input name="confirmPassword" type="password" minlength="4" autocomplete="new-password" placeholder="Enter password again"></label>
           <label>Administrator password<input name="currentPassword" type="password" autocomplete="current-password" required></label>
         </div>
         <button class="secondary" type="button" data-user-reset-password>Reset password</button>
@@ -1014,12 +1015,14 @@ async function openUserManager(username) {
     const password = form.elements.newPassword.value;
     const currentPassword = form.elements.currentPassword.value;
     if (!password || password.length < 4) { error.textContent = 'Enter a new password of at least 4 characters.'; return; }
+     if (password !== form.elements.confirmPassword.value) { error.textContent = 'New passwords do not match.'; return; }
     try {
       await request(`/api/users/${encodeURIComponent(username)}`, {
         method: 'PATCH',
         body: JSON.stringify({ currentPassword, password })
       });
       form.elements.newPassword.value = '';
+       form.elements.confirmPassword.value = '';
       await loadUsers();
       toast('Password reset and old sessions ended.');
     } catch (problem) { error.textContent = problem.message; }
@@ -1357,7 +1360,7 @@ function containersView() {
     ${runtimeBanner('containers')}
     ${runtimeResourceSummary([...containers, ...appContainers], 'containers')}
     ${runtime?.available && runtime?.enabled && !ready ? '<div class="module-hero"><h2>Container resources needed</h2><p>LightNAS needs a usable container image and network before a new system container can be created.</p></div>' : ''}
-    <div class="compute-section-head"><div><span class="eyebrow">SYSTEM CONTAINERS</span><h2>Native LXC inventory</h2></div><small>${containers.length} total</small></div>
+    <div class="compute-section-head"><div><span class="eyebrow">SYSTEM CONTAINERS</span><h2>Container inventory</h2></div><small>${containers.length} total</small></div>
     <div class="compute-table-wrap">${containerList}</div>
     <div class="compute-section-head app-managed-heading"><div><span class="eyebrow">APP STORE CONTAINERS</span><h2>Managed applications</h2><p class="muted">Applications installed from App Store run as Docker/OCI containers and are managed separately from native LXC containers.</p></div><small>${appContainers.length} total</small></div>
     <div class="compute-table-wrap">${appContainerList}</div>`;
@@ -2062,7 +2065,7 @@ function capabilitiesView() {
     ['shares', 'File services', 'SMB/SFTP shares, media libraries, file browser and permissions.', 'shares'],
     ['backups', 'Backup & restore', 'Backup-capable storage, snapshots, restore activity and replication foundations.', 'backups'],
     ['virtualMachines', 'Virtual machines', 'KVM/libvirt virtual machines, noVNC, VirtIO drivers, disks, NICs and PCI/GPU passthrough.', 'vms'],
-    ['containers', 'System containers', 'Native LXC containers plus OCI application containers and terminal access.', 'containers'],
+    ['containers', 'System containers', 'System containers plus application containers and terminal access.', 'containers'],
     ['networking', 'Datacenter networking', 'Physical NICs, Wi-Fi, bridges, VLANs, bonds, routes, DNS and virtual networks.', 'network'],
     ['firewall', 'Firewall & segmentation', 'Host firewall controls for appliance, guest and service isolation.', 'firewall'],
     ['appStore', 'Application platform', 'One-click application catalog and managed app hosting.', 'apps'],
@@ -2250,6 +2253,7 @@ function settingsView() {
         <div class="settings-section-body" ${settingsSectionCollapsed('password') ? 'hidden' : ''}>
         <label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label>
         <label>New password<input name="newPassword" type="password" minlength="4" autocomplete="new-password" required placeholder="At least 4 characters"></label>
+         <label>Confirm new password<input name="confirmPassword" type="password" minlength="4" autocomplete="new-password" required placeholder="Enter password again"></label>
         <button class="secondary" type="submit">Change password</button><div class="form-error" role="alert"></div>
         </div>
       </form>` : ''}
@@ -3424,7 +3428,8 @@ function bindViewActions() {
     button.disabled = true;
     try {
       const input = Object.fromEntries(new FormData(form));
-      const result = await request('/api/security/password', { method:'POST', body:JSON.stringify({
+      if (input.newPassword !== input.confirmPassword) throw new Error('New passwords do not match.');
+       const result = await request('/api/security/password', { method:'POST', body:JSON.stringify({
         currentPassword: input.currentPassword,
         newPassword: input.newPassword
       }) });
@@ -3750,6 +3755,10 @@ async function submitAuth(form, path) {
   button.disabled = true;
   try {
     const data = Object.fromEntries(new FormData(form));
+    if (path === '/api/setup') {
+      if (data.password !== data.confirmPassword) throw new Error('Passwords do not match. Enter the same password twice.');
+      delete data.confirmPassword;
+    }
     if (path === '/api/login') data.mfaMethod = $('#login-mfa')?.dataset.method || '';
     await request(path, { method: 'POST', body: JSON.stringify(data) });
     await showConsole();

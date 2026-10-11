@@ -443,8 +443,10 @@ async function showRuntimeWizard(kind) {
         <div class="wizard-grid">
           <label>Storage<select name="pool" required>${storages.map((item, index) => wizardOption(item.id, `${item.name || item.id}${item.availableBytes !== undefined ? ` · ${Math.round(item.availableBytes / 1073741824)} GiB free` : ''}`, index === 0)).join('')}</select></label>
           <label>${isContainer ? 'Root disk allocation' : 'Virtual disk size'} (GiB)<input name="diskGiB" type="number" min="${isContainer ? 2 : 10}" max="2048" value="${isContainer ? 8 : 32}" required></label>
-          <label>Memory (MiB)<input name="memoryMiB" type="number" min="${isContainer ? 256 : 1024}" max="65536" value="2048" required></label>
-          <label>Virtual CPUs<input name="cpus" type="number" min="1" max="32" value="2" required></label>
+          <label>RAM (MiB)<input name="memoryMiB" type="number" min="${isContainer ? 256 : 1024}" max="65536" value="2048" required></label>
+          <label>CPU<input name="cpus" type="number" min="1" max="32" value="2" required></label>
+          ${!isContainer ? '<label>Minimum RAM (MiB)<input name="minMemoryMiB" type="number" min="1024" max="65536" value="2048" required></label><p class="module-note">RAM is the maximum memory allowance. Minimum RAM defaults to the same amount (fixed RAM). Lower it only for guests with balloon drivers and a memory-management service; LightNAS does not automatically reclaim RAM without guest support.</p>' : '<p class="module-note">Containers use a RAM limit and CPU quota enforced by the host. Unused RAM remains available to the host.</p>'}
+          ${!isContainer ? `<label>CPU model<select name="cpuMode"><option value="host-model">Host model · balanced compatibility</option><option value="host-passthrough">Host passthrough · best native CPU features</option><option value="default">QEMU default · compatibility</option></select></label><label>Graphics<select name="videoModel"><option value="vga">Standard VGA · installer compatible</option><option value="virtio">VirtIO GPU · modern Linux</option><option value="qxl">QXL · SPICE-compatible guests</option></select></label>` : ``}
         </div>
       </section>
       <section class="wizard-page" data-wizard-page="2">
@@ -506,16 +508,32 @@ async function showRuntimeWizard(kind) {
       const labels = [
         ['Name', values.name], [imageLabel, values.image || values.iso || 'No installation media'],
         ['Storage', values.pool], ['Disk', `${values.diskGiB} GiB`],
-        ['Memory', `${values.memoryMiB} MiB`], ['CPU', `${values.cpus} vCPU`],
+        ['RAM', `${values.memoryMiB} MiB`], ...(!isContainer ? [['Minimum RAM', `${values.minMemoryMiB} MiB`]] : []), ['CPU', `${values.cpus}`],
         ['Network', values.network], ['Start on boot', form.elements.startOnBoot.checked ? 'Yes' : 'No']
       ];
       form.querySelector('[data-wizard-review]').innerHTML = labels.map(([label, value]) => `<div><span>${dialogEsc(label)}</span><b>${dialogEsc(value)}</b></div>`).join('');
     }
     pages[step].querySelector('input,select')?.focus();
   };
+  if (!isContainer) {
+    const maxRam = form.elements.memoryMiB;
+    const minRam = form.elements.minMemoryMiB;
+    // Keep fixed RAM as the safe default. Preserve custom minimum when changed.
+    let minimumManuallyEdited = false;
+    minRam.addEventListener('input', () => { minimumManuallyEdited = true; });
+    maxRam.addEventListener('input', () => {
+      if (!minimumManuallyEdited) minRam.value = maxRam.value;
+      minRam.max = maxRam.value;
+    });
+  }
   const validatePage = () => {
     for (const field of pages[step].querySelectorAll('input,select')) {
       if (!field.checkValidity()) { field.reportValidity(); return false; }
+    }
+    if (!isContainer && step === 1 && Number(form.elements.minMemoryMiB.value) > Number(form.elements.memoryMiB.value)) {
+      error.textContent = 'Minimum RAM cannot exceed RAM.';
+      form.elements.minMemoryMiB.focus();
+      return false;
     }
     if (isContainer && step === 0 && form.elements.password.value !== form.elements.passwordConfirm.value) {
       error.textContent = 'The root passwords do not match.';
@@ -767,8 +785,8 @@ async function showContainerManager(id) {
             <p class="muted">CPU and memory limits are applied immediately and persist after restart.</p>
             <div class="form-grid">
               <label>Container ID<input name="name" value="${dialogEsc(item.name || id)}" readonly></label>
-              <label>Memory (MiB)<input name="memoryMiB" type="number" min="256" max="262144" value="${memoryMiB}" required></label>
-              <label>Virtual CPUs<input name="cpus" type="number" min="1" max="128" value="${Number(item.cpus) || 2}" required></label>
+              <label>RAM (MiB)<input name="memoryMiB" type="number" min="256" max="262144" value="${memoryMiB}" required></label>
+              <label>CPU<input name="cpus" type="number" min="1" max="128" value="${Number(item.cpus) || 2}" required></label>
               <label>Root disk allocation<input value="${Number(item.diskGiB) || '—'} GiB" readonly></label>
               <label>Storage<input value="${dialogEsc(item.storageId || 'Local container storage')}" readonly></label>
               <label>Image<input value="${dialogEsc(item.imageId || 'Installed system image')}" readonly></label>
@@ -814,7 +832,7 @@ async function showContainerManager(id) {
             </div>
 
             <div class="manager-subsection">
-              <div class="subsection-head"><div><h4>Additional virtual NICs</h4><p class="muted">Existing adapters are loaded from the real LXC configuration.</p></div><button class="secondary" type="button" data-add-extra-nic>+ Add NIC</button></div>
+              <div class="subsection-head"><div><h4>Additional virtual NICs</h4><p class="muted">Existing adapters are loaded from the current container configuration.</p></div><button class="secondary" type="button" data-add-extra-nic>+ Add NIC</button></div>
               <div class="hardware-list" data-extra-nics>${extraNicRows || '<p class="muted" data-no-extra-nics>No additional NICs configured.</p>'}</div>
             </div>
 <p class="module-note">Changing a running container’s address may temporarily interrupt its application connections. The LightNAS terminal uses the local host channel and remains available.</p>
@@ -850,10 +868,10 @@ async function showContainerManager(id) {
               <div><span>Unprivileged container</span><b>${item.unprivileged ? 'Yes' : 'No / not detected'}</b></div>
               <div><span>Nesting feature</span><b>${item.nesting ? 'Enabled' : 'Disabled'}</b></div>
               <div><span>TTY count</span><b>${dialogEsc(item.ttyCount || 'Default')}</b></div>
-              <div><span>Console path</span><b>${dialogEsc(item.consolePath || 'Default LXC console')}</b></div>
+              <div><span>Console path</span><b>${dialogEsc(item.consolePath || 'Default container console')}</b></div>
               <div><span>Primary MAC</span><b>${dialogEsc(item.macAddress || 'Automatically assigned')}</b></div>
             </div>
-            <p class="module-note">Start at boot is editable here. Security identity, nesting and console topology reflect the actual LXC configuration and are shown read-only so LightNAS does not silently weaken the container boundary.</p>
+            <p class="module-note">Start at boot is editable here. Security identity, nesting and console topology reflect the actual container configuration and are shown read-only so LightNAS does not silently weaken the container boundary.</p>
           </section>
           <section data-container-panel="tasks" hidden><h3>Task history</h3><div class="manager-events">${taskRows}</div></section>
           <section data-container-panel="backups" hidden>${unavailable('Backups', 'Backup jobs require a configured LightNAS backup target. The container root filesystem is not copied until that storage workflow is enabled.')}</section>

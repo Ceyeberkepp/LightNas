@@ -590,13 +590,15 @@ async function localUpdateVm(input) {
   const target = requestedName;
   const mem = await command('virsh', ['-c', 'qemu:///system', 'setmaxmem', target, `${memory}MiB`, '--config'], 30000);
   if (!mem.ok) throw Object.assign(new Error(`Unable to change VM memory: ${mem.error}`), { status: 409 });
-  await command('virsh', ['-c', 'qemu:///system', 'setmem', target, `${memory}MiB`, '--config'], 30000);
+  const memCurrent = await command('virsh', ['-c', 'qemu:///system', 'setmem', target, `${memory}MiB`, '--config'], 30000);
+  if (!memCurrent.ok) throw Object.assign(new Error(`Unable to set configured VM RAM: ${memCurrent.error}`), { status: 409 });
   const cpu = await command('virsh', ['-c', 'qemu:///system', 'setvcpus', target, String(cpus), '--config', '--maximum'], 30000);
   if (!cpu.ok) {
     const fallback = await command('virsh', ['-c', 'qemu:///system', 'setvcpus', target, String(cpus), '--config'], 30000);
     if (!fallback.ok) throw Object.assign(new Error(`Unable to change VM CPUs: ${fallback.error}`), { status: 409 });
   }
-  await command('virsh', ['-c', 'qemu:///system', 'setvcpus', target, String(cpus), '--config'], 30000);
+  const cpuCurrent = await command('virsh', ['-c', 'qemu:///system', 'setvcpus', target, String(cpus), '--config'], 30000);
+  if (!cpuCurrent.ok) throw Object.assign(new Error(`Unable to apply VM CPU count: ${cpuCurrent.error}`), { status: 409 });
 
   const isoId = String(input.iso || '');
   const bootOrder = input.bootOrder === 'iso' ? 'iso' : 'disk';
@@ -936,14 +938,22 @@ export async function runtimeInventory() {
           ? 'Hardware virtualization is unavailable, so LightNAS will use QEMU software emulation (TCG). VMs work, but they run slower than KVM.'
           : 'Hardware virtualization and /dev/net/tun are unavailable. LightNAS will use QEMU software emulation (TCG) with user-mode NAT. VMs still work, but they run slower than KVM and use NAT networking.';
       }
-    } else if (runtime.virtualization.acceleration === 'tcg') {
-      runtime.virtualization.provider = 'libvirt-qemu';
-      runtime.virtualization.warning = 'Hardware virtualization is unavailable, so LightNAS will use QEMU software emulation (TCG).';
     } else {
-      runtime.virtualization.provider = 'libvirt-kvm';
+      // Probe KVM on bare metal and in VMs too; 'auto' must never silently
+      // choose software emulation simply because LightNAS is not nested.
+      const kvmUsable = runtime.containers.diagnostics?.kvm?.usable === true;
+      const forcedTcg = process.env.LIGHTNAS_VM_ACCELERATION === 'tcg';
+      runtime.virtualization.acceleration = !forcedTcg && kvmUsable ? 'kvm' : 'tcg';
+      runtime.virtualization.provider = kvmUsable && !forcedTcg ? 'libvirt-kvm' : 'libvirt-qemu';
+      if (!kvmUsable || forcedTcg) runtime.virtualization.warning = 'KVM acceleration is unavailable or disabled; VMs use QEMU software emulation and may run more slowly.';
     }
   } catch (error) {
-    runtime.containers = { available: false, enabled: false, provider: 'local-lxc', reason: `Native LXC host agent unavailable: ${error.message}`, containers: [], images: [], networks: [], storageRoot: null, diagnostics: null };
+    runtime.containers = { available: false, enabled: false, provider: 'local-lxc', reason: `Native container host agent unavailable: ${error.message}`, containers: [], images: [], networks: [], storageRoot: null, diagnostics: null };
+    // Never claim KVM when capability probing is unavailable. Users may still
+    // create slower software-emulated VMs without hardware virtualization.
+    runtime.virtualization.acceleration = 'tcg';
+    runtime.virtualization.provider = 'libvirt-qemu';
+    runtime.virtualization.warning = 'Hardware acceleration could not be verified. Using compatible QEMU software emulation.';
   }
 
   if (runtime.virtualization.available) {
@@ -1475,6 +1485,8 @@ export async function createVm(input) {
   if (!virtualization.available || !virtualization.enabled) throw Object.assign(new Error(virtualization.reason || 'QEMU/libvirt virtualization is disabled on this host.'), { status: 409 });
   if (!/^[a-zA-Z][a-zA-Z0-9-]{1,39}$/.test(input.name || '')) throw Object.assign(new Error('Use a 2–40 character VM name.'), { status: 400 });
   const memory = Number(input.memoryMiB), cpus = Number(input.cpus), disk = Number(input.diskGiB);
+  const minMemory = input.minMemoryMiB === undefined || input.minMemoryMiB === '' ? memory : Number(input.minMemoryMiB);
+  if (!Number.isInteger(minMemory) || minMemory < 1024 || minMemory > memory) throw Object.assign(new Error('Minimum RAM must be between 1024 MiB and the configured maximum RAM.'), { status: 400 });
   if (!Number.isInteger(memory) || memory < 1024 || memory > 65536 || !Number.isInteger(cpus) || cpus < 1 || cpus > 32 || !Number.isInteger(disk) || disk < 10 || disk > 2048) throw Object.assign(new Error('Use 1024–65536 MiB RAM, 1–32 CPUs and 10–2048 GiB disk.'), { status: 400 });
   const iso = String(input.iso || '').trim();
   if (!/^[a-zA-Z0-9_-]{1,48}$/.test(input.pool || '') || !/^[a-zA-Z0-9._:-]{1,48}$/.test(input.network || '') || !virtualization.pools.includes(input.pool) || !virtualization.networks.includes(input.network) || (iso && !virtualization.images.includes(iso))) throw Object.assign(new Error('Select an accessible LightNAS VM storage/network and, optionally, an available installer ISO.'), { status: 409 });
@@ -1539,7 +1551,13 @@ export async function createVm(input) {
   if (virtualization.diagnostics?.nested) {
     await localRepairNestedLibvirt().catch(() => null);
   }
-  const args = ['--connect', 'qemu:///system', '--virt-type', virtType, '--name', input.name, '--memory', String(memory), '--vcpus', String(cpus), '--disk', `path=${diskPath},size=${disk},format=qcow2,bus=${diskBus}`, ...diskController, '--network', networkArg, '--graphics', 'vnc,listen=127.0.0.1', '--video', 'vga', '--noautoconsole', '--wait', '0'];
+  // Expose Proxmox-style resource choices without requiring passthrough hardware.
+  // CPU host modes require KVM; TCG guests retain their compatible defaults.
+  const cpuMode = ['host-model', 'host-passthrough', 'default'].includes(input.cpuMode) ? input.cpuMode : 'host-model';
+  const cpuArgs = virtType === 'kvm' && cpuMode !== 'default' ? ['--cpu', cpuMode] : [];
+  const memoryBalloon = input.memoryBalloon === 'none' ? 'none' : 'virtio';
+  const videoModel = ['vga', 'virtio', 'qxl'].includes(input.videoModel) ? input.videoModel : 'vga';
+  const args = ['--connect', 'qemu:///system', '--virt-type', virtType, '--name', input.name, '--memory', (minMemory < memory ? `memory=${minMemory},maxmemory=${memory}` : String(memory)), '--vcpus', String(cpus), ...cpuArgs, '--memballoon', memoryBalloon, '--disk', `path=${diskPath},size=${disk},format=qcow2,bus=${diskBus}`, ...diskController, '--network', networkArg, '--graphics', 'vnc,listen=127.0.0.1', '--video', videoModel, '--noautoconsole', '--wait', '0'];
   if (isoEntry) args.push('--cdrom', isoEntry.path, '--osinfo', 'detect=on,require=off');
   else args.push('--import', '--osinfo', 'generic');
   if (guestDrivers?.path) args.push('--disk', `path=${guestDrivers.path},device=cdrom,readonly=on,bus=sata`);
