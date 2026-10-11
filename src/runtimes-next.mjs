@@ -1475,6 +1475,8 @@ export async function createVm(input) {
   if (!virtualization.available || !virtualization.enabled) throw Object.assign(new Error(virtualization.reason || 'QEMU/libvirt virtualization is disabled on this host.'), { status: 409 });
   if (!/^[a-zA-Z][a-zA-Z0-9-]{1,39}$/.test(input.name || '')) throw Object.assign(new Error('Use a 2–40 character VM name.'), { status: 400 });
   const memory = Number(input.memoryMiB), cpus = Number(input.cpus), disk = Number(input.diskGiB);
+  const minMemory = input.minMemoryMiB === undefined || input.minMemoryMiB === '' ? memory : Number(input.minMemoryMiB);
+  if (!Number.isInteger(minMemory) || minMemory < 1024 || minMemory > memory) throw Object.assign(new Error('Minimum RAM must be between 1024 MiB and the configured maximum RAM.'), { status: 400 });
   if (!Number.isInteger(memory) || memory < 1024 || memory > 65536 || !Number.isInteger(cpus) || cpus < 1 || cpus > 32 || !Number.isInteger(disk) || disk < 10 || disk > 2048) throw Object.assign(new Error('Use 1024–65536 MiB RAM, 1–32 CPUs and 10–2048 GiB disk.'), { status: 400 });
   const iso = String(input.iso || '').trim();
   if (!/^[a-zA-Z0-9_-]{1,48}$/.test(input.pool || '') || !/^[a-zA-Z0-9._:-]{1,48}$/.test(input.network || '') || !virtualization.pools.includes(input.pool) || !virtualization.networks.includes(input.network) || (iso && !virtualization.images.includes(iso))) throw Object.assign(new Error('Select an accessible LightNAS VM storage/network and, optionally, an available installer ISO.'), { status: 409 });
@@ -1545,7 +1547,7 @@ export async function createVm(input) {
   const cpuArgs = virtType === 'kvm' && cpuMode !== 'default' ? ['--cpu', cpuMode] : [];
   const memoryBalloon = input.memoryBalloon === 'none' ? 'none' : 'virtio';
   const videoModel = ['vga', 'virtio', 'qxl'].includes(input.videoModel) ? input.videoModel : 'vga';
-  const args = ['--connect', 'qemu:///system', '--virt-type', virtType, '--name', input.name, '--memory', String(memory), '--vcpus', String(cpus), ...cpuArgs, '--memballoon', memoryBalloon, '--disk', `path=${diskPath},size=${disk},format=qcow2,bus=${diskBus}`, ...diskController, '--network', networkArg, '--graphics', 'vnc,listen=127.0.0.1', '--video', videoModel, '--noautoconsole', '--wait', '0'];
+  const args = ['--connect', 'qemu:///system', '--virt-type', virtType, '--name', input.name, '--memory', (minMemory < memory ? `memory=${minMemory},maxmemory=${memory}` : String(memory)), '--vcpus', String(cpus), ...cpuArgs, '--memballoon', memoryBalloon, '--disk', `path=${diskPath},size=${disk},format=qcow2,bus=${diskBus}`, ...diskController, '--network', networkArg, '--graphics', 'vnc,listen=127.0.0.1', '--video', videoModel, '--noautoconsole', '--wait', '0'];
   if (isoEntry) args.push('--cdrom', isoEntry.path, '--osinfo', 'detect=on,require=off');
   else args.push('--import', '--osinfo', 'generic');
   if (guestDrivers?.path) args.push('--disk', `path=${guestDrivers.path},device=cdrom,readonly=on,bus=sata`);
