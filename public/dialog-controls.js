@@ -446,7 +446,7 @@ async function showRuntimeWizard(kind) {
           <label>RAM (MiB)<input name="memoryMiB" type="number" min="${isContainer ? 256 : 1024}" max="65536" value="2048" required></label>
           <label>CPU<input name="cpus" type="number" min="1" max="32" value="2" required></label>
           ${!isContainer ? '<label>Minimum RAM (MiB)<input name="minMemoryMiB" type="number" min="1024" max="65536" value="1024" required></label><p class="module-note">RAM is the maximum allocation. Minimum RAM is the starting allocation; compatible guests can use VirtIO ballooning to adjust within this range. Setting both equal uses fixed RAM.</p>' : '<p class="module-note">Containers use a RAM limit and CPU quota enforced by the host. Unused RAM remains available to the host.</p>'}
-          ${!isContainer ? `<label>CPU model<select name="cpuMode"><option value="host-model">Host model · balanced compatibility</option><option value="host-passthrough">Host passthrough · best native CPU features</option><option value="default">QEMU default · compatibility</option></select></label><label>Virtual graphics<select name="videoModel"><option value="vga">Standard VGA · installer compatible</option><option value="virtio">VirtIO GPU · modern Linux</option><option value="qxl">QXL · SPICE-compatible guests</option></select></label>` : ``}
+          ${!isContainer ? `<label>CPU model<select name="cpuMode"><option value="host-model">Host model · balanced compatibility</option><option value="host-passthrough">Host passthrough · best native CPU features</option><option value="default">QEMU default · compatibility</option></select></label><label>Graphics<select name="videoModel"><option value="vga">Standard VGA · installer compatible</option><option value="virtio">VirtIO GPU · modern Linux</option><option value="qxl">QXL · SPICE-compatible guests</option></select></label>` : ``}
         </div>
       </section>
       <section class="wizard-page" data-wizard-page="2">
@@ -508,7 +508,7 @@ async function showRuntimeWizard(kind) {
       const labels = [
         ['Name', values.name], [imageLabel, values.image || values.iso || 'No installation media'],
         ['Storage', values.pool], ['Disk', `${values.diskGiB} GiB`],
-        ['Memory', `${values.memoryMiB} MiB`], ['CPU', `${values.cpus} vCPU`],
+        ['RAM', `${values.memoryMiB} MiB`], ...(!isContainer ? [['Minimum RAM', `${values.minMemoryMiB} MiB`]] : []), ['CPU', `${values.cpus}`],
         ['Network', values.network], ['Start on boot', form.elements.startOnBoot.checked ? 'Yes' : 'No']
       ];
       form.querySelector('[data-wizard-review]').innerHTML = labels.map(([label, value]) => `<div><span>${dialogEsc(label)}</span><b>${dialogEsc(value)}</b></div>`).join('');
@@ -518,6 +518,11 @@ async function showRuntimeWizard(kind) {
   const validatePage = () => {
     for (const field of pages[step].querySelectorAll('input,select')) {
       if (!field.checkValidity()) { field.reportValidity(); return false; }
+    }
+    if (!isContainer && step === 1 && Number(form.elements.minMemoryMiB.value) > Number(form.elements.memoryMiB.value)) {
+      error.textContent = 'Minimum RAM cannot exceed RAM.';
+      form.elements.minMemoryMiB.focus();
+      return false;
     }
     if (isContainer && step === 0 && form.elements.password.value !== form.elements.passwordConfirm.value) {
       error.textContent = 'The root passwords do not match.';
