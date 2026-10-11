@@ -445,6 +445,7 @@ async function showRuntimeWizard(kind) {
           <label>${isContainer ? 'Root disk allocation' : 'Virtual disk size'} (GiB)<input name="diskGiB" type="number" min="${isContainer ? 2 : 10}" max="2048" value="${isContainer ? 8 : 32}" required></label>
           <label>Memory (MiB)<input name="memoryMiB" type="number" min="${isContainer ? 256 : 1024}" max="65536" value="2048" required></label>
           <label>Virtual CPUs<input name="cpus" type="number" min="1" max="32" value="2" required></label>
+          ${!isContainer ? `<label>CPU model<select name="cpuMode"><option value="host-model">Host model · balanced compatibility</option><option value="host-passthrough">Host passthrough · best native CPU features</option><option value="default">QEMU default · compatibility</option></select></label><label>Memory ballooning<select name="memoryBalloon"><option value="virtio">VirtIO · dynamic guest memory reporting</option><option value="none">Disabled · fixed allocation</option></select></label><label>Virtual graphics<select name="videoModel"><option value="vga">Standard VGA · installer compatible</option><option value="virtio">VirtIO GPU · modern Linux</option><option value="qxl">QXL · SPICE-compatible guests</option></select></label>` : ``}
         </div>
       </section>
       <section class="wizard-page" data-wizard-page="2">
@@ -814,7 +815,7 @@ async function showContainerManager(id) {
             </div>
 
             <div class="manager-subsection">
-              <div class="subsection-head"><div><h4>Additional virtual NICs</h4><p class="muted">Existing adapters are loaded from the real LXC configuration.</p></div><button class="secondary" type="button" data-add-extra-nic>+ Add NIC</button></div>
+              <div class="subsection-head"><div><h4>Additional virtual NICs</h4><p class="muted">Existing adapters are loaded from the current container configuration.</p></div><button class="secondary" type="button" data-add-extra-nic>+ Add NIC</button></div>
               <div class="hardware-list" data-extra-nics>${extraNicRows || '<p class="muted" data-no-extra-nics>No additional NICs configured.</p>'}</div>
             </div>
 <p class="module-note">Changing a running container’s address may temporarily interrupt its application connections. The LightNAS terminal uses the local host channel and remains available.</p>
@@ -850,10 +851,10 @@ async function showContainerManager(id) {
               <div><span>Unprivileged container</span><b>${item.unprivileged ? 'Yes' : 'No / not detected'}</b></div>
               <div><span>Nesting feature</span><b>${item.nesting ? 'Enabled' : 'Disabled'}</b></div>
               <div><span>TTY count</span><b>${dialogEsc(item.ttyCount || 'Default')}</b></div>
-              <div><span>Console path</span><b>${dialogEsc(item.consolePath || 'Default LXC console')}</b></div>
+              <div><span>Console path</span><b>${dialogEsc(item.consolePath || 'Default container console')}</b></div>
               <div><span>Primary MAC</span><b>${dialogEsc(item.macAddress || 'Automatically assigned')}</b></div>
             </div>
-            <p class="module-note">Start at boot is editable here. Security identity, nesting and console topology reflect the actual LXC configuration and are shown read-only so LightNAS does not silently weaken the container boundary.</p>
+            <p class="module-note">Start at boot is editable here. Security identity, nesting and console topology reflect the actual container configuration and are shown read-only so LightNAS does not silently weaken the container boundary.</p>
           </section>
           <section data-container-panel="tasks" hidden><h3>Task history</h3><div class="manager-events">${taskRows}</div></section>
           <section data-container-panel="backups" hidden>${unavailable('Backups', 'Backup jobs require a configured LightNAS backup target. The container root filesystem is not copied until that storage workflow is enabled.')}</section>
