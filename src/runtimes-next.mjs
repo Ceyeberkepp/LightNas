@@ -590,13 +590,15 @@ async function localUpdateVm(input) {
   const target = requestedName;
   const mem = await command('virsh', ['-c', 'qemu:///system', 'setmaxmem', target, `${memory}MiB`, '--config'], 30000);
   if (!mem.ok) throw Object.assign(new Error(`Unable to change VM memory: ${mem.error}`), { status: 409 });
-  await command('virsh', ['-c', 'qemu:///system', 'setmem', target, `${memory}MiB`, '--config'], 30000);
+  const memCurrent = await command('virsh', ['-c', 'qemu:///system', 'setmem', target, `${memory}MiB`, '--config'], 30000);
+  if (!memCurrent.ok) throw Object.assign(new Error(`Unable to set configured VM RAM: ${memCurrent.error}`), { status: 409 });
   const cpu = await command('virsh', ['-c', 'qemu:///system', 'setvcpus', target, String(cpus), '--config', '--maximum'], 30000);
   if (!cpu.ok) {
     const fallback = await command('virsh', ['-c', 'qemu:///system', 'setvcpus', target, String(cpus), '--config'], 30000);
     if (!fallback.ok) throw Object.assign(new Error(`Unable to change VM CPUs: ${fallback.error}`), { status: 409 });
   }
-  await command('virsh', ['-c', 'qemu:///system', 'setvcpus', target, String(cpus), '--config'], 30000);
+  const cpuCurrent = await command('virsh', ['-c', 'qemu:///system', 'setvcpus', target, String(cpus), '--config'], 30000);
+  if (!cpuCurrent.ok) throw Object.assign(new Error(`Unable to apply VM CPU count: ${cpuCurrent.error}`), { status: 409 });
 
   const isoId = String(input.iso || '');
   const bootOrder = input.bootOrder === 'iso' ? 'iso' : 'disk';
