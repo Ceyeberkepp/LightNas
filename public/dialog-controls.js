@@ -445,7 +445,7 @@ async function showRuntimeWizard(kind) {
           <label>${isContainer ? 'Root disk allocation' : 'Virtual disk size'} (GiB)<input name="diskGiB" type="number" min="${isContainer ? 2 : 10}" max="2048" value="${isContainer ? 8 : 32}" required></label>
           <label>RAM (MiB)<input name="memoryMiB" type="number" min="${isContainer ? 256 : 1024}" max="65536" value="2048" required></label>
           <label>CPU<input name="cpus" type="number" min="1" max="32" value="2" required></label>
-          ${!isContainer ? '<label>Minimum RAM (MiB)<input name="minMemoryMiB" type="number" min="1024" max="65536" value="1024" required></label><p class="module-note">RAM is the maximum allocation. Minimum RAM is the starting allocation; compatible guests can use VirtIO ballooning to adjust within this range. Setting both equal uses fixed RAM.</p>' : '<p class="module-note">Containers use a RAM limit and CPU quota enforced by the host. Unused RAM remains available to the host.</p>'}
+          ${!isContainer ? '<label>Minimum RAM (MiB)<input name="minMemoryMiB" type="number" min="1024" max="65536" value="2048" required></label><p class="module-note">RAM is the maximum memory allowance. Minimum RAM defaults to the same amount (fixed RAM). Lower it only for guests with balloon drivers and a memory-management service; LightNAS does not automatically reclaim RAM without guest support.</p>' : '<p class="module-note">Containers use a RAM limit and CPU quota enforced by the host. Unused RAM remains available to the host.</p>'}
           ${!isContainer ? `<label>CPU model<select name="cpuMode"><option value="host-model">Host model · balanced compatibility</option><option value="host-passthrough">Host passthrough · best native CPU features</option><option value="default">QEMU default · compatibility</option></select></label><label>Graphics<select name="videoModel"><option value="vga">Standard VGA · installer compatible</option><option value="virtio">VirtIO GPU · modern Linux</option><option value="qxl">QXL · SPICE-compatible guests</option></select></label>` : ``}
         </div>
       </section>
@@ -515,6 +515,17 @@ async function showRuntimeWizard(kind) {
     }
     pages[step].querySelector('input,select')?.focus();
   };
+  if (!isContainer) {
+    const maxRam = form.elements.memoryMiB;
+    const minRam = form.elements.minMemoryMiB;
+    // Keep fixed RAM as the safe default. Preserve custom minimum when changed.
+    let minimumManuallyEdited = false;
+    minRam.addEventListener('input', () => { minimumManuallyEdited = true; });
+    maxRam.addEventListener('input', () => {
+      if (!minimumManuallyEdited) minRam.value = maxRam.value;
+      minRam.max = maxRam.value;
+    });
+  }
   const validatePage = () => {
     for (const field of pages[step].querySelectorAll('input,select')) {
       if (!field.checkValidity()) { field.reportValidity(); return false; }
