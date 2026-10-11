@@ -1539,7 +1539,13 @@ export async function createVm(input) {
   if (virtualization.diagnostics?.nested) {
     await localRepairNestedLibvirt().catch(() => null);
   }
-  const args = ['--connect', 'qemu:///system', '--virt-type', virtType, '--name', input.name, '--memory', String(memory), '--vcpus', String(cpus), '--disk', `path=${diskPath},size=${disk},format=qcow2,bus=${diskBus}`, ...diskController, '--network', networkArg, '--graphics', 'vnc,listen=127.0.0.1', '--video', 'vga', '--noautoconsole', '--wait', '0'];
+  // Expose Proxmox-style resource choices without requiring passthrough hardware.
+  // CPU host modes require KVM; TCG guests retain their compatible defaults.
+  const cpuMode = ['host-model', 'host-passthrough', 'default'].includes(input.cpuMode) ? input.cpuMode : 'host-model';
+  const cpuArgs = virtType === 'kvm' && cpuMode !== 'default' ? ['--cpu', cpuMode] : [];
+  const memoryBalloon = input.memoryBalloon === 'none' ? 'none' : 'virtio';
+  const videoModel = ['vga', 'virtio', 'qxl'].includes(input.videoModel) ? input.videoModel : 'vga';
+  const args = ['--connect', 'qemu:///system', '--virt-type', virtType, '--name', input.name, '--memory', String(memory), '--vcpus', String(cpus), ...cpuArgs, '--memballoon', memoryBalloon, '--disk', `path=${diskPath},size=${disk},format=qcow2,bus=${diskBus}`, ...diskController, '--network', networkArg, '--graphics', 'vnc,listen=127.0.0.1', '--video', videoModel, '--noautoconsole', '--wait', '0'];
   if (isoEntry) args.push('--cdrom', isoEntry.path, '--osinfo', 'detect=on,require=off');
   else args.push('--import', '--osinfo', 'generic');
   if (guestDrivers?.path) args.push('--disk', `path=${guestDrivers.path},device=cdrom,readonly=on,bus=sata`);
