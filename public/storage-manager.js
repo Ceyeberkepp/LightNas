@@ -394,7 +394,8 @@ document.addEventListener('submit',async event=>{
               headers:{
                 'Content-Type':'application/octet-stream',
                 'Content-Range':`bytes ${offset}-${end-1}/${file.size}`,
-                'X-LightNAS-Upload-Id':uploadId
+                'X-LightNAS-Upload-Id':uploadId,
+                 'X-LightNAS-Task-Managed':'1'
               },
               body:chunk,
               signal:controller.signal

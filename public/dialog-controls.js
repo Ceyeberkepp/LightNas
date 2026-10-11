@@ -291,7 +291,7 @@ window.fetch = async (input, init = {}) => {
   try { if (typeof init.body === 'string' && init.body.startsWith('{')) action = String(JSON.parse(init.body)?.action || ''); } catch {}
   const headers = new Headers(init.headers || {});
   const managedTask = headers.get('X-LightNAS-Task-Managed') === '1';
-  const background = managedTask || action === 'auto-publish' || /\/api\/(?:overview|storage\/scan|login\/options|console)\b/.test(url);
+  const background = managedTask || (method === 'PUT' && /\/api\/storage\/pools\/[^/]+\/upload(?:\?|$)/.test(url)) || action === 'auto-publish' || /\/api\/(?:overview|storage\/scan|login\/options|console)\b/.test(url);
   const mutation = sameApi && ['POST','PATCH','PUT','DELETE'].includes(method) && !background;
   const labelPath = url.replace(location.origin,'').split('?')[0];
   const task = mutation ? lightnasTasks.create(action ? `${action} · ${labelPath}` : `${method} ${labelPath}`, 'Request submitted') : null;
