@@ -1303,6 +1303,24 @@ def _nested_routed_guest_next_hop(address: str, gateway: str) -> str:
     return "10.77.0.1"
 
 
+def _lan_address_in_use(uplink: str, address: str) -> bool:
+    """Conservatively detect an existing LAN peer before routing its IP to a guest.
+
+    A static guest address must never hijack an existing LAN host, particularly
+    the parent hypervisor or management gateway. ARP is scoped to the real
+    uplink, not the guest bridge, to avoid matching our own proxy entry.
+    """
+    if not available("arping"):
+        # An existing REACHABLE/STALE neighbor still indicates a peer on LAN.
+        result = run(["ip", "-4", "neigh", "show", "to", address, "dev", uplink], timeout=5, check=False)
+        return any(state in result.upper() for state in ("LLADDR", "REACHABLE", "STALE", "DELAY", "PROBE"))
+    probe = subprocess.run(
+        ["arping", "-I", uplink, "-c", "2", "-w", "3", address],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False, timeout=6,
+    )
+    return probe.returncode == 0 and "reply" in probe.stdout.lower()
+
+
 def ensure_nested_routed_lan(address: str, gateway: str) -> bool:
     """
     Keep a nested system container on the appliance's real LAN even when the
@@ -1321,6 +1339,12 @@ def ensure_nested_routed_lan(address: str, gateway: str) -> bool:
     gateway_ip = context["gateway"]
     uplink = context["uplink"]
     bridge = context["bridge"]
+
+    # Never replace the real LAN's route to an already existing host. A /32
+    # via lightnas0 would hijack traffic to that peer and break management or
+    # Cloudflare origins. Keep the correct connected LAN route via eth0.
+    if _lan_address_in_use(uplink, host):
+        raise ValueError(f"Container LAN address {host} conflicts with a device already on {uplink}; choose an unused address or use direct macvlan.")
 
     # Enable routed forwarding and proxy ARP now.
     for path, value in (
@@ -1411,7 +1435,7 @@ def restore_nested_routed_lan_routes() -> None:
                 continue
             address = str(settings.get("ipv4Address") or "").strip()
             gateway = str(settings.get("gateway") or "").strip()
-            if address and gateway:
+            if address and gateway and lxc_state(container_dir.name) == "running":
                 ensure_nested_routed_lan(address, gateway)
         except Exception:
             continue
