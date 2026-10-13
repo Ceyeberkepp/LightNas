@@ -31,8 +31,9 @@ test('existing LightNAS login gates root storage API and fails closed without in
  assert.equal(setup.status,201);const cookie=setup.headers.get('set-cookie').split(';')[0];
  assert.equal((await request('/api/storage/agent/inventory',{headers:{Cookie:cookie}})).status,503);
  assert.equal((await request('/api/storage/agent/arbitrary',{headers:{Cookie:cookie}})).status,404);
- for(const path of ['/api/proxmox/disk-clean','/api/proxmox/storage','/api/zfs/datasets','/api/shares'])assert.equal((await request(path,{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:'{}'})).status,409);
+ for(const path of ['/api/proxmox/disk-clean','/api/proxmox/storage','/api/shares'])assert.equal((await request(path,{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:'{}'})).status,409);
  assert.equal((await request('/api/storage/pools',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:'{\"name\":\"data\"}'})).status,503);
+ assert.equal((await request('/api/zfs/datasets',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:'{}'})).status,503);
  await assert.rejects(readFile(join(dir,'storage-pools.json')));
  const user=await request('/api/users',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({username:'viewer',password:'ViewerPass123',permissions:['storage.view']})});assert.equal(user.status,201);
  const login=await request('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'viewer',password:'ViewerPass123'})});assert.equal(login.status,200);const viewerCookie=login.headers.get('set-cookie').split(';')[0];

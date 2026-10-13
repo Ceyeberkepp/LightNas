@@ -20,7 +20,7 @@ The outer platform is an infrastructure choice, not a LightNAS dependency.
 Run as root on the LightNAS host:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/Ligthnas/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/LightNas/main/install.sh | bash
 ```
 
 The installer places LightNAS under:

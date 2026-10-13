@@ -27,9 +27,11 @@ Supported typed mutations:
 
 The new workflow has its own files: `/etc/samba/lightnas-storage-agent.conf`, `/etc/exports.d/lightnas-storage-agent.exports`, and `/var/lib/lightnas-storage/shares.json`. Existing managed Samba definitions are checked for name conflicts. It preserves the legacy host-agent share fragment and application state. Approved pool-definition jobs update the existing storage-pools.json registry, and approved space jobs use a separate storage-spaces.json registry read by the existing API. Existing directory permissions are not changed; new directories use root:lightnas ownership and mode 0770.
 
+ZFS dataset create/update routes now also use typed preview jobs; see [Storage, protection and certificate features](nas-storage-protection-certificates.md) for the added adapters.
+
 Existing pool-definition and space dialogs now receive HTTP 428 with an exact preview and require explicit approval before the root agent changes anything. They show progress and permit cancellation before commit. Backend guards intercept legacy host-storage control routes before their previous mutation handlers.
 
-Legacy ZFS mutations, raw disk cleaning, Proxmox storage configuration, and legacy SMB/SFTP account provisioning/removal are disabled with a clear unsupported-operation response until their typed adapters are implemented. Existing definitions and data remain readable. Supported SMB/NFS changes use the new approved workflow. Ordinary file upload/download/deletion and storage-content transfer remain file-data operations with their existing access controls; they are not host storage-configuration mutations.
+Legacy raw disk cleaning, Proxmox storage configuration, and legacy SMB/SFTP account provisioning/removal are disabled with a clear unsupported-operation response until their typed adapters are implemented. Existing definitions and data remain readable. Supported SMB/NFS changes use the new approved workflow. Ordinary file upload/download/deletion and storage-content transfer remain file-data operations with their existing access controls; they are not host storage-configuration mutations.
 
 ## Installation
 
@@ -77,7 +79,7 @@ Installer shell syntax, JavaScript syntax, the platform contract and focused sto
 
 Multi-file share writes are individually fsynced, not a single filesystem transaction. Failed activation restores prior configuration where possible and records recovery errors. Restarted active jobs are interrupted, never automatically replayed. Other host processes can still race with disk discovery; initialization needs exclusive host maintenance. History is capped at 1,000 jobs pending archival.
 
-Still outstanding: typed adapters for the explicitly disabled legacy controls, mount/unmount/persistent mounts, snapshots, encryption, ACLs/quotas, pool expansion/replacement and the wider product roadmap. Newly initialized filesystems are not automatically mounted or added to the existing storage-pool configuration.
+Still outstanding: typed adapters for the remaining explicitly disabled legacy controls, mount/unmount/persistent mounts, explicit encryption-key management, recursive ACL editing, pool expansion/replacement and the wider product roadmap. ZFS snapshot scheduling, user/group quotas and nonrecursive Unix permissions are covered by the added feature adapters. Newly initialized filesystems are not automatically mounted or added to the existing storage-pool configuration.
 
 
 ## Impact and recovery details

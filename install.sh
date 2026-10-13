@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPOSITORY_URL="${LIGHTNAS_REPOSITORY_URL:-https://github.com/Ceyeberkepp/Ligthnas.git}"
+REPOSITORY_URL="${LIGHTNAS_REPOSITORY_URL:-https://github.com/Ceyeberkepp/LightNas.git}"
 INSTALL_DIRECTORY="${LIGHTNAS_INSTALL_DIRECTORY:-/opt/lightnas}"
 DATA_DIRECTORY="${LIGHTNAS_DATA_DIRECTORY:-/var/lib/lightnas}"
 SERVICE_NAME="lightnas"
@@ -62,7 +62,7 @@ echo "Detected LightNAS architecture: ${LIGHTNAS_ARCH}"
 echo "[1/6] Checking system requirements..."
 install_missing_packages \
   ca-certificates curl git gnupg python3 ffmpeg imagemagick qrencode acl novnc iproute2 nftables ufw samba openssh-server ovmf \
-  tar gzip xz-utils zstd util-linux udev smartmontools nfs-kernel-server e2fsprogs btrfs-progs openssl
+  tar gzip xz-utils zstd util-linux udev smartmontools nfs-kernel-server e2fsprogs btrfs-progs openssl rsync rclone certbot python3-certbot-dns-cloudflare
 
 # Node.js and npm are both mandatory. Some minimal images have node but no
 # npm; do not skip the dependency installation in that case.
@@ -140,6 +140,11 @@ if apt_has_candidate libraw-bin; then
 fi
 
 install_missing_packages "${runtime_packages[@]}"
+# Install ZFS userland when the distribution offers it; never force kernel modules
+# or import pools on hosts/containers that do not expose a ZFS runtime.
+if apt_has_candidate zfsutils-linux; then
+  install_missing_packages zfsutils-linux
+fi
 
 # Debian repositories do not always carry the ubuntu-keyring package, but
 # LightNAS offers Ubuntu system-container images as well as Debian images.

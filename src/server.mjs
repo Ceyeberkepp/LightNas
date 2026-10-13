@@ -14,6 +14,7 @@ import { listFiles, listAllFiles, listAllFolders, createFolder, uploadFile, uplo
 import { thumbnailFor } from './thumbnails.mjs';
 import { catalog, runtimeInventory, vmEditorInventory, vmCreateInventory, installCatalogApp, manageCatalogApp, updateCatalogApp, openContainerShell, createContainer, createVm } from './runtimes-next.mjs';
 import { communityCatalog, installCommunityApp } from './community-catalog.mjs';
+import {AppIconCache} from './app-icons.mjs';
 import { proxmoxConsoleSocket, proxmoxUpdateStorage, proxmoxCleanDisk } from './proxmox.mjs';
 import { localContainerSummary, localContainerInventory, localManageContainer, localContainerConsoleSocket, localContainerCommand, localVmConsoleSocket, localNodeConsoleSocket, localNetworkInventory, localNetworkAction, localSetTimezone, localTimeStatus, localApplianceHealth, localApplianceRepair, localSoftwareStatus, localSoftwareUpdate, localRepairNetworkShares, localSyncShareAdministrator } from './local-host.mjs';
 import { smsGatewayStatus, sendLightNasSms, smsVerificationEnabled } from './sms-service.mjs';
@@ -135,6 +136,7 @@ const pendingSmsLogins = new Map();
 const pendingSmsEnrollments = new Map();
 const pendingPasskeyLogins = new Map();
 const pendingPasskeyRegistrations = new Map();
+const appIconCache=new AppIconCache();
 const smsSendThrottle = new Map();
 const loginFailures = new Map();
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -2002,6 +2004,14 @@ async function api(req, res, url) {
     containers.templateCount = (templateLibrary.templates || []).length;
     return send(res, 200, containerPublisher.decorate(containers));
   }
+  if(req.method==='GET'&&url.pathname==='/api/catalog/icon'){
+    if(!requirePermission(res,permissions,'apps.manage'))return;
+    const id=String(url.searchParams.get('id')||'');if(!/^[a-z0-9._-]{1,160}$/.test(id))return send(res,400,{error:'Invalid catalog application'});
+    const app=catalog.find(item=>item.id===id)||(await communityCatalog()).apps.find(item=>item.id===id);
+    if(!app)return send(res,404,{error:'Catalog application not found'});
+    const icon=await appIconCache.get(app);if(!icon)return send(res,404,{error:'Application thumbnail unavailable'});
+    res.writeHead(200,{'Content-Type':icon.contentType,'Content-Length':icon.buffer.length,'Cache-Control':'private, max-age=86400','X-Content-Type-Options':'nosniff','Content-Security-Policy':"sandbox; default-src 'none'; style-src 'unsafe-inline'"});return res.end(icon.buffer);
+  }
   if (req.method === 'GET' && url.pathname === '/api/catalog/builtin') {
     if (!requirePermission(res, permissions, 'apps.manage')) return;
     return send(res, 200, { catalog, count: catalog.length });
@@ -2274,9 +2284,9 @@ async function api(req, res, url) {
     const job = (store.state.backupJobs || []).find(item => item.id === id);
     if (!job) return send(res, 404, { error:'Backup job was not found.' });
     job.lastRequestedAt = new Date().toISOString();
-    store.addActivity('backup', `Manual backup run requested for ${job.selection} to ${job.storage}.`);
+    store.addActivity('backup', `Manual backup run requested for a legacy definition without an execution adapter: ${job.id}.`, 'warning');
     await store.save();
-    return send(res, 202, { id, queued:true, message:'Backup run request recorded. Execution depends on the selected storage backup provider.' });
+    return send(res, 409, { id, queued:false, error:'This legacy definition cannot execute backups. Create an approved protection task in Backups.', workflow:'/api/storage/agent/preview' });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/logs') {

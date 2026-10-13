@@ -4,7 +4,7 @@
 # - Debian/Ubuntu VM, LXC, or bare metal: installs LightNAS locally.
 set -Eeuo pipefail
 
-RAW_BASE="${LIGHTNAS_RAW_BASE:-https://raw.githubusercontent.com/Ceyeberkepp/Ligthnas/main}"
+RAW_BASE="${LIGHTNAS_RAW_BASE:-https://raw.githubusercontent.com/Ceyeberkepp/LightNas/main}"
 ctid="${1:-${LIGHTNAS_CTID:-}}"
 
 if [[ ${EUID} -ne 0 ]]; then

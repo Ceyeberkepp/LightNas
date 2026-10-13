@@ -7,13 +7,15 @@ import {EventEmitter} from 'node:events';
 import {digest,validateShares,renderShares,command} from './storage.js';
 export {atomic} from './persistence.js';
 import {atomic} from './persistence.js';
+import {FeatureAdapter,FEATURE_TYPES} from './features.js';
 
 export class Operations extends EventEmitter {
- constructor({dir,adapter,discover,volumes=new VolumeAdapter(),resources=new ResourceAdapter(),allowInitialization=false}){super();this.dir=dir;this.adapter=adapter;this.discover=discover;this.volumes=volumes;this.resources=resources;this.allowInitialization=allowInitialization;this.jobs=new Map();this.busy=false;}
+ constructor({dir,adapter,discover,volumes=new VolumeAdapter(),resources=new ResourceAdapter(),features=new FeatureAdapter({dir}),allowInitialization=false}){super();this.dir=dir;this.adapter=adapter;this.discover=discover;this.volumes=volumes;this.resources=resources;this.features=features;this.allowInitialization=allowInitialization;this.jobs=new Map();this.busy=false;}
  async init(){await mkdir(this.dir,{recursive:true,mode:0o700});try{const jobs=JSON.parse(await readFile(this.dir+'/jobs.json','utf8'));for(const j of jobs){if(['queued','running'].includes(j.status)){j.status='interrupted';j.logs.push('Service restarted; inspect rollback metadata before retrying.');}this.jobs.set(j.id,j);}await this.save();}catch(e){if(e.code!=='ENOENT')throw e;}}
  async save(){const text=JSON.stringify([...this.jobs.values()]);this.saving=(this.saving||Promise.resolve()).catch(()=>{}).then(()=>atomic(this.dir+'/jobs.json',text));await this.saving;}
  async preview(input){
   if(this.jobs.size>=1000)throw Error('Job retention limit reached; archive old jobs before continuing');
+  if(FEATURE_TYPES.includes(input.type))return this.previewFeature(input);
   if(RESOURCE_TYPES.includes(input.type))return this.previewResource(input);
   if(input.type!=='shares.replace'){if(!['filesystem.create','pool.create'].includes(input.type))throw Error('Unsupported mutation');return this.previewVolume(input);}
   const shares=validateShares(input.shares);await this.adapter.validatePaths(shares);
@@ -22,6 +24,7 @@ export class Operations extends EventEmitter {
   const j={id:randomUUID(),status:'preview',createdAt:new Date().toISOString(),expiresAt:Date.now()+300000,impact,approvalHash:digest(impact),progress:0,logs:[],events:[],cancelRequested:false,rollback:{available:false}};
   this.jobs.set(j.id,j);await this.save();return j;
  }
+ async previewFeature(input){const prepared=this.features.prepare(input);const impact=await this.features.plan(prepared);const j={id:randomUUID(),status:'preview',createdAt:new Date().toISOString(),expiresAt:Date.now()+300000,impact,approvalHash:digest(impact),progress:0,logs:[],events:[],cancelRequested:false,rollback:{available:false,reason:impact.rollback}};this.jobs.set(j.id,j);await this.save();return j;}
  async previewResource(input){const impact=await this.resources.plan(input);const j={id:randomUUID(),status:'preview',createdAt:new Date().toISOString(),expiresAt:Date.now()+300000,impact,approvalHash:digest(impact),progress:0,logs:[],events:[],cancelRequested:false,rollback:{available:false}};this.jobs.set(j.id,j);await this.save();return j;}
  async previewRollback(id){const previous=this.jobs.get(id);if(!previous?.rollback?.available||!previous.rollback.before?.manifest)throw Error('No share configuration rollback available');return this.preview({type:'shares.replace',shares:JSON.parse(previous.rollback.before.manifest)});}
  async previewVolume(input){
@@ -32,6 +35,7 @@ export class Operations extends EventEmitter {
   this.jobs.set(j.id,j);await this.save();return j;
  }
  async recheck(j){
+  if(FEATURE_TYPES.includes(j.impact.type)){await this.features.validate(j.impact);return;}
   if(RESOURCE_TYPES.includes(j.impact.type)){await this.resources.validate(j.impact);return;}
   const hardware=await this.discover();if(fingerprint(hardware)!==j.impact.hardwareHash)throw Error('Storage changed; request a new preview');
   if(j.impact.type==='shares.replace'){
@@ -56,6 +60,7 @@ export class Operations extends EventEmitter {
  async event(j,message,progress){j.logs.push(message);j.progress=progress;j.events.push({sequence:j.events.length+1,time:new Date().toISOString(),message,progress,status:j.status});await this.save();this.emit('progress',j);}
  async cancel(id){const j=this.jobs.get(id);if(!j||!['queued','running'].includes(j.status)||j.commitStarted)throw Error('Cancellation unavailable after configuration commit begins');j.cancelRequested=true;await this.event(j,'Cancellation requested before commit',j.progress);return j;}
  async execute(j){
+  if(FEATURE_TYPES.includes(j.impact.type))return this.executeFeature(j);
   if(RESOURCE_TYPES.includes(j.impact.type))return this.executeResource(j);
   if(j.impact.type!=='shares.replace')return this.executeVolume(j);
   try{j.status='running';await this.event(j,'Validating proposed configuration',10);await this.adapter.validate(j.impact.after);if(j.cancelRequested){j.status='cancelled';await this.event(j,'Cancelled before commit',100);return;}
@@ -65,6 +70,14 @@ export class Operations extends EventEmitter {
    j.rollback={available:true,before:j.impact.before,restored:false};j.commitStarted=true;await this.event(j,'Saved rollback configuration; entering non-cancellable commit',40);
    await this.adapter.apply(j.impact.after);await this.event(j,'Configuration committed; reloading services',70);await this.adapter.reload();j.status='succeeded';await this.event(j,'Share services configured',100);
   }catch(e){j.status='failed';j.logs.push(e.message);if(j.commitStarted){try{await this.adapter.apply(j.impact.before);await this.adapter.reload();j.rollback.restored=true;}catch(r){j.rollback.error=r.message;}}await this.event(j,'Operation failed; inspect rollback result',100);}finally{this.busy=false;}
+ }
+ async executeFeature(j){
+  try{j.status='running';await this.event(j,'Rechecking exact object and approved feature policy',10);await this.recheck(j);
+   if(j.cancelRequested){j.status='cancelled';await this.event(j,'Cancelled before feature commit',100);return;}
+   j.commitStarted=true;await this.event(j,'Entering approved feature commit; cancellation closed',40);
+   j.result=await this.features.apply(j.impact);j.status='succeeded';if(j.impact.type==='protection.run')await this.features.protection?.record?.(j.impact.input.id,{lastJob:j.id,status:j.status,lastRun:new Date().toISOString()});await this.event(j,'Feature operation verified and completed',100);
+  }catch(error){j.status='failed';j.logs.push(error.message);j.rollback={available:false,inspectionRequired:!!j.commitStarted,reason:j.impact.rollback,recovery:error.recovery||null};if(j.impact.type==='protection.run')try{await this.features.protection?.record?.(j.impact.input.id,{lastJob:j.id,status:j.status,lastRun:new Date().toISOString(),error:error.message});}catch{j.logs.push('Task status could not be persisted');}await this.event(j,'Feature operation failed; inspect recovery metadata',100);}
+  finally{this.busy=false;}
  }
  async executeResource(j){
   try{j.status='running';await this.event(j,'Rechecking mounted source, configuration and directories',10);await this.recheck(j);
