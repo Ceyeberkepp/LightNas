@@ -160,8 +160,15 @@ async function deliver(to, message, purpose) {
 }
 
 function providerStatus() {
+  let configured = PROVIDER === 'modemmanager';
+  if (PROVIDER === 'webhook') {
+    try {
+      const url = new URL(process.env.LIGHTNAS_SMS_PROVIDER_URL || '');
+      configured = ['https:', 'http:'].includes(url.protocol) && Boolean(url.hostname);
+    } catch {}
+  }
   return {
-    configured: ['modemmanager', 'webhook'].includes(PROVIDER),
+    configured,
     provider: PROVIDER || 'unconfigured'
   };
 }
@@ -174,7 +181,7 @@ export function createSmsGatewayServer() {
       if (req.method === 'GET' && url.pathname === '/health') {
         return json(res, 200, {
           service: 'lightnas-sms-gateway',
-          status: 'ok',
+          status: TOKENS.length > 0 && providerStatus().configured ? 'ok' : 'setup_required',
           authConfigured: TOKENS.length > 0,
           ...providerStatus()
         });

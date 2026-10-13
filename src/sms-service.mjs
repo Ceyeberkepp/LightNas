@@ -61,6 +61,12 @@ export async function sendLightNasSms({ phone, message, purpose = 'verification'
         { status: response.status >= 400 && response.status < 500 ? response.status : 502 }
       );
     }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+        typeof (payload.id || payload.messageId) !== 'string' ||
+        !(payload.id || payload.messageId).trim() ||
+        (payload.status && payload.status !== 'accepted')) {
+      throw Object.assign(new Error('LightNAS SMS service did not confirm message acceptance.'), { status: 502 });
+    }
     return {
       ok: true,
       id: payload.id || payload.messageId || null,

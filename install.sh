@@ -104,6 +104,25 @@ if ! curl --version >/dev/null 2>&1 || ! git --version >/dev/null 2>&1; then
 fi
 echo "      Verified: curl $(curl --version | head -n 1), git $(git --version), node $(node --version), npm $(npm --version)"
 
+# The same one-click entry point can deploy the central delivery server.
+# Provider credentials belong only on a host explicitly assigned this role.
+case "${LIGHTNAS_INSTALL_ROLE:-appliance}" in
+  sms-gateway)
+    if [[ -d "${INSTALL_DIRECTORY}/.git" ]]; then
+      git -C "${INSTALL_DIRECTORY}" pull --ff-only
+    elif [[ -e "${INSTALL_DIRECTORY}" ]]; then
+      echo "Refusing to overwrite existing non-Git path: ${INSTALL_DIRECTORY}" >&2
+      exit 1
+    else
+      git clone --depth 1 "${REPOSITORY_URL}" "${INSTALL_DIRECTORY}"
+    fi
+    bash "${INSTALL_DIRECTORY}/scripts/install-sms-gateway.sh"
+    exit 0
+    ;;
+  appliance) ;;
+  *) echo "Unknown LIGHTNAS_INSTALL_ROLE; use appliance or sms-gateway." >&2; exit 1 ;;
+esac
+
 # System containers are a built-in LightNAS feature on every supported host.
 # Install the LXC and bridge stack unconditionally so a new installation is
 # ready to create containers with real LAN addresses without an extra setup
@@ -324,17 +343,12 @@ EOF
   chown root:lightnas /etc/lightnas/license.env
   chmod 0640 /etc/lightnas/license.env
 fi
-if [[ ! -e /etc/lightnas/sms.env ]]; then
-  cat >/etc/lightnas/sms.env <<'EOF'
-# Central LightNAS SMS verification service.
-# These values are provisioned for the appliance by the LightNAS service operator.
-# End users do not need Twilio, carrier, or modem credentials.
-LIGHTNAS_SMS_GATEWAY_URL=
-LIGHTNAS_SMS_GATEWAY_TOKEN=
-EOF
-  chown root:lightnas /etc/lightnas/sms.env
-  chmod 0640 /etc/lightnas/sms.env
-fi
+# Install/provision centralized SMS access on every install and update.
+# Only the LightNAS service URL and appliance token belong on the appliance.
+LIGHTNAS_SMS_CONFIG_FILE=/etc/lightnas/sms.env python3 "${INSTALL_DIRECTORY}/scripts/configure-sms-client.py"
+chown root:lightnas /etc/lightnas/sms.env
+chmod 0640 /etc/lightnas/sms.env
+
 for vm_user in libvirt-qemu qemu; do
   if id "$vm_user" >/dev/null 2>&1; then
     # QEMU must be able to traverse the private LightNAS data root before it

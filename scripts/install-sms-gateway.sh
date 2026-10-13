@@ -15,16 +15,21 @@ if [[ ! -f "${INSTALL_DIRECTORY}/services/sms-gateway/server.mjs" ]]; then
   exit 1
 fi
 
+# The SMS gateway runs on the operator's central service host, not each NAS.
+# Keep /etc/lightnas permissions intact if other LightNAS services share the host.
 if ! id lightnas-sms >/dev/null 2>&1; then
   useradd --system --home-dir /var/lib/lightnas-sms --create-home --shell /usr/sbin/nologin lightnas-sms
 fi
 
-install -d -o root -g lightnas-sms -m 0750 /etc/lightnas
+mkdir -p "$(dirname "${CONFIG_FILE}")"
+if getent group lightnas >/dev/null 2>&1; then
+  usermod -aG lightnas lightnas-sms
+fi
 
 if [[ ! -e "${CONFIG_FILE}" ]]; then
   cat >"${CONFIG_FILE}" <<'EOF'
 # LightNAS centralized SMS gateway
-LIGHTNAS_SMS_BIND=0.0.0.0
+LIGHTNAS_SMS_BIND=127.0.0.1
 LIGHTNAS_SMS_PORT=3091
 
 # Comma-separated high-entropy appliance tokens.
@@ -46,6 +51,25 @@ LIGHTNAS_SMS_RATE_PER_TOKEN=20
 LIGHTNAS_SMS_RATE_PER_DESTINATION=5
 EOF
 fi
+
+# Validate readiness before claiming successful deployment. No messages are sent.
+node --env-file="${CONFIG_FILE}" --input-type=module - <<'JS'
+const env = process.env;
+const tokens = String(env.LIGHTNAS_SMS_APPLIANCE_TOKENS || '').split(',').map(v=>v.trim()).filter(Boolean);
+const provider = String(env.LIGHTNAS_SMS_PROVIDER || '').trim();
+let ready = tokens.length > 0 && tokens.every(token=>token.length >= 16) && ['webhook', 'modemmanager'].includes(provider);
+if (provider === 'webhook') {
+  try {
+    const url = new URL(env.LIGHTNAS_SMS_PROVIDER_URL);
+    ready &&= url.protocol === 'https:' || (url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname));
+    ready &&= !url.username && !url.password;
+  } catch { ready = false; }
+}
+if (!ready) {
+  console.error('Central SMS deployment requires enrolled appliance tokens and an actual webhook or modem delivery backend. Configure the gateway environment file, then rerun the installer.');
+  process.exit(1);
+}
+JS
 
 chown root:lightnas-sms "${CONFIG_FILE}"
 chmod 0640 "${CONFIG_FILE}"
@@ -75,7 +99,6 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
 
 [Install]
 WantedBy=multi-user.target

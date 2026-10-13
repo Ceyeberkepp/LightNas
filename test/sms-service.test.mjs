@@ -59,3 +59,20 @@ test('centralized SMS gateway sends through the LightNAS service without exposin
     else process.env.LIGHTNAS_SMS_GATEWAY_TOKEN = previousToken;
   }
 });
+
+
+test('verification never claims success for an HTML page or an unconfirmed gateway response', async () => {
+  const previousUrl=process.env.LIGHTNAS_SMS_GATEWAY_URL, previousToken=process.env.LIGHTNAS_SMS_GATEWAY_TOKEN, previousFetch=globalThis.fetch;
+  process.env.LIGHTNAS_SMS_GATEWAY_URL='https://sms.lightnas.test';
+  process.env.LIGHTNAS_SMS_GATEWAY_TOKEN='appliance-secret';
+  try {
+    for(const body of ['<!doctype html><title>Login</title>', '{}', '{"id":"message","status":"failed"}']) {
+      globalThis.fetch=async()=>new Response(body,{status:200});
+      await assert.rejects(sendLightNasSms({phone:'+15551234567',message:'Verification code'}),error=>error.status===502&&/acceptance/.test(error.message));
+    }
+  } finally {
+    globalThis.fetch=previousFetch;
+    if(previousUrl===undefined)delete process.env.LIGHTNAS_SMS_GATEWAY_URL;else process.env.LIGHTNAS_SMS_GATEWAY_URL=previousUrl;
+    if(previousToken===undefined)delete process.env.LIGHTNAS_SMS_GATEWAY_TOKEN;else process.env.LIGHTNAS_SMS_GATEWAY_TOKEN=previousToken;
+  }
+});

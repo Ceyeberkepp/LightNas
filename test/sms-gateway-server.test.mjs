@@ -27,6 +27,8 @@ test('central SMS gateway health and appliance authentication', async () => {
     const healthBody = await health.json();
     assert.equal(healthBody.service, 'lightnas-sms-gateway');
     assert.equal(healthBody.authConfigured, true);
+    assert.equal(healthBody.configured, false);
+    assert.equal(healthBody.status, 'setup_required');
 
     const unauthorized = await fetch(`${base}/v1/sms/send`, {
       method: 'POST',
