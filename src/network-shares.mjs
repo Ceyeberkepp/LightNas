@@ -94,3 +94,8 @@ export function publicLibraryShare(host = '', adminUsername = '') {
     sftp: null
   };
 }
+
+export function publicManagedShare(share,host=''){
+  if(share.protocol==='smb')return {...publicShare({id:'agent:smb:'+share.name,name:share.name,protocol:'SMB',username:share.users.join(', '),description:share.readOnly?'Read-only managed share':'Managed share'},host),agentManaged:true};
+  return {id:'agent:nfs:'+share.name,name:share.name,protocol:'NFS',username:'',description:share.clients.join(', '),nfs:host+':'+share.path,agentManaged:true};
+}

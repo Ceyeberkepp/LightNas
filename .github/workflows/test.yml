@@ -76,6 +76,7 @@ jobs:
           node --check public/templates.js
           node --check public/storage-manager.js
           node --check public/storage-operations.js
+          node --check public/storage-mutation-client.js
           for file in src/storage-agent/*.js; do node --check "$file"; done
           node --check public/admin-security.js
           node --check public/identity-providers.js

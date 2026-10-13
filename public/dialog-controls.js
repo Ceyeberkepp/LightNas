@@ -1,8 +1,10 @@
+import {approveStoragePreview} from './storage-mutation-client.js';
 const dialogApi = async (path, options = {}) => {
   const response = await fetch(path, {
     ...options,
     headers: { 'Content-Type': 'application/json', 'X-LightNAS-Request': '1', ...(options.headers || {}) }
   });
+  if(response.status===428)return approveStoragePreview((await response.json()).preview);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || 'Request failed.');
   return body;

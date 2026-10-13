@@ -438,11 +438,13 @@ After=local-fs.target
 Type=simple
 User=root
 Group=lightnas
+EnvironmentFile=-/etc/lightnas/runtime.env
 WorkingDirectory=${INSTALL_DIRECTORY}
 ExecStart=/usr/bin/node ${INSTALL_DIRECTORY}/src/storage-agent/server.js --agent
 Environment=NAS_AGENT_TOKEN_FILE=/etc/lightnas/storage-agent.token
 Environment=NAS_AGENT_SOCKET=/run/lightnas-storage/storage.sock
 Environment=NAS_JOB_DIR=/var/lib/lightnas-storage
+Environment=NAS_DATA_FILE=${DATA_DIRECTORY}/state.json
 Environment=NODE_OPTIONS=--max-old-space-size=128
 RuntimeDirectory=lightnas-storage
 RuntimeDirectoryMode=0750
@@ -454,7 +456,7 @@ Restart=on-failure
 MemoryMax=192M
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/etc/samba /etc/exports.d /var/lib/lightnas-storage /run/lightnas-storage /var/lib/nfs
+ReadWritePaths=/etc/samba /etc/exports.d /var/lib/lightnas-storage /run/lightnas-storage /var/lib/nfs ${DATA_DIRECTORY} -/storage -/mnt -/media -/srv -/data
 ProtectHome=true
 PrivateTmp=true
 [Install]

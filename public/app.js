@@ -1,3 +1,4 @@
+import {approveStoragePreview} from './storage-mutation-client.js';
 if (window.LIGHTNAS_PRODUCT_MODE === 'hypervisor') document.body.classList.add('product-hypervisor');
 const state = { overview: null, view: 'home', uiMode: window.LIGHTNAS_PRODUCT_MODE === 'hypervisor' ? 'hypervisor' : 'nas', folder: '', files: null, fileError: null, filesSettingsOpen: false, fileLibraryTab: 'all', filesNavExpanded: localStorage.getItem('lightnas-files-nav-expanded') !== '0', mobileFilesPeriod: localStorage.getItem('lightnas-mobile-files-period') || 'all', aiMessages: [], logs: null, fileView: ['list','grid','gallery'].includes(localStorage.getItem('lightnas-file-view')) ? localStorage.getItem('lightnas-file-view') : 'grid', fileTruncated: false, fileQuota: null, fileSectionCache: new Map(), fileSectionCheckedAt: new Map(), filesLoadingKeys: new Set(), communityCatalogCheckedAt: 0, overviewMetric: localStorage.getItem('lightnas-overview-metric') || 'cpu', lastNetworkSample: null, runtimes: null, runtimeError: null, containerError: null, spaces: null, users: null, groups: null, userAccess: null, smtp: undefined, media: null, network: null, software: null, license: null, builtinCatalog: null, communityCatalog: null, communityCatalogLoading: false, communityCatalogError: null, appSearch: '', appCategory: '', appVisibleLimit: 72, backupJobs: null, selectedBackupJobId: null, adminSection: localStorage.getItem('lightnas-admin-section') || 'general', metricHistory: { cpu: [], load: [], memory: [], storage: [], networkIn: [], networkOut: [] } };
 function filesSectionCacheKey(tab = state.fileLibraryTab, folder = state.folder) {
@@ -100,6 +101,7 @@ async function request(path, options = {}) {
     ...options,
     headers: { 'Content-Type': 'application/json', 'X-LightNAS-Request': '1', ...(options.headers || {}) }
   });
+  if(response.status===428)return approveStoragePreview((await response.json()).preview);
   const body = await response.json().catch(() => ({}));
   const elapsed = performance.now() - started;
   if (elapsed > 1200) console.warn(`[LightNAS slow API] ${Math.round(elapsed)}ms ${options.method || 'GET'} ${path}`);
@@ -1401,9 +1403,9 @@ function vmsView() {
 }
 function sharesView() {
   const { shares } = state.overview;
-  return `${pageHead('Network shares', 'Connect directly from Windows, Linux, or macOS over SMB and SFTP.', '<button class="primary" data-action="new-share">+ Create share</button>')}
+  return `${pageHead('Network shares', 'Configure approved SMB/NFS shares and view existing legacy connections.', '<a class="primary" href="/storage-operations.html">Configure SMB/NFS shares</a>')}
     <section class="module-note share-help"><b>Quick connect:</b> Windows File Explorer uses <code>\\\\LIGHTNAS-IP\\share</code>. The built-in <code>Files</code> share is the same Documents, Photos, Videos, and Audio library shown in Files & media and requires the LightNAS administrator credentials.</section>
-    <div class="share-list">${shares.map(share => `<article class="share-row network-share-row"><div><div class="volume-title"><h3>${escapeHtml(share.name)}</h3><span class="volume-state writable">${share.system ? 'SYSTEM' : 'ACTIVE'}</span></div><p>${escapeHtml(share.protocol)} · user ${escapeHtml(share.username || '—')} · ${escapeHtml(share.description || 'No description')}</p><div class="share-addresses">${share.smb ? `<code>${escapeHtml(share.smb)}</code>` : ''}${share.smbUrl ? `<code>${escapeHtml(share.smbUrl)}</code>` : ''}${share.sftp ? `<code>${escapeHtml(share.sftp)}</code>` : ''}</div></div>${share.system ? '<span class="muted share-managed-label">Managed by LightNAS</span>' : `<button class="secondary danger-button" data-delete-share="${escapeHtml(share.id)}" data-name="${escapeHtml(share.name)}">Remove share</button>`}</article>`).join('') || '<div class="empty"><p>No network shares configured yet.</p></div>'}</div>`;
+    <div class="share-list">${shares.map(share => `<article class="share-row network-share-row"><div><div class="volume-title"><h3>${escapeHtml(share.name)}</h3><span class="volume-state writable">${share.system ? 'SYSTEM' : 'CONFIGURED'}</span></div><p>${escapeHtml(share.protocol)} · user ${escapeHtml(share.username || '—')} · ${escapeHtml(share.description || 'No description')}</p><div class="share-addresses">${share.smb ? `<code>${escapeHtml(share.smb)}</code>` : ''}${share.smbUrl ? `<code>${escapeHtml(share.smbUrl)}</code>` : ''}${share.sftp ? `<code>${escapeHtml(share.sftp)}</code>` : ''}${share.nfs ? `<code>${escapeHtml(share.nfs)}</code>` : ''}</div></div>${share.system ? '<span class="muted share-managed-label">Managed by LightNAS</span>' : share.agentManaged ? '<a class="secondary" href="/storage-operations.html">Review / manage</a>' : '<span class="muted">Legacy definition · typed removal unavailable</span>'}</article>`).join('') || '<div class="empty"><p>No network shares configured yet.</p></div>'}</div>`;
 }
 
 const librarySections = [
