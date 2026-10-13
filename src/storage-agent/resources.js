@@ -65,8 +65,8 @@ export class ResourceAdapter{
    if(part==='.'||part==='..')throw Error('Invalid directory component');
    const anchored='/proc/self/fd/'+handle.fd+'/'+part;let made=false;
    if(create){try{await mkdir(anchored,{mode:0o770});made=true;}catch(e){if(e.code!=='EEXIST')throw e;}}
-   const next=await open(anchored,constants.O_RDONLY|constants.O_DIRECTORY|constants.O_NOFOLLOW);if(made)await handle.sync();await handle.close();handle=next;
-   if(made){await handle.chmod(0o770);if(process.getuid?.()===0)await handle.chown(0,process.getgid());await handle.sync();const actual=await realpath('/proc/self/fd/'+handle.fd);created.push(actual);await onCreated(actual);}
+   const next=await open(anchored,constants.O_RDONLY|constants.O_DIRECTORY|constants.O_NOFOLLOW);let actual;if(made){actual=await realpath('/proc/self/fd/'+next.fd);created.push(actual);try{await handle.sync();}catch(error){await next.close();throw error;}}await handle.close();handle=next;
+   if(made){await handle.chmod(0o770);if(process.getuid?.()===0)await handle.chown(0,process.getgid());await handle.sync();await onCreated(actual);}
   }return handle;}catch(e){await handle.close();throw e;}
  }
  async ensureDirectory(path,created,onCreated){const handle=await this.anchoredDirectory(path,{create:true,created,onCreated});await handle.close();}
