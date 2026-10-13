@@ -118,3 +118,6 @@
 .security-key-list {
   margin-top: 10px;
 }
+
+/* Fit the retained methods when SMS is disabled. */
+.totp-admin.sms-disabled .mfa-method-grid { grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); }

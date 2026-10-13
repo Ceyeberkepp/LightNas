@@ -16,7 +16,7 @@ import { catalog, runtimeInventory, vmEditorInventory, vmCreateInventory, instal
 import { communityCatalog, installCommunityApp } from './community-catalog.mjs';
 import { proxmoxConsoleSocket, proxmoxUpdateStorage, proxmoxCleanDisk } from './proxmox.mjs';
 import { localContainerSummary, localContainerInventory, localManageContainer, localContainerConsoleSocket, localContainerCommand, localVmConsoleSocket, localNodeConsoleSocket, localNetworkInventory, localNetworkAction, localSetTimezone, localTimeStatus, localApplianceHealth, localApplianceRepair, localSoftwareStatus, localSoftwareUpdate, localRepairNetworkShares, localSyncShareAdministrator } from './local-host.mjs';
-import { smsGatewayStatus, sendLightNasSms } from './sms-service.mjs';
+import { smsGatewayStatus, sendLightNasSms, smsVerificationEnabled } from './sms-service.mjs';
 import { validateSmtp, sendSmtpTest } from './mailer.mjs';
 import { mediaAvailable, convertMedia } from './media.mjs';
 import { createDataset, updateDataset } from './zfs.mjs';
@@ -205,7 +205,7 @@ function mobileLibraryDestination(filename, contentType = '') {
 function enabledMfaMethods(account) {
   const methods = [];
   if (account?.totpEnabled) methods.push('totp');
-  if (account?.smsMfa?.enabled) methods.push('sms');
+  if (smsVerificationEnabled() && account?.smsMfa?.enabled) methods.push('sms');
   if (Array.isArray(account?.passkeys) && account.passkeys.length) methods.push('passkey');
   return methods;
 }
@@ -997,10 +997,11 @@ async function api(req, res, url) {
     const username = String(url.searchParams.get('username') || '').trim();
     const account = username === store.state.config.username ? store.state.config : store.state.users.find(user => user.username === username);
     if (!account || account.disabled) return send(res, 200, { configured: true, methods: [] });
-    return send(res, 200, { configured: true, methods: enabledMfaMethods(account), smsDestination: account.smsMfa?.enabled ? maskPhone(account.smsMfa.phone) : null });
+    return send(res, 200, { configured: true, methods: enabledMfaMethods(account), smsDestination: smsVerificationEnabled() && account.smsMfa?.enabled ? maskPhone(account.smsMfa.phone) : null });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/login/sms/send') {
+    if (!smsVerificationEnabled()) return send(res, 404, { error: 'SMS verification is disabled.' });
     if (!store.state.config) return send(res, 409, { error: 'Complete setup first.' });
     const input = await bodyJson(req);
     const username = String(input.username || '');
@@ -1332,10 +1333,16 @@ async function api(req, res, url) {
     return send(res, 200, { enabled: false });
   }
 
+  if (url.pathname.startsWith('/api/security/sms') && req.method !== 'GET' && !smsVerificationEnabled()) {
+    return send(res, 404, { error: 'SMS verification is disabled.' });
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/security/sms') {
     if (context.apiToken) return send(res, 403, { error: 'SMS settings require an interactive local account session.' });
+    if (!smsVerificationEnabled()) return send(res, 200, { featureEnabled: false, enabled: false });
     const gateway = smsGatewayStatus();
     return send(res, 200, {
+      featureEnabled: true,
       enabled: Boolean(account.smsMfa?.enabled),
       phone: account.smsMfa?.enabled ? maskPhone(account.smsMfa.phone) : null,
       provider: 'LightNAS SMS service',

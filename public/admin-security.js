@@ -194,14 +194,14 @@ async function renderTotp() {
   const keys = passkeys.passkeys || [];
   const securePasskeys = Boolean(window.isSecureContext && navigator.credentials && window.PublicKeyCredential);
   const section = document.createElement('section');
-  section.className = 'panel totp-admin';
+  section.className = 'panel totp-admin' + (sms.featureEnabled ? '' : ' sms-disabled');
   section.innerHTML = `
     <div class="admin-section-head">
-      <div><span class="eyebrow">MULTI-FACTOR AUTHENTICATION</span><h2>Sign-in verification</h2><p class="muted">Enable an authenticator app, SMS verification, passkeys/security keys, or a combination. At sign-in, choose any enabled method.</p></div>
+      <div><span class="eyebrow">MULTI-FACTOR AUTHENTICATION</span><h2>Sign-in verification</h2><p class="muted">Enable an authenticator app, ${sms.featureEnabled ? 'SMS verification, ' : ''}passkeys/security keys, or a combination. At sign-in, choose any enabled method.</p></div>
     </div>
     <div class="mfa-method-grid">
       <article class="panel mfa-method ${totp.enabled ? 'active' : ''}"><span class="mfa-icon">TOTP</span><div><h3>Authenticator</h3><p>Time-based 6-digit codes from Microsoft Authenticator, Google Authenticator, 1Password, Authy, and compatible apps.</p></div><span class="volume-state ${totp.enabled ? 'writable' : 'readonly'}">${totp.enabled ? 'ENABLED' : 'DISABLED'}</span></article>
-      <article class="panel mfa-method ${sms.enabled ? 'active' : ''}"><span class="mfa-icon">SMS</span><div><h3>SMS code</h3><p>Send verification codes through the centralized LightNAS SMS service. The appliance does not need a cellular modem or SMS-provider account.</p></div><span class="volume-state ${sms.enabled ? 'writable' : 'readonly'}">${sms.enabled ? 'ENABLED' : (sms.gateway?.available ? 'READY' : 'SERVICE NEEDED')}</span></article>
+      ${sms.featureEnabled ? `<article class="panel mfa-method ${sms.enabled ? 'active' : ''}"><span class="mfa-icon">SMS</span><div><h3>SMS code</h3><p>Send verification codes through the centralized LightNAS SMS service. The appliance does not need a cellular modem or SMS-provider account.</p></div><span class="volume-state ${sms.enabled ? 'writable' : 'readonly'}">${sms.enabled ? 'ENABLED' : (sms.gateway?.available ? 'READY' : 'SERVICE NEEDED')}</span></article>` : ''}
       <article class="panel mfa-method ${keys.length ? 'active' : ''}"><span class="mfa-icon">FIDO</span><div><h3>Passkeys & security keys</h3><p>Use WebAuthn/FIDO2 passkeys, Windows Hello, Touch ID, phone passkeys, or hardware security keys.</p></div><span class="volume-state ${keys.length ? 'writable' : 'readonly'}">${keys.length ? `${keys.length} REGISTERED` : 'DISABLED'}</span></article>
     </div>
 
@@ -213,12 +213,12 @@ async function renderTotp() {
           : `<form data-totp-setup class="security-stack-form"><label>Current password<input name="currentPassword" type="password" required autocomplete="current-password"></label><button class="primary" type="submit">Set up authenticator</button><div class="form-error"></div></form><div data-totp-enrollment></div>`}
       </section>
 
-      <section class="mfa-config panel">
+      ${sms.featureEnabled ? `<section class="mfa-config panel">
         <h3>SMS verification</h3>
         ${sms.enabled
           ? `<p class="muted">LightNAS SMS service · destination ${escapeText(sms.phone || 'configured')}</p><form data-sms-disable class="security-stack-form"><label>Current password<input name="currentPassword" type="password" required autocomplete="current-password"></label><button class="secondary danger-button" type="submit">Disable SMS verification</button><div class="form-error"></div></form>`
           : `<div class="module-note"><b>LightNAS SMS verification.</b> Verification texts are sent through the centralized LightNAS SMS service, similar to cloud identity platforms. This appliance stores no carrier, Twilio, modem, or external SMS provider credentials.</div><form data-sms-setup class="security-stack-form"><label>Your verification phone<input name="phone" required placeholder="+15557654321" autocomplete="tel"></label><label>Current LightNAS password<input name="currentPassword" type="password" required autocomplete="current-password"></label><button class="primary" type="submit" ${sms.gateway?.available ? '' : 'disabled'}>Send setup code</button><div class="form-error">${sms.gateway?.available ? '' : escapeText(sms.gateway?.reason || 'LightNAS SMS service is unavailable.')}</div></form><div data-sms-enrollment></div>`}
-      </section>
+      </section>` : ''}
 
       <section class="mfa-config panel">
         <h3>Passkeys & security keys</h3>
