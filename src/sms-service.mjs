@@ -1,3 +1,8 @@
+// Retained for future activation; SMS verification is disabled by default.
+export function smsVerificationEnabled() {
+  return process.env.LIGHTNAS_SMS_ENABLED === '1';
+}
+
 const DEFAULT_TIMEOUT_MS = 8000;
 
 function gatewayConfig() {

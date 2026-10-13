@@ -2340,7 +2340,7 @@ function adminGeneralPanel() {
         <h3>Access and identity</h3>
         ${adminCenterRow('Users & groups', `${userCount} local user account${Number(userCount) === 1 ? '' : 's'} configured.`, adminAction('users','Manage users',true))}
         ${adminCenterRow('Permission policies', 'Control sidebar visibility, settings sections, resources, and administrative actions.', adminAction('permissions','Manage permissions'))}
-        ${adminCenterRow('Multi-factor authentication', 'Configure passwords, authenticator apps, SMS verification, passkeys, and security keys.', adminAction('settings','Configure security'))}
+        ${adminCenterRow('Multi-factor authentication', 'Configure passwords, authenticator apps, passkeys, and security keys.', adminAction('settings','Configure security'))}
       </div>
 
       <div class="admin-center-section">
