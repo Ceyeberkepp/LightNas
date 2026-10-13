@@ -1,4 +1,4 @@
-import {readFile,writeFile,mkdir,realpath,lstat,unlink,readdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,realpath,lstat,readdir,mkdtemp,rm} from 'node:fs/promises';
 import {ResourceAdapter,RESOURCE_TYPES} from './resources.js';
 import {fingerprint,planVolume,VolumeAdapter} from './volumes.js';
 import {dirname,basename,join} from 'node:path';
@@ -108,18 +108,21 @@ export class ShareAdapter {
   if(shares.some(s=>s.protocol==='nfs')){await this.checked('/usr/bin/systemctl',['is-active','nfs-kernel-server']);const other=await this.read(this.exports)+'\n'+Object.values(await this.exportFragments()).join('\n');const paths=other.split('\n').filter(line=>!line.trim().startsWith('#')).map(line=>line.trim().split(/\s+/)[0].replace(/^"|"$/g,''));for(const share of shares.filter(s=>s.protocol==='nfs'))if(paths.includes(share.path))throw Error('Share conflicts with administrator-managed NFS export');}
   const lines=main.split('\n');const include=lines.findIndex(line=>line.match(/^\s*include\s*=\s*(.+?)\s*$/i)?.[1]===this.smb);
   if(include<0)throw Error('Samba must include '+this.smb);
-    const fragment=this.smb+'.validate',candidate=this.smb+'.main.validate',baseline=this.smb+'.existing.validate';
+  // Previews may run concurrently. Each candidate owns a private directory so
+  // another request cannot replace its contents or remove them during testparm.
+  const validationDir=await mkdtemp(join(dirname(this.smb),'.lightnas-share-validation-'));
+  const fragment=join(validationDir,'fragment.conf'),candidate=join(validationDir,'main.conf'),baseline=join(validationDir,'existing.conf');
   try{
    lines[include]='# New agent fragment omitted for collision discovery';await writeFile(baseline,lines.join('\n'),{mode:0o600});
    const effective=await this.checked('/usr/bin/testparm',['--suppress-prompt',baseline]);const names=[...effective.stdout.matchAll(/^\s*\[([^\]]+)\]/gm)].map(m=>m[1].toLowerCase());for(const share of shares.filter(s=>s.protocol==='smb'))if(names.includes(share.name.toLowerCase()))throw Error('Share conflicts with an included Samba configuration');
    await writeFile(fragment,config.smb,{mode:0o600});lines[include]='include = '+fragment;await writeFile(candidate,lines.join('\n'),{mode:0o600});await this.checked('/usr/bin/testparm',['--suppress-prompt',candidate]);
-  }finally{for(const path of [fragment,candidate,baseline])await unlink(path).catch(()=>{});}
+  }finally{await rm(validationDir,{recursive:true,force:true});}
  }
  async activationRecord(){try{return JSON.parse(await this.read(this.activation,'null'));}catch{return null;}}
- async apply(config){const previous=await this.snapshot(),record=await this.activationRecord();const force=!record||record.hash!==digest(previous)||record.boot!==await this.bootId();this.nfsReloadNeeded=previous.nfs.trim()!==config.nfs.trim()||(force&&!!config.nfs.trim());this.smbReloadNeeded=previous.smb!==config.smb||(force&&!!config.smb.trim());await atomic(this.smb,config.smb);await atomic(this.nfs,config.nfs);await atomic(this.manifest,config.manifest||'[]\n');}
+ async apply(config){const previous=await this.snapshot();const force=!(await this.verifyCurrent());this.nfsReloadNeeded=previous.nfs.trim()!==config.nfs.trim()||(force&&!!config.nfs.trim());this.smbReloadNeeded=previous.smb!==config.smb||(force&&!!config.smb.trim());await atomic(this.smb,config.smb);await atomic(this.nfs,config.nfs);await atomic(this.manifest,config.manifest||'[]\n');}
  async shares(){return validateShares(JSON.parse(await this.read(this.manifest,'[]')));}
  async verify(){const shares=await this.shares();if(shares.some(s=>s.protocol==='smb'))await this.checked('/usr/bin/systemctl',['is-active','smbd']);if(shares.some(s=>s.protocol==='nfs')){await this.checked('/usr/bin/systemctl',['is-active','nfs-kernel-server']);const active=await this.checked('/usr/sbin/exportfs',['-s']);for(const share of shares.filter(s=>s.protocol==='nfs'))if(!active.stdout.split('\n').some(line=>line.trim().split(/\s+/)[0]===share.path))throw Error('NFS export activation was not verified for '+share.path);}}
- async verifyCurrent(){const record=await this.activationRecord();if(!record||record.hash!==digest(await this.snapshot())||record.boot!==await this.bootId())return false;await this.verify();return true;}
+ async verifyCurrent(){const record=await this.activationRecord();if(!record||record.hash!==digest(await this.snapshot())||record.boot!==await this.bootId())return false;try{await this.verify();return true;}catch{return false;}}
  async reload(){if(this.smbReloadNeeded){await this.checked('/usr/bin/testparm',['--suppress-prompt',this.main]);await this.checked('/usr/bin/systemctl',['reload','smbd']);}if(this.nfsReloadNeeded)await this.checked('/usr/sbin/exportfs',['-ra']);await this.verify();await atomic(this.activation,JSON.stringify({hash:digest(await this.snapshot()),boot:await this.bootId(),verifiedAt:new Date().toISOString()}));}
 }
 
