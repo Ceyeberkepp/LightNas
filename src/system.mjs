@@ -232,6 +232,14 @@ function capability(name, available, reason, minimum) {
   return { name, available, reason: available ? null : reason, minimum };
 }
 
+export function primaryNetworkAddress(readInterfaces = () => os.networkInterfaces()) {
+  try {
+    return {address:Object.values(readInterfaces()).flat().find(item => item?.family === 'IPv4' && !item.internal)?.address || '',available:true};
+  } catch {
+    return {address:'',available:false};
+  }
+}
+
 export async function getSystemSnapshot() {
   const totalMemory = os.totalmem();
   const freeMemory = os.freemem();
@@ -241,7 +249,8 @@ export async function getSystemSnapshot() {
   const loadAverages = os.loadavg();
   const load = loadAverages[0];
   const loadPercent = Math.min(100, Math.round((load / Math.max(cores.length, 1)) * 100));
-  const primaryIpv4 = Object.values(os.networkInterfaces()).flat().find(item => item?.family === 'IPv4' && !item.internal)?.address || '';
+  const addressDiscovery=primaryNetworkAddress();
+  const primaryIpv4=addressDiscovery.address;
   const networkText = await readText('/proc/net/dev');
   const network = networkText.split('\n').slice(2).reduce((result, line) => {
     const [namePart, countersPart] = line.split(':');
@@ -254,6 +263,7 @@ export async function getSystemSnapshot() {
     return result;
   }, { receivedBytes: 0, transmittedBytes: 0, interfaces: 0 });
   network.primaryIpv4 = primaryIpv4;
+  network.addressDiscoveryAvailable=addressDiscovery.available;
 
   return {
     hostname: os.hostname(),

@@ -62,7 +62,7 @@ echo "Detected LightNAS architecture: ${LIGHTNAS_ARCH}"
 echo "[1/6] Checking system requirements..."
 install_missing_packages \
   ca-certificates curl git gnupg python3 ffmpeg imagemagick qrencode acl novnc iproute2 nftables ufw samba openssh-server ovmf \
-  tar gzip xz-utils zstd
+  tar gzip xz-utils zstd util-linux udev smartmontools nfs-kernel-server e2fsprogs btrfs-progs openssl
 
 # Node.js and npm are both mandatory. Some minimal images have node but no
 # npm; do not skip the dependency installation in that case.
@@ -407,11 +407,65 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
+# Independent root-owned storage operation agent; preserve the existing host agent.
+install -d -m 0755 /etc/lightnas /etc/exports.d /srv/lightnas
+install -d -m 0700 /var/lib/lightnas-storage
+if [[ ! -f /etc/lightnas/storage-agent.token ]]; then
+  openssl rand -hex 32 > /etc/lightnas/storage-agent.token
+fi
+chown root:lightnas /etc/lightnas/storage-agent.token
+chmod 0640 /etc/lightnas/storage-agent.token
+for managed_file in /etc/samba/lightnas-storage-agent.conf /etc/exports.d/lightnas-storage-agent.exports; do
+  [[ -e "${managed_file}" ]] || install -m 0600 /dev/null "${managed_file}"
+done
+python3 - <<'PY_STORAGE_INCLUDE'
+from pathlib import Path
+import re,shutil
+p=Path('/etc/samba/smb.conf');s=p.read_text()
+if not re.search(r'^\s*include\s*=\s*/etc/samba/lightnas-storage-agent.conf\s*$',s,re.M|re.I):
+    m=re.search(r'^\s*\[global\]\s*$',s,re.M|re.I)
+    if not m: raise SystemExit('Samba global section missing; storage-agent include cannot be installed safely.')
+    shutil.copy2(p,str(p)+'.storage-agent-backup')
+    p.write_text(s[:m.end()]+'\n  include = /etc/samba/lightnas-storage-agent.conf'+s[m.end():])
+PY_STORAGE_INCLUDE
+testparm --suppress-prompt /etc/samba/smb.conf
+# Agent executes approved jobs only; disk initialization stays off by default.
+cat >/etc/systemd/system/lightnas-storage-agent.service <<EOF
+[Unit]
+Description=LightNAS Approved Storage Operation Agent
+After=local-fs.target
+[Service]
+Type=simple
+User=root
+Group=lightnas
+WorkingDirectory=${INSTALL_DIRECTORY}
+ExecStart=/usr/bin/node ${INSTALL_DIRECTORY}/src/storage-agent/server.js --agent
+Environment=NAS_AGENT_TOKEN_FILE=/etc/lightnas/storage-agent.token
+Environment=NAS_AGENT_SOCKET=/run/lightnas-storage/storage.sock
+Environment=NAS_JOB_DIR=/var/lib/lightnas-storage
+Environment=NODE_OPTIONS=--max-old-space-size=128
+RuntimeDirectory=lightnas-storage
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
+StateDirectory=lightnas-storage
+StateDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+MemoryMax=192M
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/etc/samba /etc/exports.d /var/lib/lightnas-storage /run/lightnas-storage /var/lib/nfs
+ProtectHome=true
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target
+EOF
+
 cat >/etc/systemd/system/${SERVICE_NAME}.service <<EOF
 [Unit]
 Description=LightNAS Management Control Plane
-Wants=network-online.target lightnas-host-agent.service
-After=network-online.target lightnas-host-agent.service
+Wants=network-online.target lightnas-host-agent.service lightnas-storage-agent.service
+After=network-online.target lightnas-host-agent.service lightnas-storage-agent.service
 
 [Service]
 Type=simple
@@ -462,6 +516,8 @@ else
   echo "      Existing network configuration detected; skipping live network changes during update."
   echo "      Set LIGHTNAS_REPAIR_NETWORK=1 only when an administrator explicitly wants network repair."
 fi
+systemctl enable lightnas-storage-agent.service
+systemctl restart lightnas-storage-agent.service
 systemctl enable lightnas-host-agent.service
 systemctl restart lightnas-host-agent.service
 systemctl enable "${SERVICE_NAME}"

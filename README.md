@@ -277,3 +277,7 @@ import, connect, or manage with LightNAS on their own infrastructure.
 
 See [DISCLAIMER.md](DISCLAIMER.md) for the complete platform and workload
 responsibility notice.
+
+## Approved storage operation workflow
+
+The existing Storage screen now links to an administrator-only workflow for disk/health inventory, exact mutation previews, approved share or filesystem jobs, live progress and configuration recovery. The updated installer adds a separate root-owned storage agent while retaining the current application and host agent. See [storage operation framework](docs/storage-operation-framework.md) for deployment, supported operations and remaining migration work.
