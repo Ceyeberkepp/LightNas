@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {storageAgentRoute,forwardStorageAgent} from './storage-agent-client.mjs';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { readFile, mkdir, rmdir, writeFile, rm, rename, stat } from 'node:fs/promises';
@@ -1125,6 +1126,19 @@ async function api(req, res, url) {
   const context = requireSession(req, res);
   if (!context) return;
   const { username, account, isAdmin, permissions } = context;
+
+  // Root storage jobs expose exact device/configuration details and are owner-only.
+  if(url.pathname.startsWith('/api/storage/agent/')) {
+    if(!isAdmin || context.apiToken) return send(res,403,{error:'Storage operations require the appliance administrator session.'});
+    if(!storageAgentRoute(url.pathname,req.method)) return send(res,404,{error:'Unknown storage operation endpoint.'});
+    const input=req.method==='POST'?await bodyJson(req):undefined;
+    if(req.method==='POST') {
+      store.addActivity('storage-operation',`Administrator ${username} requested ${url.pathname.split('/').pop()}.`);
+      await store.save();
+    }
+    return await forwardStorageAgent(req,res,url,input);
+  }
+
 
   if (req.method === 'POST' && url.pathname === '/api/mobile-sync/key') {
     if (!requireOwner(res, context)) return;
