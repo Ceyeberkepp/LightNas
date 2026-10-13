@@ -1,5 +1,5 @@
 import http from 'node:http';
-import {storageAgentRoute,forwardStorageAgent} from './storage-agent-client.mjs';
+import {storageAgentRoute,forwardStorageAgent,classifyStorageMutation,storageAgentJson} from './storage-agent-client.mjs';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { readFile, mkdir, rmdir, writeFile, rm, rename, stat } from 'node:fs/promises';
@@ -48,7 +48,7 @@ import {
 } from './identity-providers.mjs';
 import { ContainerPublisher } from './container-publish.mjs';
 import { discoverContainerApplication, probeContainerWebApplication } from './container-app-access.mjs';
-import { provisionNetworkShare, removeNetworkShare, publicShare, publicLibraryShare } from './network-shares.mjs';
+import { provisionNetworkShare, removeNetworkShare, publicShare, publicLibraryShare,publicManagedShare } from './network-shares.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const publicRoot = join(root, 'public');
@@ -924,6 +924,8 @@ function applyUserGroups(username, groupIds) {
   }
 }
 
+async function managedSharesForAdmin(host,isAdmin){if(!isAdmin)return [];try{return (await storageAgentJson('/v1/shares',undefined,500)).map(share=>publicManagedShare(share,host));}catch{return [];}}
+
 async function api(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/status') return send(res, 200, { version: SOFTWARE_VERSION, setupRequired: !store.state.config });
   if (req.method === 'GET' && url.pathname === '/api/branding') {
@@ -1126,6 +1128,19 @@ async function api(req, res, url) {
   const context = requireSession(req, res);
   if (!context) return;
   const { username, account, isAdmin, permissions } = context;
+
+  const storageMutation=classifyStorageMutation(url.pathname,req.method);
+  if(storageMutation){
+    if(!isAdmin||context.apiToken)return send(res,403,{error:'Storage control mutations require the appliance administrator session.'});
+    if(storageMutation.unsupported)return send(res,409,{error:'This legacy mutation is disabled because it cannot provide a verified operation preview. Use Storage operations for supported pool, filesystem and SMB/NFS changes.',code:'storage_operation_unsupported',workflow:'/storage-operations.html'});
+    const input=req.method==='DELETE'?{}:await bodyJson(req);
+    const operation=classifyStorageMutation(url.pathname,req.method,input);
+    let preview;
+    try{preview=await storageAgentJson('/v1/preview',operation);}catch(error){if(error.code==='ENOENT')throw Object.assign(new Error('Run the updated installer to enable the storage operation agent.'),{status:503});throw error;}
+    store.addActivity('storage-operation',`Administrator ${username} previewed ${operation.type}.`);await store.save();
+    return send(res,428,{error:'Impact review and approval required.',code:'storage_preview_required',preview});
+  }
+
 
   // Root storage jobs expose exact device/configuration details and are owner-only.
   if(url.pathname.startsWith('/api/storage/agent/')) {
@@ -1773,7 +1788,8 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/spaces') {
     if (!requirePermission(res, permissions, 'storage.view')) return;
-    return send(res, 200, { spaces: store.state.spaces });
+    let spaces=store.state.spaces;try{spaces=JSON.parse(await readFile(join(dirname(store.path),'storage-spaces.json'),'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
+    return send(res, 200, { spaces });
   }
   if (req.method === 'POST' && url.pathname === '/api/zfs/datasets') {
     if (!requirePermission(res, permissions, 'storage.manage')) return;
@@ -2300,6 +2316,7 @@ async function api(req, res, url) {
       },
       system, filesystems, storage, host: null,
       shares: [
+        ...await managedSharesForAdmin(system?.network?.primaryIpv4||String(req.headers.host||'').split(':')[0]||'lightnas',isAdmin),
         publicLibraryShare(system?.network?.primaryIpv4 || String(req.headers.host || '').split(':')[0] || 'lightnas', store.state.config.username),
         ...store.state.shares.map(share => publicShare(share, system?.network?.primaryIpv4 || String(req.headers.host || '').split(':')[0] || 'lightnas'))
       ], activity: store.state.activity.slice(0, 8)
@@ -2705,6 +2722,7 @@ async function api(req, res, url) {
     const snapshot = await getSystemSnapshot().catch(() => ({}));
     const host = snapshot?.network?.primaryIpv4 || String(req.headers.host || '').split(':')[0] || 'lightnas';
     return send(res, 200, { shares: [
+      ...await managedSharesForAdmin(host,isAdmin),
       publicLibraryShare(host, store.state.config.username),
       ...store.state.shares.map(share => publicShare(share, host))
     ] });

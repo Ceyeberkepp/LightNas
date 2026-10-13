@@ -1,21 +1,7 @@
+import {approveStoragePreview} from './storage-mutation-client.js';
 const storageUi = { data: null };
 
-const STORAGE_ADD_TYPES = [
-  ['directory','Directory'],
-  ['lvm','LVM'],
-  ['lvm-thin','LVM-Thin'],
-  ['btrfs','BTRFS'],
-  ['nfs','NFS'],
-  ['smb-cifs','SMB/CIFS'],
-  ['glusterfs','GlusterFS'],
-  ['iscsi','iSCSI'],
-  ['cephfs','CephFS'],
-  ['rbd','RBD'],
-  ['zfs-over-iscsi','ZFS over iSCSI'],
-  ['zfs','ZFS'],
-  ['proxmox-backup-server','Proxmox Backup Server'],
-  ['esxi','ESXi']
-];
+const STORAGE_ADD_TYPES = [['directory','Directory'],['btrfs','Btrfs (already mounted)']];
 
 // randomUUID() is only exposed in secure browser contexts. Local NAS dashboards
 // are often served by HTTP IP address, so use getRandomValues when available.
@@ -62,6 +48,7 @@ function sBytes(value) {
 }
 async function sRequest(path, options={}) {
   const response=await fetch(path,{...options,headers:{'X-LightNAS-Request':'1',...(options.headers||{})}});
+  if(response.status===428)return approveStoragePreview((await response.json()).preview);
   const body=await response.json().catch(()=>({}));
   if(!response.ok) throw new Error(body.error||'Storage operation failed.');
   return body;
@@ -167,7 +154,7 @@ function openCreateStorage(sourceId='', provider='directory') {
     directory:'',
     lvm:`<label>Volume group<input name="vgName" placeholder="vg-data"><small>Optional label for the LVM volume group behind this mounted source.</small></label>`,
     'lvm-thin':`<label>Volume group<input name="vgName" placeholder="vg-data"></label><label>Thin pool<input name="thinPool" placeholder="thinpool"></label>`,
-    btrfs:`<label>BTRFS subvolume<input name="subvolume" placeholder="@lightnas"><small>Optional subvolume name for this mounted BTRFS source.</small></label>`,
+    btrfs:'',
     zfs:`<label>ZFS pool / dataset<input name="dataset" placeholder="tank/lightnas"><small>Optional dataset label for this mounted ZFS source.</small></label>`,
     nfs:`<label>NFS server<input name="server" placeholder="192.168.1.20" required></label><label>NFS export<input name="exportPath" placeholder="/exports/lightnas" required></label><label>Mount options<input name="mountOptions" placeholder="vers=4.2"></label>`,
     'smb-cifs':`<label>SMB server<input name="server" placeholder="fileserver.local" required></label><label>Share<input name="share" placeholder="LightNAS" required></label><label>Username<input name="username" autocomplete="off"></label><label>Password<input name="password" type="password" autocomplete="new-password"></label><label>Domain / workgroup<input name="domain" placeholder="WORKGROUP"></label>`,

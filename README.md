@@ -232,9 +232,9 @@ Optional external integrations
 ```
 
 
-## Next engineering milestone
+## Storage agent and operation framework
 
-The next milestone is the storage agent and operation framework:
+The supported storage-control workflow now implements:
 
 1. Enumerate physical disks through `/sys`, `lsblk`, SMART, and udev.
 2. Model disks, pools, filesystems, shares, and health independently.

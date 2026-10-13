@@ -4,11 +4,12 @@ import {readFile,chmod,mkdir,lstat,unlink} from 'node:fs/promises';
 import {timingSafeEqual} from 'node:crypto';
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {ResourceAdapter} from './resources.js';
 import {inventory} from './storage.js';
-import {Operations,ShareAdapter} from './operations.js';
+import {Operations,ShareAdapter,publicJob} from './operations.js';
 export function createServer({token,ops,discover,agent=false,socket,ui}){
  return http.createServer(async(req,res)=>{
-  const reply=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
+  const reply=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(publicJob(data)));};
   if(req.method==='GET'&&req.url==='/'&&ui){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",'Referrer-Policy':'no-referrer'});res.end(ui);return;}
   const supplied=Buffer.from((req.headers.authorization||'').replace(/^Bearer /,''));const expected=Buffer.from(token);
   if(supplied.length!==expected.length||!timingSafeEqual(supplied,expected))return reply(401,{error:'Authentication required'});
@@ -19,6 +20,7 @@ export function createServer({token,ops,discover,agent=false,socket,ui}){
   try{
    const url=new URL(req.url,'http://localhost');const parts=url.pathname.split('/').filter(Boolean);
    if(req.method==='GET'&&url.pathname==='/v1/inventory')return reply(200,await discover());
+   if(req.method==='GET'&&url.pathname==='/v1/shares')return reply(200,await ops.adapter?.shares?.()||[]);
    if(req.method==='GET'&&url.pathname==='/v1/jobs')return reply(200,[...ops.jobs.values()]);
    const job=ops.jobs.get(parts[2]);
    if(req.method==='GET'&&parts[0]==='v1'&&parts[1]==='jobs'&&job){
@@ -55,10 +57,10 @@ async function main(){
  const agent=process.argv.includes('--agent');if(agent&&process.getuid?.()!==0)throw Error('Agent must run as root');
  const token=process.env.NAS_AGENT_TOKEN_FILE?(await readFile(process.env.NAS_AGENT_TOKEN_FILE,'utf8')).trim():process.env.NAS_AGENT_TOKEN;
  if(!token||token.length<32)throw Error('Set a random NAS_AGENT_TOKEN (at least 32 characters) or NAS_AGENT_TOKEN_FILE');
- const dir=process.env.NAS_JOB_DIR||'data/jobs';const adapter=new ShareAdapter({manifest:dir+'/shares.json'});
- const discover=async()=>({...await inventory(),shares:await adapter.shares()});
+ const dir=process.env.NAS_JOB_DIR||'data/jobs';const resources=new ResourceAdapter();const adapter=new ShareAdapter({manifest:dir+'/shares.json',shareRoots:()=>resources.shareRoots()});
+ const discover=async()=>({...await inventory(),shares:await adapter.shares(),poolDefinitions:(await resources.snapshot('pool.definition.create')).pools,shareRoots:await resources.shareRoots()});
  const safetyDiscover=async()=>({...await inventory(undefined,{includeHealth:false}),shares:await adapter.shares()});
- const ops=new Operations({dir,adapter,discover:safetyDiscover,allowInitialization:process.env.NAS_ALLOW_STORAGE_INITIALIZATION==='1'});await ops.init();
+ const ops=new Operations({dir,adapter,resources,discover:safetyDiscover,allowInitialization:process.env.NAS_ALLOW_STORAGE_INITIALIZATION==='1'});await ops.init();
  const ui=await readFile(new URL('../../public/storage-operations.html',import.meta.url),'utf8');
  const socket=agent?(process.env.NAS_AGENT_SOCKET||'/run/lightnas/storage.sock'):process.env.NAS_AGENT_SOCKET;
  const server=createServer({token,ops,discover,agent,socket,ui});server.requestTimeout=20000;server.headersTimeout=10000;
