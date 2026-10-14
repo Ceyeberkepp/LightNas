@@ -197,6 +197,9 @@ export async function getStorageInventory() {
     disks,
     local,
     attachedVolumes,
+    // Preserve exact managed mount paths even when capacity accounting groups
+    // several mounts of the same filesystem into a single attached volume.
+    mountedDataSources: filesystems.filter(item => /^\/(storage|mnt|media|srv|data)(\/|$)/.test(item.mountPoint) && !isSystemMount(item.mountPoint)),
     virtualStorage,
     usableStorage,
     proxmoxStorage,

@@ -1,7 +1,8 @@
+import {STORAGE_PROVIDERS,acceptsSource} from './storage-providers.js';
 import {approveStoragePreview} from './storage-mutation-client.js';
 const storageUi = { data: null };
 
-const STORAGE_ADD_TYPES = [['directory','Directory'],['btrfs','Btrfs (already mounted)']];
+const STORAGE_ADD_TYPES = STORAGE_PROVIDERS.map(provider=>[provider.id,provider.label]);
 
 // randomUUID() is only exposed in secure browser contexts. Local NAS dashboards
 // are often served by HTTP IP address, so use getRandomValues when available.
@@ -100,9 +101,9 @@ function storageCard(pool) {
   const contents=(pool.contentLabels||[]).join(' · ')||'No content types';
   return `<article class="inventory-card storage-pool-card" data-storage-card="${sEsc(pool.id)}" role="button" tabindex="0" aria-label="Manage storage ${sEsc(pool.name)}">
     <div class="volume-title"><h3>${sEsc(pool.name)}</h3><span class="volume-state ${pool.online&&pool.writable?'writable':'readonly'}">${pool.online?(pool.writable?'ONLINE':'READ ONLY'):'OFFLINE'}</span></div>
-    <p>${pool.local?(pool.dedicated?'Local appliance storage · dedicated post-OS data partition':'Local appliance storage · shared with the OS filesystem'):sEsc(pool.mountPoint||'Attached virtual storage')}</p>
+    <p>${pool.local?(pool.dedicated?'Local appliance storage · dedicated post-OS data partition':'Local appliance storage · shared with the OS filesystem'):sEsc(pool.remote?pool.providerConfig.server+' / '+pool.providerConfig.datastore:pool.mountPoint||'Attached storage')}</p>
     <div class="track"><span style="width:${Math.min(100,pool.usedPercent||0)}%"></span></div>
-    <p><strong>${sBytes(pool.availableBytes)} free</strong> of ${sBytes(pool.totalBytes)} · ${pool.usedPercent||0}% used</p>
+    <p><strong>${pool.capacityKnown===false?'—':sBytes(pool.availableBytes)} free</strong> of ${pool.capacityKnown===false?'—':sBytes(pool.totalBytes)} · ${pool.capacityKnown===false?'Usage not reported':(pool.usedPercent||0)+'% used'}</p>
     <p class="muted">${sEsc(contents)}</p>
     <button class="secondary" type="button" data-manage-storage="${sEsc(pool.id)}">Manage storage</button>
   </article>`;
@@ -146,10 +147,11 @@ async function openCreateStorage(sourceId='', provider='directory') {
   if(!providerEntry) return;
   provider=providerEntry[0];
   const providerLabel=providerEntry[1];
+  const definition=STORAGE_PROVIDERS.find(item=>item.id===provider);
   let options={sources:[]}, creationError='';
   try{options=await sRequest('/api/storage/agent/creation-options');}
   catch(problem){creationError=problem.message;}
-  const sources=(options.sources||[]).filter(item=>!item.configured && (provider!=='btrfs'||item.type==='btrfs')).map(item=>{
+  const sources=(options.sources||[]).filter(item=>!item.configured && acceptsSource(provider,item)).map(item=>{
     const volume=data.availableSources?.find(volume=>volume.mountPoint===item.path && volume.device===item.device);
     return {...volume,...item,mountPoint:item.path,mountedReadOnly:item.readOnly,totalBytes:volume?.totalBytes??item.size};
   });
@@ -159,7 +161,10 @@ async function openCreateStorage(sourceId='', provider='directory') {
   dialog.querySelector('[data-storage-dialog-error]').textContent='';
 
   dialog.querySelector('[data-storage-dialog-footer]').hidden=true;
-  const providerHelp=provider==='btrfs'?'Use an existing mounted Btrfs filesystem.':'Use a mounted directory or attached data volume already visible to LightNAS.';
+  const providerHelp=definition.help;
+  const labels={vgName:'Volume group',thinPool:'Thin pool',server:'Server',exportPath:'NFS export',share:'Share',username:provider==='proxmox-backup-server'?'API token ID (user@realm!token)':'Username',domain:'Domain / workgroup',volume:'Gluster volume',portal:'iSCSI portal',target:'Target IQN',monitors:'Monitor hosts (comma separated)',filesystem:'Ceph filesystem',rbdPool:'RBD pool',image:'RBD image',zfsPool:'Exporting ZFS pool',dataset:'Dataset',datastore:'Datastore',fingerprint:'Certificate SHA-256 fingerprint (optional)'};
+  const connectDefault=definition.remote||definition.connect&&!writableSources.length;
+  const canConnect=!creationError&&(definition.remote||definition.connect||writableSources.length);
 
   dialog.querySelector('[data-storage-dialog-body]').innerHTML=`
     <form data-storage-create-form class="storage-create-form">
@@ -167,20 +172,35 @@ async function openCreateStorage(sourceId='', provider='directory') {
       <input type="hidden" name="provider" value="${sEsc(provider)}">
       <div class="storage-create-grid">
         <label>Storage name<input name="name" required pattern="[A-Za-z][A-Za-z0-9_-]{1,31}" placeholder="fastssd" autocomplete="off"><small>2–32 letters, numbers, dashes, or underscores.</small></label>
-        <label>Volume<select name="sourceId" required ${writableSources.length?'':'disabled'}>
+        ${definition.connect?`<label>Setup<select name="connectionMode"><option value="existing" ${connectDefault?'':'selected'}>Use existing mount</option><option value="connect" ${connectDefault?'selected':''}>Connect server</option></select></label>`:''}
+        ${definition.fields.map(field=>`<label>${sEsc(labels[field]||field)}<input name="${sEsc(field)}" data-provider-field placeholder="${field==='server'&&provider==='proxmox-backup-server'?'pbs.example.com:8007':''}" autocomplete="off"></label>`).join('')}
+        ${definition.credential?`<label data-provider-credential>${provider==='proxmox-backup-server'?'API token secret':definition.credential==='secret'?'Ceph authentication key':'Password'}<input name="credential" type="password" autocomplete="new-password"></label>`:''}
+        <label data-provider-volume>Volume<select name="sourceId" required ${writableSources.length?'':'disabled'}>
           ${writableSources.length?'<option value="">Select a volume…</option>':'<option value="">No writable volumes available</option>'}
           ${sources.map(item=>`<option value="${sEsc(item.id)}" ${item.mountedReadOnly?'disabled':''}>${sEsc(sourceLabel(item))}${item.mountedReadOnly?' · read only':item.writable?'':' · ready to claim'}</option>`).join('')}
         </select><small>${writableSources.length?'Choose the mounted data volume LightNAS will use. Existing files are preserved.':'Expose or mount this storage to the LightNAS OS first, then rescan.'}</small></label>
       </div>
       <div class="storage-content-heading"><div><h3>What can this storage hold?</h3><p class="muted">Choose the content types you want available on this pool.</p></div><button class="secondary storage-select-all" type="button" data-storage-toggle-content>Select all</button></div>
-      <div class="content-policy-grid storage-content-policy">${contentCheckboxes(data.contentTypes||[],['iso','vztmpl','images','rootdir','backup','snippets','files'])}</div>
-      ${creationError?`<div class="module-note storage-volume-warning">${sEsc(creationError)}</div>`:writableSources.length?'': '<div class="module-note storage-volume-warning"><b>No usable volume detected.</b> Mount a writable data volume under /storage, /mnt, /media, /srv or /data, then rescan. Btrfs requires a mounted Btrfs filesystem.</div>'}
-      <div class="dialog-actions storage-create-actions"><button class="secondary" type="button" data-storage-dialog-close>Cancel</button><button class="primary" type="submit" ${writableSources.length?'':'disabled'}>Create storage</button></div>
+      <div class="content-policy-grid storage-content-policy">${contentCheckboxes((data.contentTypes||[]).filter(type=>!definition.content||definition.content.includes(type.id)),definition.content||['iso','vztmpl','images','rootdir','backup','snippets','files'])}</div>
+      ${creationError?`<div class="module-note storage-volume-warning">${sEsc(creationError)}</div>`:canConnect?'': '<div class="module-note storage-volume-warning"><b>No usable volume detected.</b> Mount the selected provider’s data filesystem under /storage, /mnt, /media, /srv or /data, then rescan. Local/block providers reuse existing storage; this form does not format disks.</div>'}
+      <div class="dialog-actions storage-create-actions"><button class="secondary" type="button" data-storage-dialog-close>Cancel</button><button class="primary" type="submit" ${canConnect?'':'disabled'}>Create storage</button></div>
     </form>`;
 
   const select=dialog.querySelector('select[name="sourceId"]');
   if(sourceId&&select&&[...select.options].some(option=>option.value===sourceId&&!option.disabled)) select.value=sourceId;
   else if(select&&writableSources.length===1) select.value=writableSources[0].id;
+
+  const form=dialog.querySelector('[data-storage-create-form]');
+  const applyMode=()=>{
+    const connect=definition.remote||form.elements.connectionMode?.value==='connect';
+    const volume=dialog.querySelector('[data-provider-volume]');volume.hidden=!!connect;
+    select.disabled=!!connect||!writableSources.length;select.required=!connect;
+    const credentials=dialog.querySelector('[data-provider-credential]');if(credentials){credentials.hidden=!connect;form.elements.credential.disabled=!connect;form.elements.credential.required=!!connect;}
+    form.querySelectorAll('[data-provider-field]').forEach(input=>{input.required=!!connect&&!['domain','fingerprint'].includes(input.name);});
+    form.querySelector('[type="submit"]').disabled=!!creationError||!connect&&!writableSources.length;
+  };
+  form.elements.connectionMode?.addEventListener('change',applyMode);
+  applyMode();
 
   dialog.querySelector('[data-storage-toggle-content]')?.addEventListener('click', event => {
     const boxes=[...dialog.querySelectorAll('.storage-content-policy input[type="checkbox"]')];
@@ -196,12 +216,17 @@ async function openCreateStorage(sourceId='', provider='directory') {
     const content=[...form.querySelectorAll('.content-policy-grid input:checked')].map(input=>input.value);
     const submit=form.querySelector('[type="submit"]');
     submit.disabled=true;
+    const providerConfig=Object.fromEntries(definition.fields.map(field=>[field,form.elements[field]?.value?.trim()||'']).filter(([,value])=>value));
+    const connect=definition.remote||form.elements.connectionMode?.value==='connect';
+    const credentials=connect&&definition.credential?{[definition.credential]:form.elements.credential.value}:undefined;
     try{
       await sRequest('/api/storage/pools',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         name:form.elements.name.value,
         sourceId:form.elements.sourceId.value,
         provider:form.elements.provider.value,
-        providerConfig:{},
+        providerConfig,
+        ...(connect?{connect:true}:{}),
+        ...(credentials?{private:{credentials}}:{}),
         content
       })});
       dialog.close();await refreshStorageManager();
@@ -222,26 +247,26 @@ async function renderManageStorage(poolId,activeType=null) {
   dialog.querySelector('[data-storage-dialog-footer]').hidden=false;
   dialog.querySelector('[data-storage-dialog-title]').textContent=`Storage · ${pool.name}`;
   dialog.querySelector('[data-storage-dialog-error]').textContent='';
-  const fileTypes=pool.content.filter(type=>['iso','vztmpl','backup','snippets'].includes(type));
+  const fileTypes=pool.content.filter(type=>pool.remote||['iso','vztmpl','backup','snippets'].includes(type));
   const selectedType=activeType&&fileTypes.includes(activeType)?activeType:(fileTypes[0]||null);
   let files={entries:[]};
   if(selectedType) {
-    try{files=await loadStorageContent(pool.id,selectedType);}catch{}
+    try{files=await loadStorageContent(pool.id,selectedType);}catch(error){files.error=error.message;}
   }
   dialog.querySelector('[data-storage-dialog-body]').innerHTML=`
     <div class="host-monitor-grid">
-      <article class="monitor-card"><span>Total</span><strong>${sBytes(pool.totalBytes)}</strong></article>
-      <article class="monitor-card"><span>Available</span><strong>${sBytes(pool.availableBytes)}</strong></article>
-      <article class="monitor-card"><span>Source</span><strong style="font-size:1rem">${sEsc(pool.local?'local':pool.mountPoint)}</strong></article>
+      <article class="monitor-card"><span>Total</span><strong>${pool.capacityKnown===false?'—':sBytes(pool.totalBytes)}</strong></article>
+      <article class="monitor-card"><span>Available</span><strong>${pool.capacityKnown===false?'—':sBytes(pool.availableBytes)}</strong></article>
+      <article class="monitor-card"><span>Source</span><strong style="font-size:1rem">${sEsc(pool.local?'local':pool.remote?pool.providerConfig.server+' / '+pool.providerConfig.datastore:pool.mountPoint)}</strong></article>
     </div>
     <form data-storage-policy-form>
-      <h3>Allowed content</h3><div class="content-policy-grid">${contentCheckboxes(data.contentTypes||[],pool.content)}</div>
+      <h3>Allowed content</h3><div class="content-policy-grid">${contentCheckboxes((data.contentTypes||[]).filter(type=>!pool.remote||STORAGE_PROVIDERS.find(item=>item.id===pool.provider).content.includes(type.id)),pool.content)}</div>
       <button class="secondary" type="submit">Save content policy</button>
     </form>
-    ${selectedType?`<hr><div class="panel-head"><div><h3>Stored content</h3><p class="muted">Upload files or import them directly from a public URL.</p></div></div>
+    ${selectedType?`<hr><div class="panel-head"><div><h3>Stored content</h3><p class="muted">${pool.remote?'Browse native datastore content.':'Upload files or import them directly from a public URL.'}</p></div></div>
       <div class="head-actions">${fileTypes.map(type=>`<button type="button" class="${type===selectedType?'primary':'secondary'}" data-storage-content-tab="${sEsc(type)}" data-storage-id="${sEsc(pool.id)}">${sEsc((data.contentTypes||[]).find(item=>item.id===type)?.label||type)}</button>`).join('')}</div>
 ${selectedType==='vztmpl'? `<div class="head-actions"><button class="primary" type="button" data-template-browse data-template-storage="${sEsc(pool.id)}">Browse templates</button><button class="secondary" type="button" data-template-upload data-template-storage="${sEsc(pool.id)}">Upload template</button><button class="secondary" type="button" data-template-url data-template-storage="${sEsc(pool.id)}">Import URL</button></div><p class="muted">Choose a template from the upstream catalog, upload an archive from your computer, or import a public URL into this storage.</p>` : ''}
-      <form data-storage-upload-form data-storage-id="${sEsc(pool.id)}" data-storage-type="${sEsc(selectedType)}">
+      ${pool.remote?'<p class="module-note">Native remote content is browsed through the provider API. Use the provider’s backup client or datastore tools to write or restore data.</p>':`<form data-storage-upload-form data-storage-id="${sEsc(pool.id)}" data-storage-type="${sEsc(selectedType)}">
         ${selectedType==='iso'?'<p class="module-note">ISO uploads stream directly to storage in resumable chunks with no LightNAS application-level size ceiling. Available disk space is the limit.</p>':''}
         <label>Upload ${sEsc((data.contentTypes||[]).find(item=>item.id===selectedType)?.label||selectedType)}<input name="file" type="file" required ${selectedType==='iso'?'accept=".iso"':selectedType==='vztmpl'?'accept=".tar.zst,.tar.xz,.tar.gz,.tgz"':''}></label>
         <button class="secondary" type="submit">Upload</button>
@@ -249,8 +274,8 @@ ${selectedType==='vztmpl'? `<div class="head-actions"><button class="primary" ty
       <form data-storage-import-form data-storage-id="${sEsc(pool.id)}" data-storage-type="${sEsc(selectedType)}">
         <label>Download from URL<input name="url" type="url" required placeholder="https://example.org/file"></label>
         <button class="secondary" type="submit">Download from URL</button>
-      </form>
-      <div class="storage-list">${files.entries?.length?files.entries.map(file=>`<article class="storage-row"><div><h3>${sEsc(file.name)}</h3><p>${sBytes(file.sizeBytes)} · ${sEsc(file.modifiedAt||'')}</p></div><button class="secondary danger-button" type="button" data-storage-file-delete="${sEsc(file.name)}" data-storage-id="${sEsc(pool.id)}" data-storage-type="${sEsc(selectedType)}">Delete</button></article>`).join(''):'<div class="empty"><p>No files stored for this content type.</p></div>'}</div>
+      </form>`}
+      <div class="storage-list">${files.error?`<div class="module-note" role="alert">${sEsc(files.error)}</div>`:files.entries?.length?files.entries.map(file=>`<article class="storage-row"><div><h3>${sEsc(file.name)}</h3><p>${file.sizeBytes==null?'Size not reported':sBytes(file.sizeBytes)} · ${sEsc(file.modifiedAt||'')}</p></div>${pool.remote?'':`<button class="secondary danger-button" type="button" data-storage-file-delete="${sEsc(file.name)}" data-storage-id="${sEsc(pool.id)}" data-storage-type="${sEsc(selectedType)}">Delete</button>`}</article>`).join(''):'<div class="empty"><p>No files stored for this content type.</p></div>'}</div>
     `:''}
     ${!pool.local?'<hr><button class="secondary danger-button" type="button" data-storage-remove-definition>Remove storage definition</button><p class="muted">This removes the LightNAS storage definition only. Existing files are preserved.</p>':''}
   `;
@@ -259,6 +284,7 @@ ${selectedType==='vztmpl'? `<div class="head-actions"><button class="primary" ty
     event.preventDefault();
     const error=dialog.querySelector('[data-storage-dialog-error]');
     const content=[...event.currentTarget.querySelectorAll('input:checked')].map(input=>input.value);
+    const submit=event.currentTarget.querySelector('[type="submit"]');submit.disabled=true;
     error.textContent='Saving…';
     try{
       await sRequest(`/api/storage/pools/${encodeURIComponent(pool.id)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});

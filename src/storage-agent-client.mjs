@@ -4,7 +4,7 @@ const namespace='/api/storage/agent';
 export function storageAgentRoute(path,method){
  if(!path.startsWith(namespace+'/'))return false;
  const suffix=path.slice(namespace.length);
- if(method==='GET')return /^\/(inventory|creation-options|jobs|shares|features|protection|dataset|csr)$/.test(suffix)||/^\/jobs\/[0-9a-f-]{36}(\/(events|stream))?$/.test(suffix);
+ if(method==='GET')return /^\/(inventory|creation-options|remote-storage|jobs|shares|features|protection|dataset|csr)$/.test(suffix)||/^\/jobs\/[0-9a-f-]{36}(\/(events|stream))?$/.test(suffix);
  return method==='POST'&&(suffix==='/preview'||/^\/jobs\/[0-9a-f-]{36}\/(approve|cancel|rollback-preview)$/.test(suffix));
 }
 export async function forwardStorageAgent(req,res,url,input){

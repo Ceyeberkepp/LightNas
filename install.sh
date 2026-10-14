@@ -62,7 +62,7 @@ echo "Detected LightNAS architecture: ${LIGHTNAS_ARCH}"
 echo "[1/6] Checking system requirements..."
 install_missing_packages \
   ca-certificates curl git gnupg python3 ffmpeg imagemagick qrencode acl novnc iproute2 nftables ufw samba openssh-server ovmf \
-  tar gzip xz-utils zstd util-linux udev smartmontools nfs-kernel-server e2fsprogs btrfs-progs openssl rsync rclone certbot python3-certbot-dns-cloudflare
+  tar gzip xz-utils zstd util-linux udev smartmontools nfs-kernel-server nfs-common cifs-utils lvm2 open-iscsi e2fsprogs btrfs-progs openssl rsync rclone certbot python3-certbot-dns-cloudflare
 
 # Node.js and npm are both mandatory. Some minimal images have node but no
 # npm; do not skip the dependency installation in that case.
@@ -139,6 +139,16 @@ if apt_has_candidate libraw-bin; then
   runtime_packages+=(libraw-bin)
 fi
 
+# Network/distributed storage clients may be absent on an architecture. Install
+# every available distribution client; creation reports a missing helper rather
+# than silently removing its provider from the UI.
+for storage_client in glusterfs-client ceph-common proxmox-backup-client; do
+  if apt_has_candidate "$storage_client"; then
+    runtime_packages+=("$storage_client")
+  else
+    echo "      Storage client $storage_client has no APT candidate on ${LIGHTNAS_ARCH}; existing mounts/API connections remain available."
+  fi
+done
 install_missing_packages "${runtime_packages[@]}"
 # Install ZFS userland when the distribution offers it; never force kernel modules
 # or import pools on hosts/containers that do not expose a ZFS runtime.
@@ -461,7 +471,7 @@ Restart=on-failure
 MemoryMax=192M
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/etc/samba /etc/exports.d /var/lib/lightnas-storage /run/lightnas-storage /var/lib/nfs ${DATA_DIRECTORY} -/storage -/mnt -/media -/srv -/data
+ReadWritePaths=/etc/systemd/system /etc/samba /etc/exports.d /var/lib/lightnas-storage /run/lightnas-storage /var/lib/nfs ${DATA_DIRECTORY} -/storage -/mnt -/media -/srv -/data
 ProtectHome=true
 PrivateTmp=true
 [Install]
