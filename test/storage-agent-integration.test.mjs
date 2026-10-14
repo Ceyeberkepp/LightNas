@@ -6,6 +6,8 @@ import {join} from 'node:path';
 import {storageAgentRoute} from '../src/storage-agent-client.mjs';
 test('storage broker allows only its typed endpoint surface',()=>{
  assert.equal(storageAgentRoute('/api/storage/agent/inventory','GET'),true);
+ assert.equal(storageAgentRoute('/api/storage/agent/creation-options','GET'),true);
+ assert.equal(storageAgentRoute('/api/storage/agent/creation-options','POST'),false);
  assert.equal(storageAgentRoute('/api/storage/agent/preview','POST'),true);
  assert.equal(storageAgentRoute('/api/storage/agent/../../network','POST'),false);
  assert.equal(storageAgentRoute('/api/storage/agent/jobs','DELETE'),false);
@@ -30,6 +32,7 @@ test('existing LightNAS login gates root storage API and fails closed without in
  const setup=await request('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deviceName:'storage-test',username:'admin',password:'ExamplePass123',timezone:'UTC'})});
  assert.equal(setup.status,201);const cookie=setup.headers.get('set-cookie').split(';')[0];
  assert.equal((await request('/api/storage/agent/inventory',{headers:{Cookie:cookie}})).status,503);
+ assert.equal((await request('/api/storage/agent/creation-options',{headers:{Cookie:cookie}})).status,503);
  assert.equal((await request('/api/storage/agent/arbitrary',{headers:{Cookie:cookie}})).status,404);
  for(const path of ['/api/proxmox/disk-clean','/api/proxmox/storage','/api/shares'])assert.equal((await request(path,{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:'{}'})).status,409);
  assert.equal((await request('/api/storage/pools',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:'{\"name\":\"data\"}'})).status,503);

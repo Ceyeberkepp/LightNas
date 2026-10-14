@@ -7,11 +7,11 @@ const directories={iso:'template/iso',vztmpl:'template/cache',images:'images',ro
 const defaults=Object.keys(directories);
 export const RESOURCE_TYPES=['pool.definition.create','pool.definition.update','pool.definition.delete','space.create','space.update','space.delete'];
 const decode=s=>s.replace(/\\([0-7]{3})/g,(_,n)=>String.fromCharCode(parseInt(n,8)));
-export async function mountedSources(){
- const text=await readFile('/proc/self/mounts','utf8');const seen=new Set(),sources=[];
+export async function mountedSources({mountsFile="/proc/self/mounts",inspect=statfs,directoryInfo=lstat}={}){
+ const text=await readFile(mountsFile,'utf8');const seen=new Set(),sources=[];
  for(const line of text.trim().split('\n')){const [rawDevice,rawPath,type,options]=line.split(' ');const path=decode(rawPath||''),device=decode(rawDevice||'');
-  if(!/^\/(storage|mnt|media|srv|data)(\/|$)/.test(path)||seen.has(path))continue;seen.add(path);
-  let size=null;try{const st=await statfs(path,{bigint:true});size=Number(st.blocks*st.bsize);}catch{}
+  if(!/^\/(storage|mnt|media|srv|data)(\/|$)/.test(path)||/^\/mnt\/wsl(?:g)?(\/|$)/.test(path)||seen.has(path))continue;seen.add(path);
+  let size=null;try{if(!(await directoryInfo(path)).isDirectory())continue;const st=await inspect(path,{bigint:true});size=Number(st.blocks*st.bsize);}catch{continue;}
   sources.push({id:Buffer.from(device+':'+path).toString('base64url'),path,device,type,readOnly:options.split(',').includes('ro'),size});
  }return sources;
 }
@@ -20,6 +20,7 @@ function contents(value){if(!Array.isArray(value)||!value.length||value.some(v=>
 export class ResourceAdapter{
  constructor({dataDir=dirname(resolve(process.env.NAS_DATA_FILE||'/var/lib/lightnas/state.json')),sources=mountedSources,canTraverse=async path=>(await command('/usr/sbin/runuser',['-u','lightnas','--','/usr/bin/test','-x',path])).ok}={}){this.dataDir=dataDir;this.sources=sources;this.canTraverse=canTraverse;}
  configPath(type){return type.startsWith('pool.')?resolve(process.env.LIGHTNAS_STORAGE_CONFIG||join(this.dataDir,'storage-pools.json')):join(this.dataDir,'storage-spaces.json');}
+ async creationOptions(){const config=await this.snapshot('pool.definition.create');const sources=await this.sources();return {providers:['directory','btrfs'],sources:sources.map(source=>({...source,configured:config.pools.some(pool=>pool.sourceId===source.id)}))};}
  async shareRoots(){const config=await this.snapshot('pool.definition.create');const sources=await this.sources();return ['/srv/lightnas',...config.pools.filter(p=>p.content?.includes('files')&&sources.some(s=>s.id===p.sourceId&&p.root===join(s.path,'.lightnas','storage',p.id))).map(p=>join(p.root,'files'))];}
  async snapshot(type){if(type.startsWith('pool.'))return json(this.configPath(type),{version:1,localContent:defaults,pools:[]});const state=await json(join(this.dataDir,'state.json'),{});return json(this.configPath(type),state.spaces||[]);}
  async plan(input){

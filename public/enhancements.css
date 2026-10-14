@@ -1906,8 +1906,8 @@
 }
 
 #lightnas-storage-dialog {
-  width: min(900px, calc(100vw - 32px));
-  max-width: 900px;
+  width: min(680px, calc(100vw - 32px));
+  max-width: 680px;
   max-height: min(88vh, 860px);
   padding: 0;
   overflow: hidden;
@@ -1925,7 +1925,7 @@
 }
 .storage-create-form {
   display: grid;
-  gap: 18px;
+  gap: 12px;
 }
 .storage-create-intro {
   margin: 0;
@@ -1934,7 +1934,7 @@
 }
 .storage-create-grid {
   display: grid;
-  grid-template-columns: minmax(220px, .8fr) minmax(320px, 1.2fr);
+  grid-template-columns: minmax(160px, .8fr) minmax(240px, 1.2fr);
   gap: 14px;
 }
 .storage-create-grid label {
@@ -1963,13 +1963,13 @@
   margin: 0;
 }
 .storage-content-policy {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
 }
 .storage-content-policy .content-check {
-  min-height: 78px;
-  align-items: flex-start;
-  padding: 13px;
+  min-height: 0;
+  align-items: center;
+  padding: 8px;
 }
 .storage-content-policy .content-check b {
   line-height: 1.25;
@@ -4415,3 +4415,14 @@ dialog.viewer-more-sheet.viewer-desktop-popover::backdrop { background: transpar
 .app-thumbnail-fallback { display:grid; place-items:center; width:48px; height:48px; border-radius:8px; background:var(--panel-color,transparent); font-weight:700; }
 .app-thumbnail.loaded + .app-thumbnail-fallback { visibility:hidden; }
 .app-thumbnail[hidden] { display:none; }
+
+/* Keep native checkboxes compact inside storage content choices. */
+#lightnas-storage-dialog .content-check input[type="checkbox"] {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+#lightnas-storage-dialog [data-storage-dialog-footer][hidden] { display: none; }
