@@ -9,7 +9,7 @@ Dedicated LightNAS Hypervisor edition / LightVisor.
 Run as root on Debian/Ubuntu:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/Ligthnas/main/install-hypervisor.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/LightNas/main/install-hypervisor.sh | bash
 ```
 
 The installer sets `LIGHTNAS_PRODUCT_MODE=hypervisor`, writes the product-mode environment configuration, and restarts `lightnas.service`.

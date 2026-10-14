@@ -13,7 +13,7 @@ When LightNAS itself runs inside a Proxmox LXC and nested capabilities are
 needed, use the helper from the Proxmox node shell:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/Ligthnas/main/scripts/proxmox-lxc-install.sh \
+curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/LightNas/main/scripts/proxmox-lxc-install.sh \
   -o /root/lightnas-proxmox-install.sh
 chmod +x /root/lightnas-proxmox-install.sh
 bash /root/lightnas-proxmox-install.sh <CTID>

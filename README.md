@@ -9,14 +9,14 @@ LightNAS has two separate appliance installs maintained from this repository. Th
 **NAS edition:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/Ligthnas/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/LightNas/main/install.sh | bash
 ```
 
 **Hypervisor edition:** 
 (under costruction)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/Ligthnas/main/install-hypervisor.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/LightNas/main/install-hypervisor.sh | bash
 ```
 
 Use the NAS installer for the storage/files/media appliance. Use the Hypervisor installer for the dedicated virtualization host interface. Both remain in this repository.
@@ -113,7 +113,7 @@ sudo apt-get install live-build debootstrap xorriso squashfs-tools
 sudo bash iso/build.sh
 ```
 
-The build writes `dist/LightNAS-amd64.iso` and a SHA-256 file. A successful GitHub Actions build produces a bootable-format ISO and uploads it under **Artifacts** on the [ISO build run](https://github.com/Ceyeberkepp/Ligthnas/actions/workflows/build-iso.yml); the artifact is a ZIP containing the ISO and checksum. The image has not yet been boot-tested in a VM or installed on disk. Treat it as experimental, test with an expendable virtual disk first, and do not install it over existing NAS data. The current running LXC is only for testing the control plane.
+The build writes `dist/LightNAS-amd64.iso` and a SHA-256 file. A successful GitHub Actions build produces a bootable-format ISO and uploads it under **Artifacts** on the [ISO build run](https://github.com/Ceyeberkepp/LightNas/actions/workflows/build-iso.yml); the artifact is a ZIP containing the ISO and checksum. The image has not yet been boot-tested in a VM or installed on disk. Treat it as experimental, test with an expendable virtual disk first, and do not install it over existing NAS data. The current running LXC is only for testing the control plane.
 
 ## App interoperability
 
@@ -147,7 +147,7 @@ integration helpers, validation commands, upgrades, and troubleshooting, see
 Run as `root` on the NAS host or test LXC:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/Ligthnas/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/LightNas/main/install.sh | bash
 ```
 
 The installer adds Node.js 22 when required, checks out LightNAS under

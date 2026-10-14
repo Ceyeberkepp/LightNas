@@ -4,7 +4,7 @@
 # LXC system containers and QEMU/libvirt VMs inside the appliance.
 set -Eeuo pipefail
 
-RAW_BASE="${LIGHTNAS_RAW_BASE:-https://raw.githubusercontent.com/Ceyeberkepp/Ligthnas/main}"
+RAW_BASE="${LIGHTNAS_RAW_BASE:-https://raw.githubusercontent.com/Ceyeberkepp/LightNas/main}"
 ctid="${1:-${LIGHTNAS_CTID:-}}"
 
 run_local_installer() {

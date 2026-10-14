@@ -4,7 +4,7 @@ const namespace='/api/storage/agent';
 export function storageAgentRoute(path,method){
  if(!path.startsWith(namespace+'/'))return false;
  const suffix=path.slice(namespace.length);
- if(method==='GET')return /^\/(inventory|jobs|shares)$/.test(suffix)||/^\/jobs\/[0-9a-f-]{36}(\/(events|stream))?$/.test(suffix);
+ if(method==='GET')return /^\/(inventory|jobs|shares|features|protection|dataset|csr)$/.test(suffix)||/^\/jobs\/[0-9a-f-]{36}(\/(events|stream))?$/.test(suffix);
  return method==='POST'&&(suffix==='/preview'||/^\/jobs\/[0-9a-f-]{36}\/(approve|cancel|rollback-preview)$/.test(suffix));
 }
 export async function forwardStorageAgent(req,res,url,input){
@@ -31,6 +31,8 @@ export function classifyStorageMutation(path,method,input={}){
  if(path==='/api/spaces'&&method==='POST')return {...input,type:'space.create'};
  m=path.match(/^\/api\/spaces\/([a-zA-Z0-9_-]{2,40})$/);
  if(m&&['PATCH','DELETE'].includes(method))return {...input,name:m[1],type:method==='PATCH'?'space.update':'space.delete'};
+ if(path==='/api/zfs/datasets'&&method==='POST')return {...input,type:'dataset.create'};
+ if(path==='/api/zfs/datasets'&&method==='PATCH')return {...input,dataset:input.name,type:'dataset.update'};
  if(['/api/zfs/datasets','/api/proxmox/disk-clean','/api/proxmox/storage','/api/shares'].includes(path)||/^\/api\/shares\/[0-9a-f-]{36}$/.test(path))return {unsupported:true};
  return null;
 }

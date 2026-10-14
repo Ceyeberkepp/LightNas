@@ -5,6 +5,7 @@ import {timingSafeEqual} from 'node:crypto';
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {ResourceAdapter} from './resources.js';
+import {FeatureAdapter} from './features.js';
 import {inventory} from './storage.js';
 import {Operations,ShareAdapter,publicJob} from './operations.js';
 export function createServer({token,ops,discover,agent=false,socket,ui}){
@@ -20,6 +21,10 @@ export function createServer({token,ops,discover,agent=false,socket,ui}){
   try{
    const url=new URL(req.url,'http://localhost');const parts=url.pathname.split('/').filter(Boolean);
    if(req.method==='GET'&&url.pathname==='/v1/inventory')return reply(200,await discover());
+   if(req.method==='GET'&&url.pathname==='/v1/protection')return reply(200,await ops.features.protectionInventory());
+   if(req.method==='GET'&&url.pathname==='/v1/features')return reply(200,await ops.features.inventory());
+   if(req.method==='GET'&&url.pathname==='/v1/dataset')return reply(200,await ops.features.datasetDetail(url.searchParams.get('name')));
+   if(req.method==='GET'&&url.pathname==='/v1/csr')return reply(200,await ops.features.certificates.download(url.searchParams.get('name')));
    if(req.method==='GET'&&url.pathname==='/v1/shares')return reply(200,await ops.adapter?.shares?.()||[]);
    if(req.method==='GET'&&url.pathname==='/v1/jobs')return reply(200,[...ops.jobs.values()]);
    const job=ops.jobs.get(parts[2]);
@@ -57,10 +62,11 @@ async function main(){
  const agent=process.argv.includes('--agent');if(agent&&process.getuid?.()!==0)throw Error('Agent must run as root');
  const token=process.env.NAS_AGENT_TOKEN_FILE?(await readFile(process.env.NAS_AGENT_TOKEN_FILE,'utf8')).trim():process.env.NAS_AGENT_TOKEN;
  if(!token||token.length<32)throw Error('Set a random NAS_AGENT_TOKEN (at least 32 characters) or NAS_AGENT_TOKEN_FILE');
- const dir=process.env.NAS_JOB_DIR||'data/jobs';const resources=new ResourceAdapter();const adapter=new ShareAdapter({manifest:dir+'/shares.json',shareRoots:()=>resources.shareRoots()});
+ const dir=process.env.NAS_JOB_DIR||'data/jobs';const features=new FeatureAdapter({dir});if(agent)await features.init();const resources=new ResourceAdapter();const adapter=new ShareAdapter({manifest:dir+'/shares.json',shareRoots:()=>resources.shareRoots()});
+ features.shareProvider=()=>adapter.shares();
  const discover=async()=>({...await inventory(),shares:await adapter.shares(),poolDefinitions:(await resources.snapshot('pool.definition.create')).pools,shareRoots:await resources.shareRoots()});
  const safetyDiscover=async()=>({...await inventory(undefined,{includeHealth:false}),shares:await adapter.shares()});
- const ops=new Operations({dir,adapter,resources,discover:safetyDiscover,allowInitialization:process.env.NAS_ALLOW_STORAGE_INITIALIZATION==='1'});await ops.init();
+ const ops=new Operations({dir,adapter,resources,features,discover:safetyDiscover,allowInitialization:process.env.NAS_ALLOW_STORAGE_INITIALIZATION==='1'});await ops.init();if(agent)features.startScheduler(ops);
  const ui=await readFile(new URL('../../public/storage-operations.html',import.meta.url),'utf8');
  const socket=agent?(process.env.NAS_AGENT_SOCKET||'/run/lightnas/storage.sock'):process.env.NAS_AGENT_SOCKET;
  const server=createServer({token,ops,discover,agent,socket,ui});server.requestTimeout=20000;server.headersTimeout=10000;
