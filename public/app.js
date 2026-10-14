@@ -1,3 +1,4 @@
+import {STORAGE_PROVIDERS} from './storage-providers.js';
 import {approveStoragePreview} from './storage-mutation-client.js';
 if (window.LIGHTNAS_PRODUCT_MODE === 'hypervisor') document.body.classList.add('product-hypervisor');
 const state = { overview: null, view: 'home', uiMode: window.LIGHTNAS_PRODUCT_MODE === 'hypervisor' ? 'hypervisor' : 'nas', folder: '', files: null, fileError: null, filesSettingsOpen: false, fileLibraryTab: 'all', filesNavExpanded: localStorage.getItem('lightnas-files-nav-expanded') !== '0', mobileFilesPeriod: localStorage.getItem('lightnas-mobile-files-period') || 'all', aiMessages: [], logs: null, fileView: ['list','grid','gallery'].includes(localStorage.getItem('lightnas-file-view')) ? localStorage.getItem('lightnas-file-view') : 'grid', fileTruncated: false, fileQuota: null, fileSectionCache: new Map(), fileSectionCheckedAt: new Map(), filesLoadingKeys: new Set(), communityCatalogCheckedAt: 0, overviewMetric: localStorage.getItem('lightnas-overview-metric') || 'cpu', lastNetworkSample: null, runtimes: null, runtimeError: null, containerError: null, spaces: null, users: null, groups: null, userAccess: null, smtp: undefined, media: null, network: null, software: null, license: null, builtinCatalog: null, communityCatalog: null, communityCatalogLoading: false, communityCatalogError: null, appSearch: '', appCategory: '', appVisibleLimit: 72, backupJobs: null, selectedBackupJobId: null, adminSection: localStorage.getItem('lightnas-admin-section') || 'general', metricHistory: { cpu: [], load: [], memory: [], storage: [], networkIn: [], networkOut: [] } };
@@ -858,7 +859,7 @@ function hypervisorView() {
 }
 
 function storageAddMenuHeader() {
-  const items = [['directory','Directory'],['btrfs','Btrfs (already mounted)']];
+  const items = STORAGE_PROVIDERS.map(provider=>[provider.id,provider.label]);
   return `<div class="storage-add-menu" data-storage-add-menu><button class="secondary storage-add-toggle" type="button" data-storage-add-toggle aria-expanded="false">Add <span>⌄</span></button><div class="storage-add-dropdown" role="menu" hidden>${items.map(([id,label]) => `<button type="button" role="menuitem" data-storage-add-type="${id}"><span class="storage-type-icon">▣</span><span>${label}</span></button>`).join('')}</div></div>`;
 }
 

@@ -7,6 +7,8 @@ import {storageAgentRoute} from '../src/storage-agent-client.mjs';
 test('storage broker allows only its typed endpoint surface',()=>{
  assert.equal(storageAgentRoute('/api/storage/agent/inventory','GET'),true);
  assert.equal(storageAgentRoute('/api/storage/agent/creation-options','GET'),true);
+ assert.equal(storageAgentRoute('/api/storage/agent/remote-storage','GET'),true);
+ assert.equal(storageAgentRoute('/api/storage/agent/remote-storage','POST'),false);
  assert.equal(storageAgentRoute('/api/storage/agent/creation-options','POST'),false);
  assert.equal(storageAgentRoute('/api/storage/agent/preview','POST'),true);
  assert.equal(storageAgentRoute('/api/storage/agent/../../network','POST'),false);

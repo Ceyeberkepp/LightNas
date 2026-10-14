@@ -7,6 +7,7 @@ import { pipeline } from 'node:stream/promises';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { getStorageInventory } from './system.mjs';
+import {storageAgentJson} from './storage-agent-client.mjs';
 
 const dataRoot = dirname(resolve(process.env.NAS_DATA_FILE || 'data/state.json'));
 const configPath = process.env.LIGHTNAS_STORAGE_CONFIG || join(dataRoot, 'storage-pools.json');
@@ -119,7 +120,7 @@ function sourceForPool(pool, inventory) {
       dedicated: Boolean(inventory.local?.dedicated)
     };
   }
-  return inventory.attachedVolumes.find(item => item.id === pool.sourceId || (pool.preparedByHostAgent && item.mountPoint === pool.mountPoint && Buffer.from(`${item.device}:${item.mountPoint}`).toString('base64url') === pool.sourceId)) || null;
+  return [...inventory.attachedVolumes, ...(inventory.mountedDataSources || [])].find(item => item.id === pool.sourceId || (pool.preparedByHostAgent && item.mountPoint === pool.mountPoint && (Buffer.from(`${item.device}:${item.mountPoint}`).toString('base64url') === pool.sourceId || (pool.managedMount && pool.sourceId === 'lightnas-mount:'+pool.id)))) || null;
 }
 
 function publicPool(pool, source) {
@@ -134,9 +135,11 @@ function publicPool(pool, source) {
     totalBytes: source?.totalBytes || 0,
     availableBytes: source?.availableBytes || 0,
     usedBytes: source?.usedBytes || 0,
-    usedPercent: source?.usedPercent || 0,
-    writable: Boolean(!source?.readOnly && (source?.writable !== false || pool?.preparedByHostAgent)),
-    online: Boolean(source),
+    usedPercent: source?.usedPercent ?? (source?.totalBytes?Math.round((source.usedBytes/source.totalBytes)*100):0),
+    writable: Boolean(!pool.remote && !source?.readOnly && (source?.writable !== false || pool?.preparedByHostAgent)),
+    online: Boolean(source && source.online !== false),
+    remote: Boolean(pool.remote),
+    capacityKnown: source?.capacityKnown !== false,
     local: pool.id === 'local',
     dedicated: pool.id === 'local' ? Boolean(source?.dedicated) : true,
     createdAt: pool.createdAt || null,
@@ -161,7 +164,11 @@ export async function listStoragePools() {
   };
   await ensureLayout(local.root, local.content).catch(() => {});
 
-  const pools = [local, ...config.pools].map(pool => publicPool(pool, sourceForPool(pool, inventory)));
+  const pools = await Promise.all([local, ...config.pools].map(async pool => {
+    if(!pool.remote)return publicPool(pool, sourceForPool(pool, inventory));
+    let source;try{source=await storageAgentJson('/v1/remote-storage?name='+encodeURIComponent(pool.id),undefined,1500);}catch{source={online:false,capacityKnown:false};}
+    return publicPool(pool,source);
+  }));
   const configuredSources = new Set(config.pools.flatMap(pool => [pool.sourceId, sourceForPool(pool, inventory)?.id]).filter(Boolean));
   const availableSources = inventory.attachedVolumes.map(volume => ({
     id: volume.id,
@@ -300,6 +307,7 @@ export async function resolveStoragePool(id, requiredType = null, requireWritabl
 
 export async function listStorageContent(poolId, type) {
   const pool = await resolveStoragePool(poolId, type, false);
+  if(pool.remote){const listing=await storageAgentJson('/v1/remote-storage?name='+encodeURIComponent(pool.id)+'&type='+encodeURIComponent(type));return {pool,type,directory:null,...listing};}
   const directory = contentDirectory(pool.root, type);
   try {
     const entries = [];
@@ -319,7 +327,7 @@ export async function listStorageContent(poolId, type) {
 export async function listContentAcrossPools(type) {
   const { pools } = await listStoragePools();
   const results = [];
-  for (const pool of pools.filter(item => item.online && item.content.includes(type))) {
+  for (const pool of pools.filter(item => item.online && !item.remote && item.content.includes(type))) {
     const content = await listStorageContent(pool.id, type);
     for (const entry of content.entries) {
       results.push({
