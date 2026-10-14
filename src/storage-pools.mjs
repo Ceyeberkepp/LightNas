@@ -119,7 +119,7 @@ function sourceForPool(pool, inventory) {
       dedicated: Boolean(inventory.local?.dedicated)
     };
   }
-  return inventory.attachedVolumes.find(item => item.id === pool.sourceId) || null;
+  return inventory.attachedVolumes.find(item => item.id === pool.sourceId || (pool.preparedByHostAgent && item.mountPoint === pool.mountPoint && Buffer.from(`${item.device}:${item.mountPoint}`).toString('base64url') === pool.sourceId)) || null;
 }
 
 function publicPool(pool, source) {
@@ -162,7 +162,7 @@ export async function listStoragePools() {
   await ensureLayout(local.root, local.content).catch(() => {});
 
   const pools = [local, ...config.pools].map(pool => publicPool(pool, sourceForPool(pool, inventory)));
-  const configuredSources = new Set(config.pools.map(pool => pool.sourceId));
+  const configuredSources = new Set(config.pools.flatMap(pool => [pool.sourceId, sourceForPool(pool, inventory)?.id]).filter(Boolean));
   const availableSources = inventory.attachedVolumes.map(volume => ({
     id: volume.id,
     mountPoint: volume.mountPoint,

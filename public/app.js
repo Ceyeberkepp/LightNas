@@ -858,7 +858,7 @@ function hypervisorView() {
 }
 
 function storageAddMenuHeader() {
-  const items = [['directory','Directory'],['lvm','LVM'],['lvm-thin','LVM-Thin'],['btrfs','BTRFS'],['nfs','NFS'],['smb-cifs','SMB/CIFS'],['glusterfs','GlusterFS'],['iscsi','iSCSI'],['cephfs','CephFS'],['rbd','RBD'],['zfs-over-iscsi','ZFS over iSCSI'],['zfs','ZFS'],['proxmox-backup-server','Proxmox Backup Server'],['esxi','ESXi']];
+  const items = [['directory','Directory'],['btrfs','Btrfs (already mounted)']];
   return `<div class="storage-add-menu" data-storage-add-menu><button class="secondary storage-add-toggle" type="button" data-storage-add-toggle aria-expanded="false">Add <span>⌄</span></button><div class="storage-add-dropdown" role="menu" hidden>${items.map(([id,label]) => `<button type="button" role="menuitem" data-storage-add-type="${id}"><span class="storage-type-icon">▣</span><span>${label}</span></button>`).join('')}</div></div>`;
 }
 

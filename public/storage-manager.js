@@ -81,13 +81,15 @@ function ensureStorageDialog() {
   dialog.className='lightnas-dialog runtime-dialog';
   dialog.innerHTML=`
     <div class="dialog-body">
-      <div class="dialog-head"><div><span class="eyebrow">LIGHTNAS STORAGE</span><h2 data-storage-dialog-title>Storage</h2></div><button type="button" class="dialog-close" data-storage-dialog-close>×</button></div>
+      <div class="dialog-head"><div><span class="eyebrow">LIGHTNAS STORAGE</span><h2 data-storage-dialog-title>Storage</h2></div><button type="button" class="dialog-close" data-storage-dialog-close aria-label="Close">×</button></div>
       <div data-storage-dialog-body></div>
       <div class="form-error" data-storage-dialog-error role="alert"></div>
-      <div class="dialog-actions"><button class="secondary" type="button" data-storage-dialog-close>Close</button></div>
+      <div class="dialog-actions" data-storage-dialog-footer><button class="secondary" type="button" data-storage-dialog-close>Close</button></div>
     </div>`;
   document.body.append(dialog);
-  dialog.querySelectorAll('[data-storage-dialog-close]').forEach(button=>button.addEventListener('click',()=>dialog.close()));
+  dialog.addEventListener('click',event=>{
+    if(event.target.closest('[data-storage-dialog-close]')) dialog.close();
+  });
   return dialog;
 }
 async function loadStoragePools() {
@@ -137,52 +139,27 @@ async function refreshStorageManager() {
   try{await loadStoragePools();renderStorageManager();}
   catch(error){if(slot) slot.innerHTML=`<div class="module-note">Storage manager unavailable: ${sEsc(error.message)}</div>`;}
 }
-function openCreateStorage(sourceId='', provider='directory') {
+async function openCreateStorage(sourceId='', provider='directory') {
   const data=storageUi.data;
   if(!data) return;
-  const providerEntry=STORAGE_ADD_TYPES.find(([id])=>id===provider)||STORAGE_ADD_TYPES[0];
+  const providerEntry=STORAGE_ADD_TYPES.find(([id])=>id===provider);
+  if(!providerEntry) return;
   provider=providerEntry[0];
   const providerLabel=providerEntry[1];
-  const sources=(data.availableSources||[]).filter(item=>!item.configured);
+  let options={sources:[]}, creationError='';
+  try{options=await sRequest('/api/storage/agent/creation-options');}
+  catch(problem){creationError=problem.message;}
+  const sources=(options.sources||[]).filter(item=>!item.configured && (provider!=='btrfs'||item.type==='btrfs')).map(item=>{
+    const volume=data.availableSources?.find(volume=>volume.mountPoint===item.path && volume.device===item.device);
+    return {...volume,...item,mountPoint:item.path,mountedReadOnly:item.readOnly,totalBytes:volume?.totalBytes??item.size};
+  });
   const writableSources=sources.filter(item=>!item.mountedReadOnly);
   const dialog=ensureStorageDialog();
   dialog.querySelector('[data-storage-dialog-title]').textContent=`Add ${providerLabel} storage`;
   dialog.querySelector('[data-storage-dialog-error]').textContent='';
 
-  const localTypes=new Set(['directory','lvm','lvm-thin','btrfs','zfs']);
-  const providerFields={
-    directory:'',
-    lvm:`<label>Volume group<input name="vgName" placeholder="vg-data"><small>Optional label for the LVM volume group behind this mounted source.</small></label>`,
-    'lvm-thin':`<label>Volume group<input name="vgName" placeholder="vg-data"></label><label>Thin pool<input name="thinPool" placeholder="thinpool"></label>`,
-    btrfs:'',
-    zfs:`<label>ZFS pool / dataset<input name="dataset" placeholder="tank/lightnas"><small>Optional dataset label for this mounted ZFS source.</small></label>`,
-    nfs:`<label>NFS server<input name="server" placeholder="192.168.1.20" required></label><label>NFS export<input name="exportPath" placeholder="/exports/lightnas" required></label><label>Mount options<input name="mountOptions" placeholder="vers=4.2"></label>`,
-    'smb-cifs':`<label>SMB server<input name="server" placeholder="fileserver.local" required></label><label>Share<input name="share" placeholder="LightNAS" required></label><label>Username<input name="username" autocomplete="off"></label><label>Password<input name="password" type="password" autocomplete="new-password"></label><label>Domain / workgroup<input name="domain" placeholder="WORKGROUP"></label>`,
-    glusterfs:`<label>Gluster server<input name="server" placeholder="gluster01.local" required></label><label>Volume name<input name="volume" placeholder="gv0" required></label>`,
-    iscsi:`<label>Portal<input name="portal" placeholder="192.168.1.30:3260" required></label><label>Target IQN<input name="target" placeholder="iqn.2026-01.local.storage:target1" required></label><label>CHAP username<input name="username"></label><label>CHAP password<input name="password" type="password"></label>`,
-    cephfs:`<label>Monitor hosts<input name="monitors" placeholder="10.0.0.11,10.0.0.12" required></label><label>Filesystem name<input name="filesystem" placeholder="cephfs" required></label><label>Ceph user<input name="username" placeholder="admin"></label><label>Secret / key<input name="secret" type="password"></label>`,
-    rbd:`<label>Monitor hosts<input name="monitors" placeholder="10.0.0.11,10.0.0.12" required></label><label>RBD pool<input name="rbdPool" placeholder="rbd" required></label><label>Ceph user<input name="username" placeholder="admin"></label><label>Secret / key<input name="secret" type="password"></label>`,
-    'zfs-over-iscsi':`<label>iSCSI portal<input name="portal" placeholder="192.168.1.30:3260" required></label><label>ZFS pool<input name="zfsPool" placeholder="tank" required></label><label>Target IQN<input name="target" placeholder="iqn.2026-01.local.zfs:lightnas"></label>`,
-    'proxmox-backup-server':`<label>Server<input name="server" placeholder="pbs.local:8007" required></label><label>Datastore<input name="datastore" placeholder="backup" required></label><label>User / API token ID<input name="username" placeholder="lightnas@pbs!token"></label><label>Token secret<input name="secret" type="password"></label><label>Fingerprint<input name="fingerprint" placeholder="AA:BB:CC:..."></label>`,
-    esxi:`<label>ESXi / vCenter server<input name="server" placeholder="vcenter.local" required></label><label>Datastore<input name="datastore" placeholder="datastore1" required></label><label>Username<input name="username" autocomplete="off"></label><label>Password<input name="password" type="password" autocomplete="new-password"></label>`
-  }[provider] || '';
-
-  const providerHelp={
-    directory:'Use a mounted directory or attached volume already visible to LightNAS.',
-    lvm:'Register a mounted LVM-backed volume and record its volume-group metadata.',
-    'lvm-thin':'Register a mounted LVM-Thin source and record its VG/thin-pool metadata.',
-    btrfs:'Register a mounted BTRFS filesystem or subvolume.',
-    zfs:'Register a mounted ZFS pool or dataset.',
-    nfs:'Enter the NFS endpoint and select the mounted NFS volume LightNAS should manage.',
-    'smb-cifs':'Enter the SMB/CIFS endpoint and select the mounted share LightNAS should manage.',
-    glusterfs:'Enter the GlusterFS endpoint and select its mounted volume.',
-    iscsi:'Enter the iSCSI target details and select the mounted filesystem exposed from that target.',
-    cephfs:'Enter the CephFS cluster details and select its mounted filesystem.',
-    rbd:'Enter the Ceph RBD details and select the mounted RBD-backed filesystem.',
-    'zfs-over-iscsi':'Enter the iSCSI/ZFS target details and select its mounted filesystem.',
-    'proxmox-backup-server':'Enter the backup server details and select the mounted datastore path LightNAS should manage.',
-    esxi:'Enter the ESXi/vCenter datastore details and select the mounted datastore path LightNAS should manage.'
-  }[provider] || 'Configure this storage provider.';
+  dialog.querySelector('[data-storage-dialog-footer]').hidden=true;
+  const providerHelp=provider==='btrfs'?'Use an existing mounted Btrfs filesystem.':'Use a mounted directory or attached data volume already visible to LightNAS.';
 
   dialog.querySelector('[data-storage-dialog-body]').innerHTML=`
     <form data-storage-create-form class="storage-create-form">
@@ -190,15 +167,14 @@ function openCreateStorage(sourceId='', provider='directory') {
       <input type="hidden" name="provider" value="${sEsc(provider)}">
       <div class="storage-create-grid">
         <label>Storage name<input name="name" required pattern="[A-Za-z][A-Za-z0-9_-]{1,31}" placeholder="fastssd" autocomplete="off"><small>2–32 letters, numbers, dashes, or underscores.</small></label>
-        ${providerFields}
-        <label>${localTypes.has(provider)?'Volume':'Mounted backing path'}<select name="sourceId" required ${writableSources.length?'':'disabled'}>
+        <label>Volume<select name="sourceId" required ${writableSources.length?'':'disabled'}>
           ${writableSources.length?'<option value="">Select a volume…</option>':'<option value="">No writable volumes available</option>'}
           ${sources.map(item=>`<option value="${sEsc(item.id)}" ${item.mountedReadOnly?'disabled':''}>${sEsc(sourceLabel(item))}${item.mountedReadOnly?' · read only':item.writable?'':' · ready to claim'}</option>`).join('')}
-        </select><small>${writableSources.length?'Choose the mounted source LightNAS will use for actual data. Provider connection details are saved with the storage definition.':'Expose or mount this storage to the LightNAS OS first, then rescan.'}</small></label>
+        </select><small>${writableSources.length?'Choose the mounted data volume LightNAS will use. Existing files are preserved.':'Expose or mount this storage to the LightNAS OS first, then rescan.'}</small></label>
       </div>
       <div class="storage-content-heading"><div><h3>What can this storage hold?</h3><p class="muted">Choose the content types you want available on this pool.</p></div><button class="secondary storage-select-all" type="button" data-storage-toggle-content>Select all</button></div>
       <div class="content-policy-grid storage-content-policy">${contentCheckboxes(data.contentTypes||[],['iso','vztmpl','images','rootdir','backup','snippets','files'])}</div>
-      ${writableSources.length?'': '<div class="module-note storage-volume-warning"><b>No usable volume detected.</b> Mount or expose the selected provider to LightNAS read/write, then rescan.</div>'}
+      ${creationError?`<div class="module-note storage-volume-warning">${sEsc(creationError)}</div>`:writableSources.length?'': '<div class="module-note storage-volume-warning"><b>No usable volume detected.</b> Mount a writable data volume under /storage, /mnt, /media, /srv or /data, then rescan. Btrfs requires a mounted Btrfs filesystem.</div>'}
       <div class="dialog-actions storage-create-actions"><button class="secondary" type="button" data-storage-dialog-close>Cancel</button><button class="primary" type="submit" ${writableSources.length?'':'disabled'}>Create storage</button></div>
     </form>`;
 
@@ -218,29 +194,21 @@ function openCreateStorage(sourceId='', provider='directory') {
     const form=event.currentTarget,error=dialog.querySelector('[data-storage-dialog-error]');
     error.textContent='Creating storage…';
     const content=[...form.querySelectorAll('.content-policy-grid input:checked')].map(input=>input.value);
-    const formData=new FormData(form);
-    const providerConfig={};
-    for(const [key,value] of formData.entries()){
-      if(['name','sourceId','provider'].includes(key)) continue;
-      if(key==='content') continue;
-      if(String(value).trim()) providerConfig[key]=String(value).trim();
-    }
-    // Never persist plaintext passwords in the storage config. They are used
-    // only for the current setup flow until a secure credential store is wired.
-    delete providerConfig.password;
-    delete providerConfig.secret;
+    const submit=form.querySelector('[type="submit"]');
+    submit.disabled=true;
     try{
       await sRequest('/api/storage/pools',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         name:form.elements.name.value,
         sourceId:form.elements.sourceId.value,
         provider:form.elements.provider.value,
-        providerConfig,
+        providerConfig:{},
         content
       })});
       dialog.close();await refreshStorageManager();
     }catch(problem){error.textContent=problem.message;}
-  },{once:true});
-  dialog.showModal();
+    finally{submit.disabled=false;}
+  });
+  if(!dialog.open) dialog.showModal();
 }
 
 async function loadStorageContent(poolId,type) {
@@ -251,6 +219,7 @@ async function renderManageStorage(poolId,activeType=null) {
   const pool=(data.pools||[]).find(item=>item.id===poolId);
   if(!pool) return;
   const dialog=ensureStorageDialog();
+  dialog.querySelector('[data-storage-dialog-footer]').hidden=false;
   dialog.querySelector('[data-storage-dialog-title]').textContent=`Storage · ${pool.name}`;
   dialog.querySelector('[data-storage-dialog-error]').textContent='';
   const fileTypes=pool.content.filter(type=>['iso','vztmpl','backup','snippets'].includes(type));
@@ -295,7 +264,8 @@ ${selectedType==='vztmpl'? `<div class="head-actions"><button class="primary" ty
       await sRequest(`/api/storage/pools/${encodeURIComponent(pool.id)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});
       await refreshStorageManager();await renderManageStorage(pool.id,selectedType);
     }catch(problem){error.textContent=problem.message;}
-  },{once:true});
+    finally{submit.disabled=false;}
+  });
   if (!dialog.open) dialog.showModal();
 }
 

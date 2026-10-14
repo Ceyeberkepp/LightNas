@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { access, constants, readFile, statfs, writeFile, rm } from 'node:fs/promises';
+import { access, constants, readFile, lstat, statfs, writeFile, rm } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -22,7 +22,7 @@ async function readText(path, fallback = '') {
 }
 
 function isSystemMount(mountPoint) {
-  return mountPoint === '/' || mountPoint === '/boot' || mountPoint === '/boot/efi' ||
+  return /^\/(?:usr\/lib\/wsl|mnt\/wslg?)(?:\/|$)/.test(mountPoint) || mountPoint === '/init' || mountPoint === '/' || mountPoint === '/boot' || mountPoint === '/boot/efi' ||
     mountPoint === '/etc/hosts' || mountPoint === '/etc/hostname' || mountPoint === '/etc/resolv.conf' ||
     mountPoint === '/var/lib/lightnas-pve' || mountPoint.startsWith('/var/lib/lightnas-pve/');
 }
@@ -308,6 +308,7 @@ export async function getFilesystems() {
     if (seen.has(mountPoint)) continue;
     seen.add(mountPoint);
     try {
+      if (!(await lstat(mountPoint)).isDirectory()) continue;
       const stats = await statfs(mountPoint, { bigint: true });
       const total = Number(stats.blocks * stats.bsize);
       const available = Number(stats.bavail * stats.bsize);

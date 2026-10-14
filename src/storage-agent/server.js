@@ -20,6 +20,7 @@ export function createServer({token,ops,discover,agent=false,socket,ui}){
   }
   try{
    const url=new URL(req.url,'http://localhost');const parts=url.pathname.split('/').filter(Boolean);
+   if(req.method==='GET'&&url.pathname==='/v1/creation-options')return reply(200,await ops.resources.creationOptions());
    if(req.method==='GET'&&url.pathname==='/v1/inventory')return reply(200,await discover());
    if(req.method==='GET'&&url.pathname==='/v1/protection')return reply(200,await ops.features.protectionInventory());
    if(req.method==='GET'&&url.pathname==='/v1/features')return reply(200,await ops.features.inventory());
