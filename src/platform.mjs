@@ -10,6 +10,12 @@ export const ARCH_ALIASES = Object.freeze({
   armhf: 'armhf',
   ia32: 'i386',
   i386: 'i386',
+  i486: 'i386',
+  i586: 'i386',
+  x86: 'i386',
+  armv7l: 'armhf',
+  armv6l: 'armel',
+  armel: 'armel',
   i686: 'i386',
   riscv64: 'riscv64'
 });
@@ -28,10 +34,11 @@ export function hostArchitecture() {
 // as generally supported until their validation job is enabled and passing.
 export const PLATFORM_SUPPORT = Object.freeze({
   amd64: { status: 'validated', controlPlane: 'node22', installer: true },
-  arm64: { status: 'target', controlPlane: 'node22', installer: false },
-  riscv64: { status: 'target', controlPlane: 'pending-runtime-validation', installer: false },
-  i386: { status: 'legacy-target', controlPlane: 'legacy-light-runtime-required', installer: false },
-  armhf: { status: 'legacy-target', controlPlane: 'legacy-light-runtime-required', installer: false }
+  arm64: { status: 'target', controlPlane: 'node22-native-probe', installer: true },
+  riscv64: { status: 'target', controlPlane: 'distribution-node22-native-probe', installer: true },
+  i386: { status: 'target', controlPlane: 'node22-source-probe', installer: true },
+  armhf: { status: 'target', controlPlane: 'node22-native-probe', installer: true },
+  armel: { status: 'target', controlPlane: 'node22-source-probe', installer: true }
 });
 
 export function platformSupport(architecture = hostArchitecture()) {

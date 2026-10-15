@@ -30,7 +30,7 @@ install_missing_packages() {
   fi
   apt_update_once
   echo "      Installing missing packages: ${missing[*]}"
-  apt-get install -y --no-install-recommends "${missing[@]}"
+  apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends "${missing[@]}"
 }
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -50,42 +50,45 @@ case "${LIGHTNAS_ARCH}" in
   x86_64) LIGHTNAS_ARCH=amd64 ;;
   aarch64) LIGHTNAS_ARCH=arm64 ;;
   i386|i486|i586|i686) LIGHTNAS_ARCH=i386 ;;
-  armv7l|armv6l) LIGHTNAS_ARCH=armhf ;;
+  armv7l) LIGHTNAS_ARCH=armhf ;;
+  armv6l) LIGHTNAS_ARCH=armel ;;
 esac
-if [[ "${LIGHTNAS_ARCH}" != "amd64" && "${LIGHTNAS_ALLOW_UNVALIDATED_ARCH:-0}" != "1" ]]; then
-  echo "LightNAS detected architecture ${LIGHTNAS_ARCH}. This architecture is an engineering target but is not release-qualified yet." >&2
-  echo "Validated installer architecture: amd64. Set LIGHTNAS_ALLOW_UNVALIDATED_ARCH=1 only for development testing." >&2
-  exit 1
+case "${LIGHTNAS_ARCH}" in
+  amd64|arm64|armhf|riscv64|i386|armel) ;;
+  *) echo "Unsupported architecture: ${LIGHTNAS_ARCH}" >&2; exit 1 ;;
+esac
+# Keep LIGHTNAS_ALLOW_UNVALIDATED_ARCH accepted for older automation, but use
+# native preflight rather than routing every architecture to an amd64 runtime.
+if [[ "${LIGHTNAS_ARCH}" != amd64 ]]; then
+  echo "Architecture ${LIGHTNAS_ARCH}: native installer path; hardware qualification is still pending."
 fi
+# Validated installer architecture: amd64. Targets remain labelled unqualified.
 echo "Detected LightNAS architecture: ${LIGHTNAS_ARCH}"
 
-echo "[1/6] Checking system requirements..."
+echo "[1/6] Preparing native platform detection..."
+install_missing_packages ca-certificates curl git gnupg python3
+echo "      Updating LightNAS source..."
+if [[ -d "${INSTALL_DIRECTORY}/.git" ]]; then
+  # Never report a successful update if fetching/pulling failed.
+  git -C "${INSTALL_DIRECTORY}" rev-parse --is-inside-work-tree >/dev/null
+  git -C "${INSTALL_DIRECTORY}" pull --ff-only
+elif [[ -e "${INSTALL_DIRECTORY}" ]]; then
+  echo "Refusing to overwrite existing non-Git path: ${INSTALL_DIRECTORY}" >&2
+  exit 1
+else
+  git clone --depth 1 "${REPOSITORY_URL}" "${INSTALL_DIRECTORY}"
+fi
+
+python3 "${INSTALL_DIRECTORY}/scripts/platform-preflight.py" --architecture "${LIGHTNAS_ARCH}"
+echo "      Checking system requirements..."
 install_missing_packages \
-  ca-certificates curl git gnupg python3 ffmpeg imagemagick qrencode acl novnc iproute2 nftables ufw samba openssh-server ovmf \
+  ca-certificates curl git gnupg python3 ffmpeg imagemagick qrencode acl novnc iproute2 nftables ufw samba openssh-server \
   tar gzip xz-utils zstd util-linux udev smartmontools nfs-kernel-server nfs-common cifs-utils lvm2 open-iscsi e2fsprogs btrfs-progs openssl rsync rclone certbot python3-certbot-dns-cloudflare
 
-# Node.js and npm are both mandatory. Some minimal images have node but no
-# npm; do not skip the dependency installation in that case.
-node_major=0
-if command -v node >/dev/null 2>&1; then
-  node_version="$(node --version 2>/dev/null || true)"
-  [[ "$node_version" =~ ^v([0-9]+)\. ]] && node_major="${BASH_REMATCH[1]}"
-fi
-if (( node_major < 22 )) || ! command -v npm >/dev/null 2>&1; then
-  echo "[2/6] Installing Node.js 22..."
-  install -d -m 0755 /etc/apt/keyrings
-  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-    | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
-  cat >/etc/apt/sources.list.d/nodesource.list <<'EOF'
-deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main
-EOF
-  APT_UPDATED=0
-  apt_update_once
-  apt-get install -y --no-install-recommends nodejs
-else
-  echo "[2/6] Node.js $(node --version) and npm $(npm --version) are already installed."
-fi
-
+# Every architecture runs the same full application and runtime API contract.
+echo "[2/6] Selecting native Node.js >=22 runtime..."
+LIGHTNAS_ARCH="${LIGHTNAS_ARCH}" bash "${INSTALL_DIRECTORY}/scripts/install-node-runtime.sh"
+NODE_BINARY="$(command -v node)"
 # Fail early if an image ships broken executables or an incomplete Node.js
 # installation. Install npm separately where the distribution splits it out.
 for tool in curl git node npm; do
@@ -175,21 +178,16 @@ fi
 if ! systemd-detect-virt --container >/dev/null 2>&1 || [[ "${LIGHTNAS_ENABLE_NESTED_RUNTIMES:-0}" == "1" ]]; then
   echo "      Checking native VM engine..."
   install_missing_packages \
-    qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients virtinst ovmf
+    qemu-utils libvirt-daemon-system libvirt-clients virtinst
+  case "${LIGHTNAS_ARCH}" in
+    amd64|i386) install_missing_packages qemu-system-x86 ovmf ;;
+    arm64|armhf|armel) install_missing_packages qemu-system-arm qemu-efi-aarch64 ;;
+    riscv64) install_missing_packages qemu-system-misc opensbi ;;
+  esac
 fi
 
-echo "[3/6] Installing LightNAS..."
-if [[ -d "${INSTALL_DIRECTORY}/.git" ]]; then
-  # Never report a successful update if fetching/pulling failed.
-  git -C "${INSTALL_DIRECTORY}" rev-parse --is-inside-work-tree >/dev/null
-  git -C "${INSTALL_DIRECTORY}" pull --ff-only
-elif [[ -e "${INSTALL_DIRECTORY}" ]]; then
-  echo "Refusing to overwrite existing non-Git path: ${INSTALL_DIRECTORY}" >&2
-  exit 1
-else
-  git clone --depth 1 "${REPOSITORY_URL}" "${INSTALL_DIRECTORY}"
-fi
 
+echo "[3/6] Installing LightNAS dependencies..."
 # Install production dependencies only when package-lock.json changed or the
 # dependency tree is missing. Ordinary source-only upgrades skip npm entirely.
 install -d -m 0700 "${DATA_DIRECTORY}"
@@ -230,6 +228,9 @@ LIGHTNAS_PLATFORM_VALIDATED=$([[ "${LIGHTNAS_ARCH}" == "amd64" ]] && echo 1 || e
 EOF
 chown root:lightnas /etc/lightnas/platform.env
 chmod 0640 /etc/lightnas/platform.env
+python3 "${INSTALL_DIRECTORY}/scripts/platform-preflight.py" --architecture "${LIGHTNAS_ARCH}" >/etc/lightnas/platform.json
+chown root:lightnas /etc/lightnas/platform.json
+chmod 0640 /etc/lightnas/platform.json
 
 # On a fresh interactive install, enumerate real physical Ethernet and Wi-Fi
 # adapters and let the administrator choose the management uplink. Existing
@@ -455,7 +456,7 @@ User=root
 Group=lightnas
 EnvironmentFile=-/etc/lightnas/runtime.env
 WorkingDirectory=${INSTALL_DIRECTORY}
-ExecStart=/usr/bin/node ${INSTALL_DIRECTORY}/src/storage-agent/server.js --agent
+ExecStart=${NODE_BINARY} ${INSTALL_DIRECTORY}/src/storage-agent/server.js --agent
 Environment=NAS_AGENT_TOKEN_FILE=/etc/lightnas/storage-agent.token
 Environment=NAS_AGENT_SOCKET=/run/lightnas-storage/storage.sock
 Environment=NAS_JOB_DIR=/var/lib/lightnas-storage
@@ -498,7 +499,7 @@ Environment=NODE_OPTIONS=--max-old-space-size=256
 Environment=NAS_HOST=0.0.0.0
 Environment=NAS_PORT=3080
 Environment=NAS_DATA_FILE=${DATA_DIRECTORY}/state.json
-ExecStart=/usr/bin/node ${INSTALL_DIRECTORY}/src/server.mjs
+ExecStart=${NODE_BINARY} ${INSTALL_DIRECTORY}/src/server.mjs
 Restart=on-failure
 RestartSec=5
 MemoryHigh=300M
@@ -552,6 +553,27 @@ fi
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
   ufw allow 3080/tcp >/dev/null
 fi
+
+# Optional on the base 2 GiB NAS; UI installation uses an approved root job.
+case "${LIGHTNAS_KUBERNETES_MODE:-off}" in
+  off) ;;
+  server|agent)
+    kubernetes_request="$(mktemp /etc/lightnas/kubernetes-install.XXXXXX)"
+    chmod 0600 "${kubernetes_request}"
+    python3 - "${kubernetes_request}" <<'PY_K8S_REQUEST'
+import json,os,sys
+from pathlib import Path
+mode=os.environ['LIGHTNAS_KUBERNETES_MODE']
+config={'mode':mode}
+if mode=='agent': config.update(server=os.environ.get('LIGHTNAS_KUBERNETES_SERVER',''),token=os.environ.get('LIGHTNAS_KUBERNETES_TOKEN',''))
+else: config.update(bindAddress=os.environ.get('LIGHTNAS_KUBERNETES_BIND','0.0.0.0'),clusterCidr=os.environ.get('LIGHTNAS_KUBERNETES_POD_CIDR','10.242.0.0/16'),serviceCidr=os.environ.get('LIGHTNAS_KUBERNETES_SERVICE_CIDR','10.243.0.0/16'))
+Path(sys.argv[1]).write_text(json.dumps(config))
+PY_K8S_REQUEST
+    if ! python3 "${INSTALL_DIRECTORY}/scripts/install-kubernetes.py" "${kubernetes_request}"; then rm -f "${kubernetes_request}"; exit 1; fi
+    rm -f "${kubernetes_request}"
+    ;;
+  *) echo 'LIGHTNAS_KUBERNETES_MODE must be off, server or agent.' >&2; exit 1 ;;
+esac
 
 echo "[6/6] Verifying LightNAS..."
 for attempt in {1..15}; do

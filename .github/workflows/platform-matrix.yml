@@ -1,0 +1,80 @@
+name: Native platform runtime qualification
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'config/platform-support.json'
+      - 'config/kubernetes-release.json'
+      - '.github/workflows/platform-matrix.yml'
+permissions:
+  contents: read
+jobs:
+  native-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: amd64
+            platform: linux/amd64
+            image: node:22-bookworm-slim
+          - architecture: arm64
+            platform: linux/arm64
+            image: node:22-bookworm-slim
+          - architecture: armhf
+            platform: linux/arm/v7
+            image: node:22-bookworm-slim
+          - architecture: riscv64
+            platform: linux/riscv64
+            image: debian:trixie-slim
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm,arm64,riscv64
+      - name: Execute native ISA runtime, API and compatibility tests
+        env:
+          TARGET_PLATFORM: ${{ matrix.platform }}
+          TARGET_IMAGE: ${{ matrix.image }}
+          EXPECTED_ARCH: ${{ matrix.architecture }}
+        run: |
+          docker run --rm --platform "$TARGET_PLATFORM" -e EXPECTED_ARCH -v "$PWD:/source:ro" "$TARGET_IMAGE" bash -ec '
+            apt-get update
+            apt-get install -y --no-install-recommends python3 curl openssl util-linux
+            if ! command -v node >/dev/null; then apt-get install -y nodejs npm; fi
+            cp -a /source /work
+            cd /work
+            python3 scripts/platform-preflight.py --architecture "$EXPECTED_ARCH"
+            LIGHTNAS_ARCH="$EXPECTED_ARCH" bash scripts/install-node-runtime.sh
+            npm ci --omit=dev --no-audit --no-fund
+            node --test test/platform-qualification.test.mjs test/kubernetes.test.mjs
+            python3 -m unittest discover -s test -p platform_preflight_test.py
+            mkdir -p /tmp/lightnas-smoke
+            NAS_DATA_FILE=/tmp/lightnas-smoke/state.json NAS_HOST=127.0.0.1 NAS_PORT=3081 NODE_OPTIONS=--max-old-space-size=256 node src/server.mjs >/tmp/lightnas-smoke/log 2>&1 &
+            pid=$!
+            trap "kill $pid 2>/dev/null || true" EXIT
+            for attempt in $(seq 1 60); do curl -fsS http://127.0.0.1:3081/api/status && exit 0; sleep 1; done
+            cat /tmp/lightnas-smoke/log
+            exit 1
+          '
+  full-i386:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build maintained 32-bit runtime and execute the full backend
+        run: |
+          docker run --rm --platform linux/386 -v "$PWD:/source:ro" debian:bookworm-slim bash -ec '
+            apt-get update
+            apt-get install -y --no-install-recommends python3 curl ca-certificates
+            cp -a /source /work
+            cd /work
+            LIGHTNAS_ARCH=i386 bash scripts/install-node-runtime.sh
+            node -e "if(process.arch!==\"ia32\")process.exit(1)"
+            npm ci --omit=dev --no-audit --no-fund
+            node --test test/platform-qualification.test.mjs test/kubernetes.test.mjs
+            PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s test -p platform_preflight_test.py
+          '
