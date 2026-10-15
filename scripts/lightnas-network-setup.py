@@ -96,13 +96,19 @@ def configure(args):
                                 check=False)
         if result.returncode:
             raise RuntimeError("Could not set hostname")
-    if selected["type"] == "wifi":
-        # nmcli may request the password interactively; never put it on the
-        # process command line or persist it into LightNAS logs.
+    if selected["type"] == "wifi" and not args.wifi_password_file:
+        # Keep the existing text-console credential prompt unchanged.
         cmd = ["nmcli", "--ask", "device", "wifi", "connect", args.ssid,
                "ifname", args.interface]
         if subprocess.run(cmd, check=False).returncode:
             raise RuntimeError("Wi-Fi authentication/association failed")
+    if args.wifi_password_file:
+        import os
+        info = os.stat(args.wifi_password_file)
+        if info.st_uid != 0 or (info.st_mode & 0o077):
+            raise ValueError("Wi-Fi secret file must be root-owned and mode 0600")
+        if selected["type"] != "wifi":
+            raise ValueError("Wi-Fi secret provided for a non-wireless interface")
     profile = run("nmcli", "-g", "GENERAL.CONNECTION", "device",
                   "show", args.interface)
     if not profile or profile == "--":
@@ -110,6 +116,8 @@ def configure(args):
         cmd = ["nmcli", "connection", "add", "type",
                "wifi" if selected["type"] == "wifi" else "ethernet",
                "ifname", args.interface, "con-name", profile]
+        if selected["type"] == "wifi":
+            cmd += ["ssid", args.ssid]
         if subprocess.run(cmd, check=False).returncode:
             raise RuntimeError("Could not create network connection profile")
     cmd = ["nmcli", "connection", "modify", profile,
@@ -122,7 +130,18 @@ def configure(args):
         cmd += ["ipv4.addresses", "", "ipv4.gateway", "", "ipv4.dns", ""]
     if subprocess.run(cmd, check=False).returncode:
         raise RuntimeError("Could not configure connection")
-    if subprocess.run(["nmcli", "connection", "up", profile], check=False).returncode:
+    if args.wifi_password_file:
+        # NM reads the secret from a root-only file; no password appears in argv.
+        if subprocess.run(["nmcli", "connection", "modify", profile,
+                           "802-11-wireless.ssid", args.ssid,
+                           "802-11-wireless-security.key-mgmt", "wpa-psk"],
+                          check=False).returncode:
+            raise RuntimeError("Could not configure Wi-Fi authentication")
+        activate = ["nmcli", "connection", "up", profile,
+                    "passwd-file", args.wifi_password_file]
+    else:
+        activate = ["nmcli", "connection", "up", profile]
+    if subprocess.run(activate, check=False).returncode:
         raise RuntimeError("Connection activation failed")
     return discover()
 
@@ -138,6 +157,7 @@ def main():
     parser.add_argument("--dns", nargs="+")
     parser.add_argument("--fqdn", help="Hostname or FQDN; hyphens and dots are valid")
     parser.add_argument("--ssid", help="Wi-Fi network name")
+    parser.add_argument("--wifi-password-file", help="Root-only NetworkManager passwd-file for WPA-PSK")
     args = parser.parse_args()
     if args.apply:
         if not args.interface:
