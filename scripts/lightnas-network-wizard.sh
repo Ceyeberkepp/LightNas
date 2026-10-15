@@ -18,13 +18,13 @@ mapfile -t nics < <(python3 - "$temp" <<'PY'
 import json,sys
 for nic in json.load(open(sys.argv[1]))["interfaces"]:
     desc = f'{nic["type"]} {nic.get("state") or "unknown"}'
-    print(nic["name"] + "\\t" + desc)
+    print(nic["name"] + "\t" + desc)
 PY
 )
 (( ${#nics[@]} > 0 )) || { whiptail --msgbox "No managed Ethernet or Wi-Fi devices were found. Check firmware, drivers and rfkill." 10 74; exit 1; }
 choices=()
 for nic in "${nics[@]}"; do
-  choices+=("${nic%%$'\\t'*}" "${nic#*$'\\t'}")
+  choices+=("${nic%%$'\t'*}" "${nic#*$'\t'}")
 done
 iface="$(whiptail --title 'LightNAS • Network Setup' --menu 'Choose a network interface' 18 76 10 "${choices[@]}" 3>&1 1>&2 2>&3)" || exit 0
 type="$(python3 - "$temp" "$iface" <<'PY'
@@ -42,7 +42,7 @@ if [[ "$type" == wifi ]]; then
   mapfile -t networks < <(python3 - "$temp" <<'PY'
 import json,sys
 for ssid in json.load(open(sys.argv[1]))["wifi_ssids"]:
-    if ssid and "\\n" not in ssid and "\\r" not in ssid:
+    if ssid and "\n" not in ssid and "\r" not in ssid:
         print(ssid)
 PY
 )
@@ -70,10 +70,10 @@ if [[ "$method" == static ]]; then
 fi
 fqdn="$(whiptail --title 'LightNAS • Hostname' --inputbox 'Hostname or FQDN (letters, numbers, hyphens and dots)' 10 76 3>&1 1>&2 2>&3)" || exit 0
 [[ -z "$fqdn" ]] || args+=(--fqdn "$fqdn")
-review="Interface: $iface ($type)\\nIPv4: $method\\nHostname: ${fqdn:-unchanged}"
-if [[ "$method" == static ]]; then review+="\\nAddress: $address\\nGateway: $gateway\\nDNS: $dns"; fi
-if [[ "$type" == wifi ]]; then review+="\\nWi-Fi: $ssid"; fi
-whiptail --title 'LightNAS • Review' --yesno "$(printf '%b' "$review")\\n\\nApplying changes may disconnect remote sessions. Continue?" 19 76 || exit 0
+review="Interface: $iface ($type)\nIPv4: $method\nHostname: ${fqdn:-unchanged}"
+if [[ "$method" == static ]]; then review+="\nAddress: $address\nGateway: $gateway\nDNS: $dns"; fi
+if [[ "$type" == wifi ]]; then review+="\nWi-Fi: $ssid"; fi
+whiptail --title 'LightNAS • Review' --yesno "$(printf '%b' "$review")\n\nApplying changes may disconnect remote sessions. Continue?" 19 76 || exit 0
 # Display the real resulting configuration, never invented gateway/DNS.
 python3 "$PY" "${args[@]}"
 whiptail --title 'LightNAS • Configured' --msgbox "$(python3 "$PY" | head -25)" 20 78
