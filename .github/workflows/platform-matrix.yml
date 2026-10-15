@@ -1,6 +1,14 @@
 name: Native platform runtime qualification
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'config/platform-support.json'
+      - 'config/kubernetes-release.json'
+      - '.github/workflows/platform-matrix.yml'
   pull_request:
     paths:
       - 'src/**'
