@@ -16,7 +16,9 @@ test('Storage and Pools & datasets have separate responsibilities', async () => 
   assert.match(poolsView, /Pools & datasets/);
   assert.match(poolsView, /Storage pools/);
   assert.match(poolsView, /Datasets/);
-  assert.match(poolsView, /data-create-storage/);
+  assert.match(poolsView, /data-nf-action="pool-create"/);
+  assert.match(poolsView, /data-nf-action="dataset-create"/);
+  assert.doesNotMatch(poolsView, /data-create-storage/);
 
   assert.match(manager, /Detected drives/);
   assert.match(manager, /data-create-storage-source/);

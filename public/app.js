@@ -879,7 +879,7 @@ function poolsView() {
   const availableSources = storage.availableSources || [];
   const poolOptions = [...(zfs.pools || []), ...(zfs.datasets || []).filter(item => !(zfs.pools || []).some(pool => pool.name === item.name))];
   const deviceCount = disks.length + availableSources.length;
-  return `${pageHead('Pools & datasets', 'Manage LightNAS storage pools, volumes and ZFS datasets from one place.', '<div class="head-actions"><button class="secondary refresh-icon-button" data-action="refresh-storage" aria-label="Refresh" title="Refresh">↻</button><button class="secondary" data-view-link="storage">Storage inventory</button><button class="primary" type="button" data-create-storage>+ Add storage</button></div>')}
+  return `${pageHead('Pools & datasets', 'Manage LightNAS storage pools, volumes and ZFS datasets from one place.', '<div class="head-actions"><button class="secondary refresh-icon-button" data-action="refresh-storage" aria-label="Refresh" title="Refresh">↻</button><button class="secondary" data-view-link="storage">Storage inventory</button><button class="primary" type="button" data-nf-action="pool-create">+ Create pool</button><button class="secondary" type="button" data-nf-action="dataset-create">+ Create dataset</button></div>')}
     <section class="pool-summary-grid">
       <article class="panel pool-summary"><span class="eyebrow">STORAGE POOLS</span><strong>${configuredPools.length}</strong><p>${configuredPools.length ? 'available to LightNAS' : 'inventory is still empty'}</p></article>
       <article class="panel pool-summary"><span class="eyebrow">DEVICES & VOLUMES</span><strong>${deviceCount}</strong><p>${deviceCount ? 'detected by the appliance' : 'none exposed by this host'}</p></article>
