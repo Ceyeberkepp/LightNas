@@ -26,7 +26,11 @@ tar -xJf "${stage}/${archive}" --no-same-owner -C "${stage}"
 cd "${stage}/node-${version}"
 prefix="/usr/local/lib/lightnas-node/${version}-${architecture}"
 options=(--dest-cpu="${node_cpu}" --prefix="${prefix}")
-if [[ "${architecture}" == armel ]]; then options+=(--with-arm-float-abi=soft --with-arm-fpu=vfp --openssl-no-asm); fi
+if [[ "${architecture}" == armel ]]; then options+=(--with-arm-float-abi=soft --with-arm-fpu=vfp); fi
+# Use portable OpenSSL C paths on 32-bit x86 and ARMv6: upstream generated
+# assembly can reject the toolchain or require instructions absent on old CPUs.
+# This retains cryptography/features; it only trades acceleration for portability.
+if [[ "${architecture}" == i386 || "${architecture}" == armel ]]; then options+=(--openssl-no-asm); fi
 # No -march=native: never silently raise the CPU baseline to the build machine.
 python3 configure "${options[@]}"
 jobs="${LIGHTNAS_RUNTIME_BUILD_JOBS:-1}"
