@@ -376,6 +376,16 @@ Terminal=false
 Categories=System;Settings;
 Icon=network-wired
 DESKTOP
+cat >config/includes.chroot/usr/share/applications/lightnas-installer.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Install LightNAS
+Comment=Review hardware and start graphical LightNAS installation
+Exec=python3 /opt/lightnas/scripts/lightnas-install-hub.py
+Terminal=false
+Categories=System;Settings;
+Icon=drive-harddisk
+DESKTOP
 
 #
 # First-boot host network bootstrap.
