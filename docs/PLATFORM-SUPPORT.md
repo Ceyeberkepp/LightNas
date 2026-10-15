@@ -78,3 +78,16 @@ keep the same feature set; these are workload prerequisites.
 Upstream references: [Node platform/toolchain requirements](https://github.com/nodejs/node/blob/v22.x/BUILDING.md),
 [unofficial build limitations](https://github.com/nodejs/unofficial-builds),
 [K3s requirements](https://docs.k3s.io/installation/requirements).
+
+## Oldest x86 CPUs: unresolved runtime blocker
+
+The full application must also run on early-2000s CPUs; preserving its source
+alone does not satisfy that requirement. Node 22 V8 explicitly checks
+`cpu.has_sse2()` in its IA32 startup code. Native source compilation cannot
+remove that engine requirement. CPUs without SSE2 therefore need a different
+full-application runtime strategy (an engine/backend port or tested instruction
+emulation). Neither is implemented in this draft. Do not treat the i386 build
+job as proof of compatibility with those processors. Year-of-manufacture alone
+is not a CPU instruction baseline.
+
+Reference: [Node 22 IA32 CPU feature checks](https://github.com/nodejs/node/blob/v22.x/deps/v8/src/codegen/ia32/assembler-ia32.cc).

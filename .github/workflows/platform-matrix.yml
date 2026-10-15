@@ -49,7 +49,7 @@ jobs:
             cd /work
             python3 scripts/platform-preflight.py --architecture "$EXPECTED_ARCH"
             LIGHTNAS_ARCH="$EXPECTED_ARCH" bash scripts/install-node-runtime.sh
-            npm ci --omit=dev --no-audit --no-fund
+            npm install --omit=dev --no-audit --no-fund
             node --test test/platform-qualification.test.mjs test/kubernetes.test.mjs
             python3 -m unittest discover -s test -p platform_preflight_test.py
             mkdir -p /tmp/lightnas-smoke
@@ -74,7 +74,7 @@ jobs:
             cd /work
             LIGHTNAS_ARCH=i386 bash scripts/install-node-runtime.sh
             node -e "if(process.arch!==\"ia32\")process.exit(1)"
-            npm ci --omit=dev --no-audit --no-fund
+            npm install --omit=dev --no-audit --no-fund
             node --test test/platform-qualification.test.mjs test/kubernetes.test.mjs
             PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s test -p platform_preflight_test.py
           '
