@@ -265,8 +265,8 @@ dialog::backdrop { background: rgba(1,7,13,.76); backdrop-filter: blur(5px); }
 :root[data-theme="light"] .hero p { color: var(--muted); }
 :root[data-theme="light"] .storage-size { color: var(--text); }
 :root[data-theme="light"] .module-hero { background: var(--panel); }
-:root[data-theme="light"] .primary { color: #fff; box-shadow: none; }
-:root[data-theme="light"] .primary:hover { background: #096b65; }
+:root[data-theme="light"] .primary { color: var(--primary-button-contrast); box-shadow: none; }
+:root[data-theme="light"] .primary:hover { background: color-mix(in srgb, var(--primary-button) 84%, white); }
 :root[data-theme="light"] .avatar { color: #073739; }
 
 @media (max-width: 1050px) {

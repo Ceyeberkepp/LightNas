@@ -479,7 +479,8 @@ label { font-size:13px;font-weight:550;gap:6px; }
 /* The bundled horizontal wordmark stays readable on every appliance background. */
 .brand-mark.default-logo {
   background-image:url('/assets/lightnas-logo.png');
-  background-color:#ffffff;
+  position:relative;
+  background-color:transparent;
   border:0;
   box-shadow:none;
   background-repeat:no-repeat;
@@ -493,4 +494,32 @@ label { font-size:13px;font-weight:550;gap:6px; }
 .brand:has(.default-logo) > [data-brand-name] { display:none; }
 .console.sidebar-collapsed .sidebar-brand .brand-mark.default-logo {
   width:48px; height:48px; background-size:216px auto; background-position:4px center;
+}
+
+/* Recolor only the wordmark alpha, preserving the original green storage symbol. */
+.brand-mark.default-logo::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  background:var(--sidebar-text, var(--text));
+  -webkit-mask:url('/assets/lightnas-logo.png') center / contain no-repeat;
+  mask:url('/assets/lightnas-logo.png') center / contain no-repeat;
+  clip-path:inset(0 0 0 28%);
+  pointer-events:none;
+}
+.console.sidebar-collapsed .sidebar-brand .brand-mark.default-logo::after { display:none; }
+
+/* Match browser-filled credentials to the selected theme. */
+.auth-form input:is(:autofill, :-webkit-autofill) {
+  -webkit-box-shadow:0 0 0 1000px var(--input) inset !important;
+  box-shadow:0 0 0 1000px var(--input) inset !important;
+  -webkit-text-fill-color:var(--text) !important;
+  caret-color:var(--text);
+}
+:root[data-theme] .auth-panel .primary {
+  background:var(--login-button);
+  color:var(--login-button-contrast);
+}
+:root[data-theme] .auth-panel .primary:hover {
+  background:color-mix(in srgb, var(--login-button) 84%, white);
 }
