@@ -137,7 +137,7 @@ class Wizard:
         ]
         self.summary.configure(state="normal")
         self.summary.delete("1.0", "end")
-        self.summary.insert("1.0", "\\n".join(lines))
+        self.summary.insert("1.0", "\n".join(lines))
         self.summary.configure(state="disabled")
 
     def apply(self):
@@ -171,15 +171,15 @@ class Wizard:
         if nic["type"] == "wifi":
             ssid = self.ssid.get().strip()
             password = self.wifi_password.get()
-            if not ssid or len(password) < 8 or len(password) > 63 or "\\n" in ssid:
+            if not ssid or len(password) < 8 or len(password) > 63 or "\n" in ssid:
                 messagebox.showerror("Wi-Fi", "Choose an SSID and enter a WPA Personal password (8–63 characters).")
                 return
             args += ["--ssid", ssid]
-        review = f"Adapter: {iface}\\nMode: {self.method.get()}\\nHostname: {fqdn or 'unchanged'}"
+        review = f"Adapter: {iface}\nMode: {self.method.get()}\nHostname: {fqdn or 'unchanged'}"
         if self.method.get() == "static":
-            review += f"\\nIP: {self.address.get()}\\nGateway: {self.gateway.get()}\\nDNS: {self.dns.get()}"
+            review += f"\nIP: {self.address.get()}\nGateway: {self.gateway.get()}\nDNS: {self.dns.get()}"
         if not messagebox.askyesno("Apply LightNAS network settings",
-                                   review + "\\n\\nApplying can disconnect active connections. Continue?"):
+                                   review + "\n\nApplying can disconnect active connections. Continue?"):
             return
         secret_path = None
         try:
@@ -187,7 +187,7 @@ class Wizard:
                 # NetworkManager consumes a private file, not a password on argv.
                 fd, secret_path = tempfile.mkstemp(prefix="lightnas-nm-", dir="/run")
                 with os.fdopen(fd, "w", encoding="utf-8") as file:
-                    file.write("802-11-wireless-security.psk:" + password + "\\n")
+                    file.write("802-11-wireless-security.psk:" + password + "\n")
                 os.chmod(secret_path, 0o600)
                 args += ["--wifi-password-file", secret_path]
             result = subprocess.run(args, text=True, capture_output=True, timeout=150)
