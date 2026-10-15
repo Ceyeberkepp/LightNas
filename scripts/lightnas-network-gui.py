@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -49,6 +50,7 @@ class Wizard:
         self.dns = tk.StringVar()
         self.fqdn = tk.StringVar()
         self.ssid = tk.StringVar()
+        self.wifi_password = tk.StringVar()
         self.row = tk.Frame(self.frame, bg=COLORS["bg"])
         self.row.pack(fill="both", expand=True)
         self.controls()
@@ -77,6 +79,9 @@ class Wizard:
         ttk.Label(self.row, text="Wi-Fi network (choose a visible SSID)").pack(anchor="w", pady=(8, 0))
         self.wifi = ttk.Combobox(self.row, textvariable=self.ssid)
         self.wifi.pack(fill="x")
+        ttk.Label(self.row, text="Wi-Fi password (WPA/WPA2 Personal)").pack(anchor="w", pady=(8, 0))
+        self.password_entry = ttk.Entry(self.row, textvariable=self.wifi_password, show="*")
+        self.password_entry.pack(fill="x")
         self.field("Hostname / FQDN (hyphens and dots allowed)", self.fqdn)
         self.summary = tk.Text(self.row, width=76, height=5, bg=COLORS["panel"],
                                fg=COLORS["fg"], font=("Monospace", 10), state="disabled")
@@ -120,6 +125,8 @@ class Wizard:
         self.dns.set(" ".join(selected.get("dns") or []))
         is_wifi = selected.get("type") == "wifi"
         self.wifi.configure(state="normal" if is_wifi else "disabled")
+        self.password_entry.configure(state="normal" if is_wifi else "disabled")
+        self.wifi_password.set("")
         self.ssid.set("")
         self.status.set(f"{selected['name']} • {selected['type']} • {selected.get('state') or 'unknown'}")
         lines = [
@@ -162,24 +169,38 @@ class Wizard:
         if fqdn:
             args += ["--fqdn", fqdn]
         if nic["type"] == "wifi":
-            messagebox.showinfo("Wi-Fi authentication",
-                                "Connect to the Wi-Fi network using the console wizard, which securely prompts for credentials. "
-                                "Return here to review the DHCP IP, DNS and gateway.")
-            return
+            ssid = self.ssid.get().strip()
+            password = self.wifi_password.get()
+            if not ssid or len(password) < 8 or len(password) > 63 or "\\n" in ssid:
+                messagebox.showerror("Wi-Fi", "Choose an SSID and enter a WPA Personal password (8–63 characters).")
+                return
+            args += ["--ssid", ssid]
         review = f"Adapter: {iface}\\nMode: {self.method.get()}\\nHostname: {fqdn or 'unchanged'}"
         if self.method.get() == "static":
             review += f"\\nIP: {self.address.get()}\\nGateway: {self.gateway.get()}\\nDNS: {self.dns.get()}"
         if not messagebox.askyesno("Apply LightNAS network settings",
                                    review + "\\n\\nApplying can disconnect active connections. Continue?"):
             return
+        secret_path = None
         try:
+            if nic["type"] == "wifi":
+                # NetworkManager consumes a private file, not a password on argv.
+                fd, secret_path = tempfile.mkstemp(prefix="lightnas-nm-", dir="/run")
+                with os.fdopen(fd, "w", encoding="utf-8") as file:
+                    file.write("802-11-wireless-security.psk:" + password + "\\n")
+                os.chmod(secret_path, 0o600)
+                args += ["--wifi-password-file", secret_path]
             result = subprocess.run(args, text=True, capture_output=True, timeout=150)
             if result.returncode:
                 raise RuntimeError((result.stderr or result.stdout)[-1200:])
+            self.wifi_password.set("")
             self.refresh()
             messagebox.showinfo("Network updated", "NetworkManager applied the configuration. Live values have been rescanned.")
         except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
             messagebox.showerror("Network activation failed", str(exc))
+        finally:
+            if secret_path:
+                os.unlink(secret_path)
 
 
 if __name__ == "__main__":
