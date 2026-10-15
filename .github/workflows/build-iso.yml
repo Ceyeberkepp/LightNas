@@ -51,6 +51,9 @@ jobs:
           bash -n iso/build.sh
           bash -n scripts/lightnas-network-wizard.sh
           python3 -m py_compile scripts/lightnas-network-setup.py
+          python3 -m py_compile scripts/lightnas-network-gui.py
+          grep -q 'python3-tk' iso/build.sh
+          grep -q 'lightnas-network-setup.desktop' iso/build.sh
           grep -q 'whiptail' iso/build.sh
           grep -q 'netcfg/choose_interface' iso/preseed.cfg
           grep -q -- '--compression xz' iso/build.sh

@@ -322,6 +322,7 @@ ovmf
 
 dnsmasq-base
 network-manager
+python3-tk
 whiptail
 iw
 rfkill
@@ -361,6 +362,20 @@ fi
 # Console setup is opt-in and does not block automated boot.
 # The helper and wizard are packaged with the main LightNAS scripts tree.
 # Operators may run: sudo bash /opt/lightnas/scripts/lightnas-network-wizard.sh
+
+# Include an operator-launched graphical network setup application. The icon
+# launches on the local graphical console and never changes settings silently.
+mkdir -p config/includes.chroot/usr/share/applications
+cat >config/includes.chroot/usr/share/applications/lightnas-network-setup.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=LightNAS Network Setup
+Comment=Discover network adapters, DHCP, gateway and DNS settings
+Exec=python3 /opt/lightnas/scripts/lightnas-network-gui.py
+Terminal=false
+Categories=System;Settings;
+Icon=network-wired
+DESKTOP
 
 #
 # First-boot host network bootstrap.
