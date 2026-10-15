@@ -37,6 +37,26 @@ PY
 )"
 [[ "$type" == ethernet || "$type" == wifi ]] || { echo "Interface changed. Retry discovery." >&2; exit 1; }
 
+# Prefill editable values from the selected interface, never guessed defaults.
+mapfile -t detected < <(python3 - "$temp" "$iface" <<'PY'
+import json,sys
+for nic in json.load(open(sys.argv[1]))["interfaces"]:
+    if nic["name"] == sys.argv[2]:
+        print((nic.get("addresses") or [""])[0])
+        print(nic.get("gateway") or "")
+        print(" ".join(nic.get("dns") or []))
+        break
+PY
+)
+current_address="${detected[0]:-}"
+current_gateway="${detected[1]:-}"
+current_dns="${detected[2]:-}"
+current_fqdn="$(python3 - "$temp" <<'PY'
+import json,sys
+print(json.load(open(sys.argv[1])).get("hostname") or "")
+PY
+)"
+
 ssid=""
 if [[ "$type" == wifi ]]; then
   mapfile -t networks < <(python3 - "$temp" <<'PY'
@@ -62,18 +82,18 @@ method="$(whiptail --title 'LightNAS • IPv4' --menu 'Choose IPv4 configuration
 args=(--apply --interface "$iface" --method "$method")
 if [[ "$type" == wifi ]]; then args+=(--ssid "$ssid"); fi
 if [[ "$method" == static ]]; then
-  address="$(whiptail --inputbox 'IPv4 address with prefix, e.g. 192.168.1.25/24' 10 76 3>&1 1>&2 2>&3)" || exit 0
-  gateway="$(whiptail --inputbox 'Default gateway IPv4 address' 10 76 3>&1 1>&2 2>&3)" || exit 0
-  dns="$(whiptail --inputbox 'DNS server IPs, separated by spaces' 10 76 3>&1 1>&2 2>&3)" || exit 0
+  address="$(whiptail --inputbox 'IPv4 address with prefix, e.g. 192.168.1.25/24' 10 76 "$current_address" 3>&1 1>&2 2>&3)" || exit 0
+  gateway="$(whiptail --inputbox 'Default gateway IPv4 address' 10 76 "$current_gateway" 3>&1 1>&2 2>&3)" || exit 0
+  dns="$(whiptail --inputbox 'DNS server IPs, separated by spaces' 10 76 "$current_dns" 3>&1 1>&2 2>&3)" || exit 0
   read -r -a dns_servers <<< "$dns"
   args+=(--address "$address" --gateway "$gateway" --dns "${dns_servers[@]}")
 fi
-fqdn="$(whiptail --title 'LightNAS • Hostname' --inputbox 'Hostname or FQDN (letters, numbers, hyphens and dots)' 10 76 3>&1 1>&2 2>&3)" || exit 0
+fqdn="$(whiptail --title 'LightNAS • Hostname' --inputbox 'Hostname or FQDN (letters, numbers, hyphens and dots)' 10 76 "$current_fqdn" 3>&1 1>&2 2>&3)" || exit 0
 [[ -z "$fqdn" ]] || args+=(--fqdn "$fqdn")
 review="Interface: $iface ($type)\nIPv4: $method\nHostname: ${fqdn:-unchanged}"
 if [[ "$method" == static ]]; then review+="\nAddress: $address\nGateway: $gateway\nDNS: $dns"; fi
 if [[ "$type" == wifi ]]; then review+="\nWi-Fi: $ssid"; fi
-whiptail --title 'LightNAS • Review' --yesno "$(printf '%b' "$review")\n\nApplying changes may disconnect remote sessions. Continue?" 19 76 || exit 0
+whiptail --title 'LightNAS • Review' --yesno "$(printf '%b\\n\\n%s' "$review" 'Applying changes may disconnect remote sessions. Continue?')" 19 76 || exit 0
 # Display the real resulting configuration, never invented gateway/DNS.
 python3 "$PY" "${args[@]}"
 whiptail --title 'LightNAS • Configured' --msgbox "$(python3 "$PY" | head -25)" 20 78
