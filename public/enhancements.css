@@ -4426,3 +4426,12 @@ dialog.viewer-more-sheet.viewer-desktop-popover::backdrop { background: transpar
   accent-color: var(--accent);
 }
 #lightnas-storage-dialog [data-storage-dialog-footer][hidden] { display: none; }
+
+.pool-disk-choices { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.pool-disk-choices .check { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0; }
+.pool-disk-choices .check span { min-width: 0; overflow-wrap: anywhere; }
+.pool-disk-choices .check small { display: block; color: var(--muted); font-weight: 400; }
+
+.runtime-create-dialog.pool-create-dialog { width: min(680px, calc(100vw - 28px)); }
+.pool-disk-choices { grid-column: 1 / -1; max-height: 300px; overflow: auto; }
+.pool-disk-choices input[type="checkbox"] { flex: 0 0 17px; width: 17px; height: 17px; margin: 2px 0 0; padding: 0; }
