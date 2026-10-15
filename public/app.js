@@ -233,6 +233,7 @@ function featureEnabled(view, appliance = state.overview?.appliance) {
 function canView(view, appliance = state.overview?.appliance) {
   if (!appliance || !featureEnabled(view, appliance)) return false;
   if (appliance.role === 'administrator') return true;
+  if(view==='kubernetes')return false;
   const allowed = new Set(appliance.permissions || []);
   if (allowed.has(`nav.${view}`)) return true;
   const required = {
@@ -1315,6 +1316,10 @@ function runtimeResourceSummary(items = [], label = 'guests') {
     <article class="monitor-card"><span>Allocated vCPU</span><strong>${allocatedCpus || 0} vCPU${uncappedCpu ? ' + uncapped' : ''}</strong><small>${liveStatsCount ? `${liveCpuPercent.toFixed(1)}% CPU now · ` : ''}host ${hostCores || '—'} logical CPUs${uncappedCpu ? ` · ${uncappedCpu} container${uncappedCpu===1?'':'s'} uncapped` : ''}</small></article>
     <article class="monitor-card host-capacity-card"><span>Host CPU use</span><strong>${host.cpu?.loadPercent ?? '—'}% CPU</strong><small>Host capacity ${hostCores || '—'} CPU · ${hostMemory ? bytes(hostMemory) : '—'} RAM · ${host.memory?.usedPercent ?? '—'}% RAM now · load ${host.cpu?.loadAverage?.[0] ?? '—'}</small></article>
   </section>`;
+}
+
+function kubernetesView(){
+  return `${pageHead('Kubernetes','Manage the built-in K3s cluster and its workloads.','<button class="secondary refresh-icon-button" type="button" data-k8s-refresh aria-label="Refresh" title="Refresh">↻</button>')}<section class="panel" id="kubernetes-panel"><p class="muted">Loading Kubernetes…</p></section>`;
 }
 
 function containersView() {
@@ -2785,10 +2790,10 @@ async function loadLogs() {
 function render(view) {
   if (view === 'media') view = 'files';
   if (view === 'monitoring') view = 'home';
-  state.view = ['home', 'hypervisor', 'storage', 'pools', 'files', 'users', 'permissions', 'shell', 'smtp', 'admin', 'shares', 'backups', 'analytics', 'logs', 'capabilities', 'apps', 'ai', 'containers', 'vms', 'settings', 'network', 'firewall', 'integrations'].includes(view) ? view : 'home';
+  state.view = ['home', 'hypervisor', 'storage', 'pools', 'files', 'users', 'permissions', 'shell', 'smtp', 'admin', 'shares', 'backups', 'analytics', 'logs', 'capabilities', 'apps', 'ai', 'containers', 'vms', 'settings', 'network', 'firewall', 'integrations', 'kubernetes'].includes(view) ? view : 'home';
   if (!canView(state.view)) state.view = canView('home') ? 'home' : 'files';
   const content = $('#content');
-  let rendered = state.view === 'home' ? (state.uiMode === 'hypervisor' ? hypervisorView() : homeView()) : state.view === 'hypervisor' ? hypervisorView() : state.view === 'storage' ? storageView() : state.view === 'pools' ? poolsView() : state.view === 'files' ? filesView() : state.view === 'media' ? mediaView() : state.view === 'users' ? usersView() : state.view === 'permissions' ? permissionsView() : state.view === 'shell' ? shellView() : state.view === 'smtp' ? smtpView() : state.view === 'admin' ? adminView() : state.view === 'shares' ? sharesView() : state.view === 'backups' ? backupsView() : state.view === 'analytics' ? analyticsView() : state.view === 'logs' ? logsView() : state.view === 'containers' ? containersView() : state.view === 'vms' ? vmsView() : state.view === 'settings' ? settingsView() : state.view === 'capabilities' ? capabilitiesView() : state.view === 'monitoring' ? monitoringView() : state.view === 'ai' ? aiView() : state.view === 'network' ? networkView() : state.view === 'firewall' ? firewallView() : state.view === 'integrations' ? integrationsView() : moduleView(state.view);
+  let rendered = state.view === 'home' ? (state.uiMode === 'hypervisor' ? hypervisorView() : homeView()) : state.view === 'hypervisor' ? hypervisorView() : state.view === 'storage' ? storageView() : state.view === 'pools' ? poolsView() : state.view === 'files' ? filesView() : state.view === 'media' ? mediaView() : state.view === 'users' ? usersView() : state.view === 'permissions' ? permissionsView() : state.view === 'shell' ? shellView() : state.view === 'smtp' ? smtpView() : state.view === 'admin' ? adminView() : state.view === 'shares' ? sharesView() : state.view === 'backups' ? backupsView() : state.view === 'analytics' ? analyticsView() : state.view === 'logs' ? logsView() : state.view === 'kubernetes' ? kubernetesView() : state.view === 'containers' ? containersView() : state.view === 'vms' ? vmsView() : state.view === 'settings' ? settingsView() : state.view === 'capabilities' ? capabilitiesView() : state.view === 'monitoring' ? monitoringView() : state.view === 'ai' ? aiView() : state.view === 'network' ? networkView() : state.view === 'firewall' ? firewallView() : state.view === 'integrations' ? integrationsView() : moduleView(state.view);
   if (window.LIGHTNAS_PRODUCT_MODE === 'hypervisor' && !['home','hypervisor'].includes(state.view)) {
     rendered = hypervisorSubViewShell(rendered, state.view);
   }

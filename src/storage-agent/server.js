@@ -24,6 +24,7 @@ export function createServer({token,ops,discover,agent=false,socket,ui}){
    if(req.method==='GET'&&url.pathname==='/v1/creation-options')return reply(200,await ops.resources.creationOptions());
    if(req.method==='GET'&&url.pathname==='/v1/inventory')return reply(200,{...await discover(),initializationEnabled:ops.allowInitialization===true});
    if(req.method==='GET'&&url.pathname==='/v1/protection')return reply(200,await ops.features.protectionInventory());
+   if(req.method==='GET'&&url.pathname==='/v1/kubernetes')return reply(200,await ops.features.kubernetes.inventory());
    if(req.method==='GET'&&url.pathname==='/v1/features')return reply(200,await ops.features.inventory());
    if(req.method==='GET'&&url.pathname==='/v1/dataset')return reply(200,await ops.features.datasetDetail(url.searchParams.get('name')));
    if(req.method==='GET'&&url.pathname==='/v1/csr')return reply(200,await ops.features.certificates.download(url.searchParams.get('name')));

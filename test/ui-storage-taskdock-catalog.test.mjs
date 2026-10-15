@@ -297,7 +297,9 @@ test('VM creation detects missing UEFI firmware and installer provisions OVMF', 
   assert.match(runtime, /OVMF_CODE/);
   assert.match(runtime, /firmwareFallback/);
   assert.match(runtime, /legacy BIOS because UEFI\/OVMF firmware is not installed/);
-  assert.match(installer, /openssh-server ovmf/);
+  assert.match(installer, /amd64\|i386\) install_missing_packages qemu-system-x86 ovmf/);
+  assert.match(installer, /arm64\|armhf\|armel\) install_missing_packages qemu-system-arm qemu-efi-aarch64/);
+  assert.match(installer, /riscv64\) install_missing_packages qemu-system-misc opensbi/);
 });
 
 

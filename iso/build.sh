@@ -505,16 +505,8 @@ JOURNAL
 #
 # Node.js 22
 #
-curl -fsSL \
-  https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key |
-  gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-
-printf '%s\n' \
-  'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main' \
-  >/etc/apt/sources.list.d/nodesource.list
-
-apt-get update
-apt-get install -y nodejs
+# The ISO is amd64; use the same native runtime installer as one-click installs.
+LIGHTNAS_ARCH=amd64 bash /opt/lightnas/scripts/install-node-runtime.sh
 if apt-cache policy libraw-bin 2>/dev/null | awk '/Candidate:/{exit $2=="(none)" || $2==""}'; then
   apt-get install -y libraw-bin || true
 fi

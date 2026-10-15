@@ -1,10 +1,11 @@
+import {KubernetesAdapter,KUBERNETES_TYPES} from './kubernetes.js';
 import {DatasetAdapter,DATASET_TYPES} from './datasets.js';
 import {CertificateAdapter,CERTIFICATE_TYPES} from './certificates.js';
 import {ProtectionAdapter,PROTECTION_TYPES,nextRun} from './protection.js';
-export const FEATURE_TYPES=[...DATASET_TYPES,...CERTIFICATE_TYPES,...PROTECTION_TYPES];
+export const FEATURE_TYPES=[...DATASET_TYPES,...CERTIFICATE_TYPES,...PROTECTION_TYPES,...KUBERNETES_TYPES];
 export class FeatureAdapter{
- constructor({dir='/var/lib/lightnas-storage',run,datasets,certificates,protection}={}){this.datasets=datasets||new DatasetAdapter({run});this.certificates=certificates||new CertificateAdapter({dir,run});this.protection=protection||new ProtectionAdapter({dir,datasets:this.datasets,run});}
- adapter(type){if(DATASET_TYPES.includes(type))return this.datasets;if(CERTIFICATE_TYPES.includes(type))return this.certificates;if(PROTECTION_TYPES.includes(type))return this.protection;throw Error('Unsupported feature operation');}
+ constructor({dir='/var/lib/lightnas-storage',run,datasets,certificates,protection,kubernetes}={}){this.kubernetes=kubernetes||new KubernetesAdapter({dir,run});this.datasets=datasets||new DatasetAdapter({run});this.certificates=certificates||new CertificateAdapter({dir,run});this.protection=protection||new ProtectionAdapter({dir,datasets:this.datasets,run});}
+ adapter(type){if(KUBERNETES_TYPES.includes(type))return this.kubernetes;if(DATASET_TYPES.includes(type))return this.datasets;if(CERTIFICATE_TYPES.includes(type))return this.certificates;if(PROTECTION_TYPES.includes(type))return this.protection;throw Error('Unsupported feature operation');}
  prepare(input){return this.adapter(input.type).prepare?.(input)||input;}
  async init(){await this.certificates.init();await this.protection.init();}
  async protectionInventory(){const protection=await this.protection.inventory();for(const task of protection.tasks){const job=this.ops?.jobs.get(task.runtime.lastJob);if(job)task.runtime={...task.runtime,status:job.status,progress:job.progress,logs:job.logs.slice(-5)};}return protection;}

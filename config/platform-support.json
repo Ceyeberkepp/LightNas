@@ -7,27 +7,50 @@
     "amd64": {
       "controlPlane": "supported",
       "systemContainers": "supported",
-      "bootArtifact": "iso"
+      "bootArtifact": "iso",
+      "installer": "native-probe",
+      "profile": "full",
+      "kubernetes": "pinned-k3s"
     },
     "i386": {
       "controlPlane": "target",
       "systemContainers": "target",
-      "bootArtifact": "target"
+      "bootArtifact": "target",
+      "installer": "source-build-probe",
+      "profile": "full",
+      "kubernetes": "target-requires-runtime-build"
     },
     "arm64": {
       "controlPlane": "target",
       "systemContainers": "target",
-      "bootArtifact": "target"
+      "bootArtifact": "target",
+      "installer": "native-probe",
+      "profile": "full",
+      "kubernetes": "pinned-k3s"
     },
     "armhf": {
       "controlPlane": "target",
       "systemContainers": "target",
-      "bootArtifact": "target"
+      "bootArtifact": "target",
+      "installer": "native-probe",
+      "profile": "full",
+      "kubernetes": "pinned-k3s"
     },
     "riscv64": {
       "controlPlane": "target",
       "systemContainers": "target",
-      "bootArtifact": "target"
+      "bootArtifact": "target",
+      "installer": "native-probe",
+      "profile": "full",
+      "kubernetes": "target-requires-runtime-build"
+    },
+    "armel": {
+      "controlPlane": "target",
+      "systemContainers": "target",
+      "bootArtifact": "target",
+      "installer": "source-build-probe",
+      "profile": "full",
+      "kubernetes": "target-requires-runtime-build"
     }
   },
   "upload": {
@@ -41,6 +64,9 @@
     "Only amd64 is currently release-qualified as a complete LightNAS control-plane build.",
     "Other architectures are required targets and must not be marked supported until install and boot validation exists.",
     "Native system-container creation must not hard-code amd64 or x86_64.",
-    "A zero upload maximum means LightNAS imposes no application-level size ceiling; filesystem capacity and free-space safety remain authoritative."
+    "A zero upload maximum means LightNAS imposes no application-level size ceiling; filesystem capacity and free-space safety remain authoritative.",
+    "Installability and release qualification are distinct. Native ARM/RISC-V full runtimes must pass the execution probe.",
+    "Bundled Kubernetes is optional and requires 4 GiB total RAM for a server, or 3 GiB for a joined agent.",
+    "All architectures target the same full application. There is no reduced-feature compatibility profile. Runtime and Kubernetes build gaps remain unqualified, not feature removals."
   ]
 }

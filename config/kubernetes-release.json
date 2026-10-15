@@ -1,0 +1,20 @@
+{
+  "version": "v1.37.1+k3s1",
+  "architectures": {
+    "amd64": {
+      "file": "k3s",
+      "sha256": "92b94582eb7b34a8cf532e6006842b9ed215a6783cf56a3dd6271fd35243b2c0",
+      "url": "https://github.com/k3s-io/k3s/releases/download/v1.37.1%2Bk3s1/k3s"
+    },
+    "arm64": {
+      "file": "k3s-arm64",
+      "sha256": "a1561ca4aef8b99f5588a840d4468ac39c8c1cd92470bbcb9634823fa221741a",
+      "url": "https://github.com/k3s-io/k3s/releases/download/v1.37.1%2Bk3s1/k3s-arm64"
+    },
+    "armhf": {
+      "file": "k3s-armhf",
+      "sha256": "bc9f5d9c681cbf0f3817de7089b013d5ae9ede08f4b3a588491978f168722d63",
+      "url": "https://github.com/k3s-io/k3s/releases/download/v1.37.1%2Bk3s1/k3s-armhf"
+    }
+  }
+}

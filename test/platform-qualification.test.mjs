@@ -15,7 +15,7 @@ test('platform architecture aliases and validation policy are explicit', () => {
   assert.equal(normalizeArchitecture('i686'), 'i386');
   assert.equal(platformSupport('amd64').status, 'validated');
   assert.equal(platformSupport('arm64').status, 'target');
-  assert.equal(platformSupport('riscv64').installer, false);
+  assert.equal(platformSupport('riscv64').installer, true);
   assert.equal(architectureCompatible('amd64', 'amd64'), true);
   assert.equal(architectureCompatible('arm64', 'amd64'), false);
   assert.equal(architectureCompatible('arm64', 'amd64', true), true);
@@ -70,6 +70,6 @@ test('support matrix never advertises unvalidated target architectures as suppor
   assert.match(doc, /amd64 \/ x86_64 \| Validated/);
   assert.match(doc, /arm64 \/ aarch64 \| Target/);
   assert.match(doc, /riscv64 \| Target/);
-  assert.match(doc, /i386 \/ i686 \| Legacy target/);
+  assert.match(doc, /i386 \/ i686 \| Target/);
   assert.match(doc, /not advertised as supported until/);
 });

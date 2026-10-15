@@ -83,10 +83,11 @@ for (const dependency of ['tar', 'gzip', 'xz-utils', 'zstd', 'lxc', 'debootstrap
 assert.match(isoBuilder, /--architectures amd64/);
 assert.match(isoWorkflow, /LightNAS-amd64\.iso/);
 
-// Node 22 is the current modern control-plane runtime. Until a legacy runtime
-// exists, 32-bit x86 must remain a target rather than a support claim.
+// Every architecture retains the full application and a maintained runtime.
+// Native execution and boot qualification are required before support claims.
 assert.match(String(packageJson.engines?.node || ''), /22/);
 assert.notEqual(contract.architectures.i386.controlPlane, 'supported');
+for (const target of Object.values(contract.architectures)) assert.equal(target.profile, 'full');
 
 assert.match(readme, /docs\/PLATFORM-REQUIREMENTS\.md/);
 
