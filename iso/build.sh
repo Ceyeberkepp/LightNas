@@ -322,6 +322,7 @@ ovmf
 
 dnsmasq-base
 network-manager
+whiptail
 iw
 rfkill
 wpasupplicant
@@ -356,6 +357,10 @@ cp -a \
 if [[ -f "${REPO_ROOT}/package-lock.json" ]]; then
   cp "${REPO_ROOT}/package-lock.json" config/includes.chroot/opt/lightnas/
 fi
+
+# Console setup is opt-in and does not block automated boot.
+# The helper and wizard are packaged with the main LightNAS scripts tree.
+# Operators may run: sudo bash /opt/lightnas/scripts/lightnas-network-wizard.sh
 
 #
 # First-boot host network bootstrap.
