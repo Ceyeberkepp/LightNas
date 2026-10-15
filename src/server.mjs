@@ -928,27 +928,37 @@ function applyUserGroups(username, groupIds) {
 
 async function managedSharesForAdmin(host,isAdmin){if(!isAdmin)return [];try{return (await storageAgentJson('/v1/shares',undefined,500)).map(share=>publicManagedShare(share,host));}catch{return [];}}
 
+// Saved colors remain authoritative; installations without overrides follow the logo palette.
+function usesDefaultBranding(config = {}) {
+  return !['accentColor', 'sidebarColor', 'contentColor', 'sidebarTextColor', 'contentTextColor',
+    'primaryButtonColor', 'loginButtonColor', 'topbarColor', 'panelColor', 'inputColor',
+    'performanceTabsColor', 'performanceTabsActiveColor', 'performanceTabsTextColor']
+    .some(key => /^#[0-9a-f]{6}$/i.test(String(config[key] || '')));
+}
+
 async function api(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/status') return send(res, 200, { version: SOFTWARE_VERSION, setupRequired: !store.state.config });
   if (req.method === 'GET' && url.pathname === '/api/branding') {
     const config = store.state.config || {};
     return send(res, 200, {
       brandName: config.brandName || 'LightNAS',
-      logoMode: config.logoMode === 'picture' && config.logoExt ? 'picture' : 'text',
-      logo: Boolean(config.logoExt),
-      accentColor: /^#[0-9a-f]{6}$/i.test(String(config.accentColor || '')) ? config.accentColor : '#087b70',
+      logoMode: config.logoMode === 'text' ? 'text' : 'picture',
+      logo: true,
+      customLogo: Boolean(config.logoExt),
+      defaultBranding: usesDefaultBranding(config),
+      accentColor: /^#[0-9a-f]{6}$/i.test(String(config.accentColor || '')) ? config.accentColor : '#00b83f',
       sidebarColor: /^#[0-9a-f]{6}$/i.test(String(config.sidebarColor || '')) ? config.sidebarColor : '#ffffff',
-      contentColor: /^#[0-9a-f]{6}$/i.test(String(config.contentColor || '')) ? config.contentColor : '#f2f6fa',
-      sidebarTextColor: /^#[0-9a-f]{6}$/i.test(String(config.sidebarTextColor || '')) ? config.sidebarTextColor : '#12283b',
-      contentTextColor: /^#[0-9a-f]{6}$/i.test(String(config.contentTextColor || '')) ? config.contentTextColor : '#12283b',
-      primaryButtonColor: /^#[0-9a-f]{6}$/i.test(String(config.primaryButtonColor || '')) ? config.primaryButtonColor : (config.accentColor || '#087b70'),
-      loginButtonColor: /^#[0-9a-f]{6}$/i.test(String(config.loginButtonColor || '')) ? config.loginButtonColor : (config.primaryButtonColor || config.accentColor || '#087b70'),
-      topbarColor: /^#[0-9a-f]{6}$/i.test(String(config.topbarColor || '')) ? config.topbarColor : (config.contentColor || '#f2f6fa'),
+      contentColor: /^#[0-9a-f]{6}$/i.test(String(config.contentColor || '')) ? config.contentColor : '#f4f7f4',
+      sidebarTextColor: /^#[0-9a-f]{6}$/i.test(String(config.sidebarTextColor || '')) ? config.sidebarTextColor : '#242b32',
+      contentTextColor: /^#[0-9a-f]{6}$/i.test(String(config.contentTextColor || '')) ? config.contentTextColor : '#242b32',
+      primaryButtonColor: /^#[0-9a-f]{6}$/i.test(String(config.primaryButtonColor || '')) ? config.primaryButtonColor : (config.accentColor || '#00b83f'),
+      loginButtonColor: /^#[0-9a-f]{6}$/i.test(String(config.loginButtonColor || '')) ? config.loginButtonColor : (config.primaryButtonColor || config.accentColor || '#00b83f'),
+      topbarColor: /^#[0-9a-f]{6}$/i.test(String(config.topbarColor || '')) ? config.topbarColor : (config.contentColor || '#f4f7f4'),
       panelColor: /^#[0-9a-f]{6}$/i.test(String(config.panelColor || '')) ? config.panelColor : (config.contentColor || '#ffffff'),
       inputColor: /^#[0-9a-f]{6}$/i.test(String(config.inputColor || '')) ? config.inputColor : '#f9fbfd',
       performanceTabsColor: /^#[0-9a-f]{6}$/i.test(String(config.performanceTabsColor || '')) ? config.performanceTabsColor : (config.panelColor || '#ffffff'),
-      performanceTabsActiveColor: /^#[0-9a-f]{6}$/i.test(String(config.performanceTabsActiveColor || '')) ? config.performanceTabsActiveColor : (config.accentColor || '#087b70'),
-      performanceTabsTextColor: /^#[0-9a-f]{6}$/i.test(String(config.performanceTabsTextColor || '')) ? config.performanceTabsTextColor : (config.contentTextColor || '#12283b')
+      performanceTabsActiveColor: /^#[0-9a-f]{6}$/i.test(String(config.performanceTabsActiveColor || '')) ? config.performanceTabsActiveColor : (config.accentColor || '#00b83f'),
+      performanceTabsTextColor: /^#[0-9a-f]{6}$/i.test(String(config.performanceTabsTextColor || '')) ? config.performanceTabsTextColor : (config.contentTextColor || '#242b32')
     });
   }
 
@@ -1114,7 +1124,11 @@ async function api(req, res, url) {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/branding/logo') {
-    if (!store.state.config?.logoExt) return send(res, 404, { error: 'No custom logo is configured.' });
+    if (!store.state.config?.logoExt) {
+      const data = await readFile(join(publicRoot, 'assets/lightnas-logo.png'));
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': data.length, 'Cache-Control': 'public, max-age=300', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(data);
+    }
     const extension = store.state.config.logoExt;
     const path = join(brandingRoot, `logo.${extension}`);
     const type = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg';
@@ -1251,20 +1265,6 @@ async function api(req, res, url) {
     return send(res, 200, { ok: true, avatar: false });
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/branding/logo') {
-    if (!store.state.config?.logoExt) return send(res, 404, { error: 'No custom logo is configured.' });
-    const extension = store.state.config.logoExt;
-    const path = join(brandingRoot, `logo.${extension}`);
-    const type = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg';
-    try {
-      const data = await readFile(path);
-      res.writeHead(200, { 'Content-Type': type, 'Content-Length': data.length, 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': csp });
-      return res.end(data);
-    } catch (error) {
-      if (error.code === 'ENOENT') return send(res, 404, { error: 'Custom logo is unavailable.' });
-      throw error;
-    }
-  }
   if (req.method === 'PUT' && url.pathname === '/api/branding/logo') {
     if (!isAdmin && !hasPermission(permissions, 'settings.general.manage') && !hasPermission(permissions, 'settings.manage')) return send(res, 403, { error: 'General settings permission is required.' });
     const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
@@ -1284,9 +1284,9 @@ async function api(req, res, url) {
     if (!isAdmin && !hasPermission(permissions, 'settings.general.manage') && !hasPermission(permissions, 'settings.manage')) return send(res, 403, { error: 'General settings permission is required.' });
     for (const old of ['jpg','png','webp']) await rm(join(brandingRoot, `logo.${old}`), { force: true }).catch(() => {});
     delete store.state.config.logoExt;
-    store.state.config.logoMode = 'text';
+    store.state.config.logoMode = 'picture';
     await store.save();
-    return send(res, 200, { ok: true, logo: false });
+    return send(res, 200, { ok: true, logo: true, customLogo: false });
   }
 
   const selfMfaPath = url.pathname.startsWith('/api/security/totp') ||
@@ -1868,23 +1868,25 @@ async function api(req, res, url) {
       username: owner,
       deviceName,
       brandName: brandName || 'LightNAS',
-      logoMode: logoMode === 'picture' && logoExt ? 'picture' : 'text',
-      accentColor: /^#[0-9a-f]{6}$/i.test(String(accentColor || '')) ? accentColor : '#087b70',
+      logoMode: logoMode === 'text' ? 'text' : 'picture',
+      accentColor: /^#[0-9a-f]{6}$/i.test(String(accentColor || '')) ? accentColor : '#00b83f',
       sidebarColor: /^#[0-9a-f]{6}$/i.test(String(sidebarColor || '')) ? sidebarColor : '#ffffff',
-      contentColor: /^#[0-9a-f]{6}$/i.test(String(contentColor || '')) ? contentColor : '#f2f6fa',
-      sidebarTextColor: /^#[0-9a-f]{6}$/i.test(String(sidebarTextColor || '')) ? sidebarTextColor : '#12283b',
-      contentTextColor: /^#[0-9a-f]{6}$/i.test(String(contentTextColor || '')) ? contentTextColor : '#12283b',
-      primaryButtonColor: /^#[0-9a-f]{6}$/i.test(String(primaryButtonColor || '')) ? primaryButtonColor : (accentColor || '#087b70'),
-      loginButtonColor: /^#[0-9a-f]{6}$/i.test(String(loginButtonColor || '')) ? loginButtonColor : (primaryButtonColor || accentColor || '#087b70'),
-      topbarColor: /^#[0-9a-f]{6}$/i.test(String(topbarColor || '')) ? topbarColor : (contentColor || '#f2f6fa'),
+      contentColor: /^#[0-9a-f]{6}$/i.test(String(contentColor || '')) ? contentColor : '#f4f7f4',
+      sidebarTextColor: /^#[0-9a-f]{6}$/i.test(String(sidebarTextColor || '')) ? sidebarTextColor : '#242b32',
+      contentTextColor: /^#[0-9a-f]{6}$/i.test(String(contentTextColor || '')) ? contentTextColor : '#242b32',
+      primaryButtonColor: /^#[0-9a-f]{6}$/i.test(String(primaryButtonColor || '')) ? primaryButtonColor : (accentColor || '#00b83f'),
+      loginButtonColor: /^#[0-9a-f]{6}$/i.test(String(loginButtonColor || '')) ? loginButtonColor : (primaryButtonColor || accentColor || '#00b83f'),
+      topbarColor: /^#[0-9a-f]{6}$/i.test(String(topbarColor || '')) ? topbarColor : (contentColor || '#f4f7f4'),
       panelColor: /^#[0-9a-f]{6}$/i.test(String(panelColor || '')) ? panelColor : (contentColor || '#ffffff'),
       inputColor: /^#[0-9a-f]{6}$/i.test(String(inputColor || '')) ? inputColor : '#f9fbfd',
       performanceTabsColor: /^#[0-9a-f]{6}$/i.test(String(performanceTabsColor || '')) ? performanceTabsColor : (panelColor || '#ffffff'),
-      performanceTabsActiveColor: /^#[0-9a-f]{6}$/i.test(String(performanceTabsActiveColor || '')) ? performanceTabsActiveColor : (accentColor || '#087b70'),
-      performanceTabsTextColor: /^#[0-9a-f]{6}$/i.test(String(performanceTabsTextColor || '')) ? performanceTabsTextColor : (contentTextColor || '#12283b'),
+      performanceTabsActiveColor: /^#[0-9a-f]{6}$/i.test(String(performanceTabsActiveColor || '')) ? performanceTabsActiveColor : (accentColor || '#00b83f'),
+      performanceTabsTextColor: /^#[0-9a-f]{6}$/i.test(String(performanceTabsTextColor || '')) ? performanceTabsTextColor : (contentTextColor || '#242b32'),
       timezone: (await localTimeStatus().catch(() => ({ timezone }))).timezone || timezone,
       timeSync: await localTimeStatus().catch(error => ({ timezone, ntpEnabled:false, synchronized:false, error:error.message })),
-      logo: Boolean(logoExt)
+      logo: true,
+      customLogo: Boolean(logoExt),
+      defaultBranding: usesDefaultBranding(store.state.config)
     });
   }
   if (req.method === 'PATCH' && url.pathname === '/api/settings') {
@@ -1904,14 +1906,13 @@ async function api(req, res, url) {
     const brandName = String(input.brandName || store.state.config.brandName || 'LightNAS').trim();
     if (brandName.length < 2 || brandName.length > 32 || /[<>\r\n]/.test(brandName)) return send(res, 400, { error: 'Brand name must contain 2–32 characters.' });
     const logoMode = input.logoMode === undefined
-      ? (store.state.config.logoMode === 'picture' && store.state.config.logoExt ? 'picture' : 'text')
+      ? (store.state.config.logoMode === 'text' ? 'text' : 'picture')
       : (input.logoMode === 'picture' ? 'picture' : 'text');
-    if (logoMode === 'picture' && !store.state.config.logoExt) return send(res, 400, { error: 'Upload a picture logo before switching to Picture logo.' });
-    const accentColor = String(input.accentColor || store.state.config.accentColor || '#087b70').trim();
+    const accentColor = String(input.accentColor || store.state.config.accentColor || '#00b83f').trim();
     const sidebarColor = String(input.sidebarColor || store.state.config.sidebarColor || '#ffffff').trim();
-    const contentColor = String(input.contentColor || store.state.config.contentColor || '#f2f6fa').trim();
-    const sidebarTextColor = String(input.sidebarTextColor || store.state.config.sidebarTextColor || '#12283b').trim();
-    const contentTextColor = String(input.contentTextColor || store.state.config.contentTextColor || '#12283b').trim();
+    const contentColor = String(input.contentColor || store.state.config.contentColor || '#f4f7f4').trim();
+    const sidebarTextColor = String(input.sidebarTextColor || store.state.config.sidebarTextColor || '#242b32').trim();
+    const contentTextColor = String(input.contentTextColor || store.state.config.contentTextColor || '#242b32').trim();
     const primaryButtonColor = String(input.primaryButtonColor || store.state.config.primaryButtonColor || accentColor).trim();
     const loginButtonColor = String(input.loginButtonColor || store.state.config.loginButtonColor || primaryButtonColor).trim();
     const topbarColor = String(input.topbarColor || store.state.config.topbarColor || contentColor).trim();
@@ -1920,7 +1921,7 @@ async function api(req, res, url) {
     const performanceTabsColor = String(input.performanceTabsColor || store.state.config.performanceTabsColor || panelColor).trim();
     const performanceTabsActiveColor = String(input.performanceTabsActiveColor || store.state.config.performanceTabsActiveColor || accentColor).trim();
     const performanceTabsTextColor = String(input.performanceTabsTextColor || store.state.config.performanceTabsTextColor || contentTextColor).trim();
-    if (!/^#[0-9a-f]{6}$/i.test(accentColor)) return send(res, 400, { error: 'Site accent color must be a six-digit hex color such as #087b70.' });
+    if (!/^#[0-9a-f]{6}$/i.test(accentColor)) return send(res, 400, { error: 'Site accent color must be a six-digit hex color such as #00b83f.' });
     if (!/^#[0-9a-f]{6}$/i.test(sidebarColor)) return send(res, 400, { error: 'Sidebar color must be a six-digit hex color.' });
     if (!/^#[0-9a-f]{6}$/i.test(contentColor)) return send(res, 400, { error: 'Main content color must be a six-digit hex color.' });
     if (!/^#[0-9a-f]{6}$/i.test(sidebarTextColor)) return send(res, 400, { error: 'Sidebar font color must be a six-digit hex color.' });
@@ -2309,26 +2310,28 @@ async function api(req, res, url) {
         deviceNameVisible: Boolean(isAdmin || account.showDeviceName),
         online: true,
         brandName: store.state.config.brandName || 'LightNAS',
-        logoMode: store.state.config.logoMode === 'picture' && store.state.config.logoExt ? 'picture' : 'text',
-        accentColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.accentColor || '')) ? store.state.config.accentColor : '#087b70',
+        logoMode: store.state.config.logoMode === 'text' ? 'text' : 'picture',
+        accentColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.accentColor || '')) ? store.state.config.accentColor : '#00b83f',
         sidebarColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.sidebarColor || '')) ? store.state.config.sidebarColor : '#ffffff',
-        contentColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.contentColor || '')) ? store.state.config.contentColor : '#f2f6fa',
-        sidebarTextColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.sidebarTextColor || '')) ? store.state.config.sidebarTextColor : '#12283b',
-        contentTextColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.contentTextColor || '')) ? store.state.config.contentTextColor : '#12283b',
-        primaryButtonColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.primaryButtonColor || '')) ? store.state.config.primaryButtonColor : (store.state.config.accentColor || '#087b70'),
-        loginButtonColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.loginButtonColor || '')) ? store.state.config.loginButtonColor : (store.state.config.primaryButtonColor || store.state.config.accentColor || '#087b70'),
-        topbarColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.topbarColor || '')) ? store.state.config.topbarColor : (store.state.config.contentColor || '#f2f6fa'),
+        contentColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.contentColor || '')) ? store.state.config.contentColor : '#f4f7f4',
+        sidebarTextColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.sidebarTextColor || '')) ? store.state.config.sidebarTextColor : '#242b32',
+        contentTextColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.contentTextColor || '')) ? store.state.config.contentTextColor : '#242b32',
+        primaryButtonColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.primaryButtonColor || '')) ? store.state.config.primaryButtonColor : (store.state.config.accentColor || '#00b83f'),
+        loginButtonColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.loginButtonColor || '')) ? store.state.config.loginButtonColor : (store.state.config.primaryButtonColor || store.state.config.accentColor || '#00b83f'),
+        topbarColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.topbarColor || '')) ? store.state.config.topbarColor : (store.state.config.contentColor || '#f4f7f4'),
         panelColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.panelColor || '')) ? store.state.config.panelColor : (store.state.config.contentColor || '#ffffff'),
         inputColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.inputColor || '')) ? store.state.config.inputColor : '#f9fbfd',
         performanceTabsColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.performanceTabsColor || '')) ? store.state.config.performanceTabsColor : (store.state.config.panelColor || '#ffffff'),
-        performanceTabsActiveColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.performanceTabsActiveColor || '')) ? store.state.config.performanceTabsActiveColor : (store.state.config.accentColor || '#087b70'),
-        performanceTabsTextColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.performanceTabsTextColor || '')) ? store.state.config.performanceTabsTextColor : (store.state.config.contentTextColor || '#12283b'),
+        performanceTabsActiveColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.performanceTabsActiveColor || '')) ? store.state.config.performanceTabsActiveColor : (store.state.config.accentColor || '#00b83f'),
+        performanceTabsTextColor: /^#[0-9a-f]{6}$/i.test(String(store.state.config.performanceTabsTextColor || '')) ? store.state.config.performanceTabsTextColor : (store.state.config.contentTextColor || '#242b32'),
         username,
         role: isAdmin ? 'administrator' : context.apiToken ? 'api' : 'user',
         permissions,
         timezone: store.state.config.timezone,
         avatar: Boolean(account.avatarExt),
-        logo: Boolean(store.state.config.logoExt),
+        logo: true,
+        customLogo: Boolean(store.state.config.logoExt),
+        defaultBranding: usesDefaultBranding(store.state.config),
         features: { ...DEFAULT_FEATURES, ...(store.state.config.features || {}) }
       },
       system, filesystems, storage, host: null,

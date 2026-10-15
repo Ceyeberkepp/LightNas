@@ -7,8 +7,8 @@
   --line-strong: rgba(174, 204, 228, .2);
   --text: #f1f7fb;
   --muted: #90a3b7;
-  --accent: #5ce1c3;
-  --accent-2: #52a9ff;
+  --accent: #00b83f;
+  --accent-2: #b3e879;
   --warning: #ffca63;
   --danger: #ff7283;
   --success: #54df9b;
@@ -31,15 +31,15 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f2f6fa;
+  --bg: #f4f7f4;
   --panel: #ffffff;
   --panel-2: #eaf1f7;
   --line: rgba(31, 62, 83, .14);
   --line-strong: rgba(31, 62, 83, .25);
-  --text: #12283b;
+  --text: #242b32;
   --muted: #536c80;
-  --accent: #087b70;
-  --accent-2: #176ab6;
+  --accent: #008a30;
+  --accent-2: #008d31;
   --sidebar: #fff;
   --topbar: rgba(255,255,255,.96);
   --input: #f9fbfd;

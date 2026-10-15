@@ -87,9 +87,11 @@ const $$ = (selector, parent = document) => [...parent.querySelectorAll(selector
 const themeChoices = ['system', 'light', 'dark'];
 let theme = themeChoices.includes(localStorage.getItem('lightnas-theme')) ? localStorage.getItem('lightnas-theme') : 'system';
 let overviewTimer = null;
+let lastBranding = null;
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 function applyTheme() {
   document.documentElement.dataset.theme = theme === 'system' ? (systemTheme.matches ? 'dark' : 'light') : theme;
+  if (lastBranding) applyApplianceBranding(lastBranding);
   const button = $('#theme-toggle');
   if (button) { button.title = `Appearance: ${theme}. Click to change.`; button.setAttribute('aria-label', `Appearance: ${theme}. Click to change.`); button.textContent = theme === 'system' ? '◐' : theme === 'light' ? '☀' : '☾'; }
 }
@@ -266,21 +268,35 @@ function colorContrast(first, second) {
 
 function readableBrandText(preferred, background) {
   if (colorContrast(preferred, background) >= 4.5) return preferred;
-  const dark = '#12283b';
+  const dark = '#242b32';
   const light = '#f7fbff';
   return colorContrast(dark, background) >= colorContrast(light, background) ? dark : light;
 }
 
+function resolvedBranding(appliance) {
+  if (!appliance.defaultBranding) return appliance;
+  const dark = document.documentElement.dataset.theme === 'dark';
+  const text = dark ? '#eef0f2' : '#242b32';
+  const panel = dark ? '#1a1e22' : '#ffffff';
+  return { ...appliance, accentColor: dark ? '#00b83f' : '#008a30',
+    sidebarColor: dark ? '#15191d' : '#ffffff', contentColor: dark ? '#101316' : '#f4f7f4',
+    sidebarTextColor: text, contentTextColor: text, primaryButtonColor: '#00b83f', loginButtonColor: '#00b83f',
+    topbarColor: dark ? '#171b1f' : '#ffffff', panelColor: panel, inputColor: dark ? '#20252a' : '#ffffff',
+    performanceTabsColor: panel, performanceTabsActiveColor: '#00b83f', performanceTabsTextColor: text };
+}
+
 function applyApplianceBranding(appliance = state.overview?.appliance) {
   if (!appliance) return;
+  lastBranding = appliance;
+  appliance = resolvedBranding(appliance);
   const brandName = String(appliance.brandName || 'LightNAS').trim() || 'LightNAS';
   const logoMode = appliance.logoMode === 'picture' && appliance.logo ? 'picture' : 'text';
   const logoUrl = logoMode === 'picture' ? `url("/api/branding/logo?v=${Date.now()}")` : '';
-  const accent = /^#[0-9a-f]{6}$/i.test(String(appliance.accentColor || '')) ? appliance.accentColor : '#087b70';
+  const accent = /^#[0-9a-f]{6}$/i.test(String(appliance.accentColor || '')) ? appliance.accentColor : '#00b83f';
   const sidebarColor = /^#[0-9a-f]{6}$/i.test(String(appliance.sidebarColor || '')) ? appliance.sidebarColor : '#ffffff';
-  const contentColor = /^#[0-9a-f]{6}$/i.test(String(appliance.contentColor || '')) ? appliance.contentColor : '#f2f6fa';
-  const requestedSidebarTextColor = /^#[0-9a-f]{6}$/i.test(String(appliance.sidebarTextColor || '')) ? appliance.sidebarTextColor : '#12283b';
-  const requestedContentTextColor = /^#[0-9a-f]{6}$/i.test(String(appliance.contentTextColor || '')) ? appliance.contentTextColor : '#12283b';
+  const contentColor = /^#[0-9a-f]{6}$/i.test(String(appliance.contentColor || '')) ? appliance.contentColor : '#f4f7f4';
+  const requestedSidebarTextColor = /^#[0-9a-f]{6}$/i.test(String(appliance.sidebarTextColor || '')) ? appliance.sidebarTextColor : '#242b32';
+  const requestedContentTextColor = /^#[0-9a-f]{6}$/i.test(String(appliance.contentTextColor || '')) ? appliance.contentTextColor : '#242b32';
   const sidebarTextColor = readableBrandText(requestedSidebarTextColor, sidebarColor);
   const contentTextColor = readableBrandText(requestedContentTextColor, contentColor);
   const primaryButtonColor = /^#[0-9a-f]{6}$/i.test(String(appliance.primaryButtonColor || '')) ? appliance.primaryButtonColor : accent;
@@ -291,13 +307,11 @@ function applyApplianceBranding(appliance = state.overview?.appliance) {
   const performanceTabsColor = /^#[0-9a-f]{6}$/i.test(String(appliance.performanceTabsColor || '')) ? appliance.performanceTabsColor : panelColor;
   const performanceTabsActiveColor = /^#[0-9a-f]{6}$/i.test(String(appliance.performanceTabsActiveColor || '')) ? appliance.performanceTabsActiveColor : accent;
   const performanceTabsTextColor = /^#[0-9a-f]{6}$/i.test(String(appliance.performanceTabsTextColor || '')) ? appliance.performanceTabsTextColor : contentTextColor;
-  const rgb = [1,3,5].map(index => Number.parseInt(accent.slice(index,index+2),16));
-  const luminance = (0.2126*rgb[0] + 0.7152*rgb[1] + 0.0722*rgb[2]) / 255;
   document.documentElement.style.setProperty('--accent', accent);
   document.documentElement.style.setProperty('--accent-2', `color-mix(in srgb, ${accent} 72%, white)`);
   document.documentElement.style.setProperty('--accent-soft', `color-mix(in srgb, ${accent} 12%, var(--panel))`);
   document.documentElement.style.setProperty('--accent-strong', `color-mix(in srgb, ${accent} 82%, black)`);
-  document.documentElement.style.setProperty('--accent-contrast', luminance > .58 ? '#06201c' : '#ffffff');
+  document.documentElement.style.setProperty('--accent-contrast', readableBrandText('#ffffff', accent));
   document.documentElement.style.setProperty('--sidebar', sidebarColor);
   document.documentElement.style.setProperty('--brand-content-bg', contentColor);
   document.documentElement.style.setProperty('--bg', contentColor);
@@ -326,6 +340,7 @@ function applyApplianceBranding(appliance = state.overview?.appliance) {
   document.documentElement.style.setProperty('--auth-panel-text', contentTextColor);
   $$('.brand-mark').forEach(mark => {
     mark.classList.toggle('custom-logo', logoMode === 'picture');
+    mark.classList.toggle('default-logo', logoMode === 'picture' && !appliance.customLogo);
     mark.classList.toggle('text-logo-mode', logoMode === 'text');
     mark.style.backgroundImage = logoUrl;
     mark.hidden = logoMode === 'text';
@@ -2199,7 +2214,7 @@ function settingsPermission(scope) {
 }
 
 function settingsView() {
-  const { appliance } = state.overview;
+  const appliance = resolvedBranding(state.overview.appliance);
   const zoneValues = (() => {
     try { return ['UTC', ...Intl.supportedValuesOf('timeZone')]; }
     catch { return ['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles']; }
@@ -2220,19 +2235,19 @@ function settingsView() {
           <label>Device name<input name="deviceName" value="${escapeHtml(appliance.deviceName)}" required minlength="2" maxlength="32" autocomplete="off"><small>System name shown in administration views.</small></label>
           <label>Logo type<select name="logoMode"><option value="text" ${appliance.logoMode !== 'picture' ? 'selected' : ''}>Text logo</option><option value="picture" ${appliance.logoMode === 'picture' ? 'selected' : ''}>Picture logo</option></select><small>Only one logo type is displayed at a time.</small></label>
           <label data-text-logo-field>Brand name<input name="brandName" value="${escapeHtml(appliance.brandName || 'LightNAS')}" minlength="2" maxlength="32" autocomplete="off" placeholder="LightNAS"><small>Shown only when Text logo is selected.</small></label>
-          <label>Site accent color<div class="accent-color-control"><input name="accentColor" type="color" value="${escapeHtml(appliance.accentColor || '#087b70')}" aria-label="Site accent color"><input name="accentHex" value="${escapeHtml(appliance.accentColor || '#087b70')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}" spellcheck="false"></div><small>Buttons, menus, graphs, badges, and focus colors.</small></label>
+          <label>Site accent color<div class="accent-color-control"><input name="accentColor" type="color" value="${escapeHtml(appliance.accentColor || '#00b83f')}" aria-label="Site accent color"><input name="accentHex" value="${escapeHtml(appliance.accentColor || '#00b83f')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}" spellcheck="false"></div><small>Buttons, menus, graphs, badges, and focus colors.</small></label>
           <label>Sidebar color<div class="accent-color-control"><input name="sidebarColor" type="color" value="${escapeHtml(appliance.sidebarColor || '#ffffff')}" aria-label="Sidebar color"><input name="sidebarHex" value="${escapeHtml(appliance.sidebarColor || '#ffffff')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}" spellcheck="false"></div><small>Left navigation background and login brand side.</small></label>
-          <label>Main content color<div class="accent-color-control"><input name="contentColor" type="color" value="${escapeHtml(appliance.contentColor || '#f2f6fa')}" aria-label="Main content color"><input name="contentHex" value="${escapeHtml(appliance.contentColor || '#f2f6fa')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}" spellcheck="false"></div><small>Workspace, top bar, cards/boxes, and login form side.</small></label>
-          <label>Sidebar font color<div class="accent-color-control"><input name="sidebarTextColor" type="color" value="${escapeHtml(appliance.sidebarTextColor || '#12283b')}" aria-label="Sidebar font color"><input name="sidebarTextHex" value="${escapeHtml(appliance.sidebarTextColor || '#12283b')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}" spellcheck="false"></div><small>Navigation labels, device name, and login brand-side text.</small></label>
-          <label>Main font color<div class="accent-color-control"><input name="contentTextColor" type="color" value="${escapeHtml(appliance.contentTextColor || '#12283b')}" aria-label="Main font color"><input name="contentTextHex" value="${escapeHtml(appliance.contentTextColor || '#12283b')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}" spellcheck="false"></div><small>Headings, labels, card text, and login form text.</small></label>
-          <label>Primary button color<div class="accent-color-control"><input name="primaryButtonColor" type="color" value="${escapeHtml(appliance.primaryButtonColor || appliance.accentColor || '#087b70')}" aria-label="Primary button color"><input name="primaryButtonHex" value="${escapeHtml(appliance.primaryButtonColor || appliance.accentColor || '#087b70')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Main action buttons throughout the control center.</small></label>
-          <label>Login button color<div class="accent-color-control"><input name="loginButtonColor" type="color" value="${escapeHtml(appliance.loginButtonColor || appliance.primaryButtonColor || appliance.accentColor || '#087b70')}" aria-label="Login button color"><input name="loginButtonHex" value="${escapeHtml(appliance.loginButtonColor || appliance.primaryButtonColor || appliance.accentColor || '#087b70')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Sign-in and setup primary button.</small></label>
-          <label>Top bar color<div class="accent-color-control"><input name="topbarColor" type="color" value="${escapeHtml(appliance.topbarColor || appliance.contentColor || '#f2f6fa')}"><input name="topbarHex" value="${escapeHtml(appliance.topbarColor || appliance.contentColor || '#f2f6fa')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Header behind Shell, theme and profile controls.</small></label>
+          <label>Main content color<div class="accent-color-control"><input name="contentColor" type="color" value="${escapeHtml(appliance.contentColor || '#f4f7f4')}" aria-label="Main content color"><input name="contentHex" value="${escapeHtml(appliance.contentColor || '#f4f7f4')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}" spellcheck="false"></div><small>Workspace, top bar, cards/boxes, and login form side.</small></label>
+          <label>Sidebar font color<div class="accent-color-control"><input name="sidebarTextColor" type="color" value="${escapeHtml(appliance.sidebarTextColor || '#242b32')}" aria-label="Sidebar font color"><input name="sidebarTextHex" value="${escapeHtml(appliance.sidebarTextColor || '#242b32')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}" spellcheck="false"></div><small>Navigation labels, device name, and login brand-side text.</small></label>
+          <label>Main font color<div class="accent-color-control"><input name="contentTextColor" type="color" value="${escapeHtml(appliance.contentTextColor || '#242b32')}" aria-label="Main font color"><input name="contentTextHex" value="${escapeHtml(appliance.contentTextColor || '#242b32')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}" spellcheck="false"></div><small>Headings, labels, card text, and login form text.</small></label>
+          <label>Primary button color<div class="accent-color-control"><input name="primaryButtonColor" type="color" value="${escapeHtml(appliance.primaryButtonColor || appliance.accentColor || '#00b83f')}" aria-label="Primary button color"><input name="primaryButtonHex" value="${escapeHtml(appliance.primaryButtonColor || appliance.accentColor || '#00b83f')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Main action buttons throughout the control center.</small></label>
+          <label>Login button color<div class="accent-color-control"><input name="loginButtonColor" type="color" value="${escapeHtml(appliance.loginButtonColor || appliance.primaryButtonColor || appliance.accentColor || '#00b83f')}" aria-label="Login button color"><input name="loginButtonHex" value="${escapeHtml(appliance.loginButtonColor || appliance.primaryButtonColor || appliance.accentColor || '#00b83f')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Sign-in and setup primary button.</small></label>
+          <label>Top bar color<div class="accent-color-control"><input name="topbarColor" type="color" value="${escapeHtml(appliance.topbarColor || appliance.contentColor || '#f4f7f4')}"><input name="topbarHex" value="${escapeHtml(appliance.topbarColor || appliance.contentColor || '#f4f7f4')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Header behind Shell, theme and profile controls.</small></label>
           <label>Cards / boxes color<div class="accent-color-control"><input name="panelColor" type="color" value="${escapeHtml(appliance.panelColor || appliance.contentColor || '#ffffff')}"><input name="panelHex" value="${escapeHtml(appliance.panelColor || appliance.contentColor || '#ffffff')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Panels, cards, dialogs, and content boxes.</small></label>
           <label>Input field color<div class="accent-color-control"><input name="inputColor" type="color" value="${escapeHtml(appliance.inputColor || '#f9fbfd')}"><input name="inputHex" value="${escapeHtml(appliance.inputColor || '#f9fbfd')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Text fields, selects, and editable controls.</small></label>
           <label>Performance tabs color<div class="accent-color-control"><input name="performanceTabsColor" type="color" value="${escapeHtml(appliance.performanceTabsColor || appliance.panelColor || '#ffffff')}"><input name="performanceTabsHex" value="${escapeHtml(appliance.performanceTabsColor || appliance.panelColor || '#ffffff')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Background behind CPU, Load, Memory, Storage, and Network tabs.</small></label>
-          <label>Active performance tab<div class="accent-color-control"><input name="performanceTabsActiveColor" type="color" value="${escapeHtml(appliance.performanceTabsActiveColor || appliance.accentColor || '#087b70')}"><input name="performanceTabsActiveHex" value="${escapeHtml(appliance.performanceTabsActiveColor || appliance.accentColor || '#087b70')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Selected performance tab background.</small></label>
-          <label>Performance tab text<div class="accent-color-control"><input name="performanceTabsTextColor" type="color" value="${escapeHtml(appliance.performanceTabsTextColor || appliance.contentTextColor || '#12283b')}"><input name="performanceTabsTextHex" value="${escapeHtml(appliance.performanceTabsTextColor || appliance.contentTextColor || '#12283b')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Text on unselected performance tabs.</small></label>
+          <label>Active performance tab<div class="accent-color-control"><input name="performanceTabsActiveColor" type="color" value="${escapeHtml(appliance.performanceTabsActiveColor || appliance.accentColor || '#00b83f')}"><input name="performanceTabsActiveHex" value="${escapeHtml(appliance.performanceTabsActiveColor || appliance.accentColor || '#00b83f')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Selected performance tab background.</small></label>
+          <label>Performance tab text<div class="accent-color-control"><input name="performanceTabsTextColor" type="color" value="${escapeHtml(appliance.performanceTabsTextColor || appliance.contentTextColor || '#242b32')}"><input name="performanceTabsTextHex" value="${escapeHtml(appliance.performanceTabsTextColor || appliance.contentTextColor || '#242b32')}" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></div><small>Text on unselected performance tabs.</small></label>
           <label>Display time zone<select name="timezone">${zones.map(([value, label]) => `<option value="${value}" ${appliance.timezone === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
         </div>
         <div class="general-branding-row branding-card">
@@ -2242,7 +2257,7 @@ function settingsView() {
           </div>
           <div class="general-logo-actions" data-picture-logo-actions>
             <label class="primary upload-button">Upload logo picture<input id="logo-upload" type="file" accept="image/png,image/jpeg,image/webp" hidden></label>
-            ${appliance.logo ? '<button class="secondary" type="button" data-remove-logo>Remove picture</button>' : ''}
+            ${appliance.customLogo ? '<button class="secondary" type="button" data-remove-logo>Restore LightNAS logo</button>' : ''}
           </div>
         </div>
         <div class="form-error" data-logo-error role="alert"></div>
@@ -3297,6 +3312,7 @@ function bindViewActions() {
     const performanceTabsTextHex = settingsForm.elements.performanceTabsTextHex;
     const previewBrandingFromForm = () => applyApplianceBranding({
       ...state.overview.appliance,
+      defaultBranding: false,
       brandName: settingsForm.elements.brandName?.value || state.overview.appliance.brandName,
       logoMode: settingsForm.elements.logoMode?.value || state.overview.appliance.logoMode,
       accentColor: color?.value || state.overview.appliance.accentColor,

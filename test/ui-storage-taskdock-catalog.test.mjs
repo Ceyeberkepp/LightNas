@@ -339,7 +339,7 @@ test('branding uses either text or picture logo and persists site accent color',
   assert.match(app, /document\.documentElement\.style\.setProperty\('--accent'/);
   assert.match(server, /logoMode === 'picture'/);
   assert.match(server, /accentColor/);
-  assert.match(server, /Upload a picture logo before switching to Picture logo/);
+  assert.match(server, /assets\/lightnas-logo\.png/);
   assert.match(styles, /\.accent-color-control/);
   assert.match(styles, /branding-preview\.picture-only/);
 });

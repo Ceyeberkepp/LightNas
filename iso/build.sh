@@ -78,17 +78,16 @@ if [[ -d /usr/share/live/build/bootloaders ]]; then
   cp -a /usr/share/live/build/bootloaders config/bootloaders
 
   # Product-branded BIOS/UEFI splash; keep the lower half clear for menus.
-  cat >"${BUILD_DIR}/lightnas-splash.svg" <<'SVG'
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
- <rect width="640" height="480" fill="#08111f"/>
- <rect x="0" y="0" width="640" height="8" fill="#5ce1c3"/>
- <rect x="38" y="36" width="48" height="48" rx="12" fill="#5ce1c3"/>
- <path d="M51 67 L62 52 L72 67 M56 61 H68" fill="none" stroke="#08111f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
- <text x="100" y="70" font-family="DejaVu Sans,sans-serif" font-size="32" font-weight="bold" fill="#f4fbff">LightNAS</text>
+  cat >"${BUILD_DIR}/lightnas-splash.svg" <<SVG
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="640" height="480" viewBox="0 0 640 480">
+ <rect width="640" height="480" fill="#15191d"/>
+ <rect x="0" y="0" width="640" height="8" fill="#00b83f"/>
+ <rect x="34" y="25" width="300" height="72" rx="8" fill="#ffffff"/>
+ <image x="40" y="28" width="288" height="66" xlink:href="data:image/png;base64,$(base64 -w0 "${REPO_ROOT}/public/assets/lightnas-logo.png")"/>
  <text x="41" y="128" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#f4fbff">Welcome to LightNAS</text>
- <text x="41" y="153" font-family="DejaVu Sans,sans-serif" font-size="14" fill="#9db2c3">Storage  •  Apps  •  Containers  •  Virtual Machines</text>
- <line x1="40" y1="177" x2="600" y2="177" stroke="#31505e" stroke-width="2"/>
- <text x="42" y="450" font-family="DejaVu Sans,sans-serif" font-size="12" fill="#9db2c3">Debian 13 based   •   BIOS / UEFI   •   Graphics and terminal installation</text>
+ <text x="41" y="153" font-family="DejaVu Sans,sans-serif" font-size="14" fill="#a3abb3">Storage  •  Apps  •  Containers  •  Virtual Machines</text>
+ <line x1="40" y1="177" x2="600" y2="177" stroke="#46505a" stroke-width="2"/>
+ <text x="42" y="450" font-family="DejaVu Sans,sans-serif" font-size="12" fill="#a3abb3">Debian 13 based   •   BIOS / UEFI   •   Graphics and terminal installation</text>
 </svg>
 SVG
   rsvg-convert -w 640 -h 480 "${BUILD_DIR}/lightnas-splash.svg" >"${BUILD_DIR}/lightnas-splash.png"
@@ -568,6 +567,7 @@ if ! id lightnas-ui >/dev/null 2>&1; then
 fi
 install -d -o lightnas-ui -g lightnas-ui -m 0700 /var/lib/lightnas-ui/.config/openbox
 install -d -m 0755 /usr/share/lightnas
+install -m 0644 /opt/lightnas/public/assets/lightnas-logo.png /usr/share/lightnas/lightnas-logo.png
 cat >/usr/share/lightnas/kiosk-start.html <<'KIOSK_HTML'
 <!doctype html>
 <html lang="en">
@@ -576,20 +576,20 @@ cat >/usr/share/lightnas/kiosk-start.html <<'KIOSK_HTML'
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LightNAS</title>
 <style>
-  html,body{margin:0;width:100%;height:100%;background:#08111f;color:#f4fbff;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  html,body{margin:0;width:100%;height:100%;background:#15191d;color:#f4fbff;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
   body{display:grid;place-items:center}
   main{text-align:center;max-width:680px;padding:32px}
   h1{font-size:52px;margin:0 0 10px}
-  p{color:#9db2c3;font-size:18px;margin:8px 0}
-  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#5ce1c3;margin-right:8px;animation:pulse 1.1s infinite alternate}
+  p{color:#a3abb3;font-size:18px;margin:8px 0}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#00b83f;margin-right:8px;animation:pulse 1.1s infinite alternate}
   @keyframes pulse{from{opacity:.35}to{opacity:1}}
-  small{display:block;color:#6f8799;margin-top:20px}
+  small{display:block;color:#a3abb3;margin-top:20px}
 </style>
 </head>
 <body>
 <main>
-  <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:20px"><span aria-hidden="true" style="display:grid;place-items:center;border-radius:12px;background:#5ce1c3;color:#08111f;width:52px;height:52px;font-weight:800;font-size:28px">L</span><h1 style="font-size:46px;margin:0">LightNAS</h1></div>
-  <p style="color:#5ce1c3;font-weight:600">Storage · Apps · Containers · Virtual Machines</p>
+  <img src="lightnas-logo.png" alt="LightNAS" style="width:min(420px,80vw);background:#fff;border-radius:12px;padding:12px;margin-bottom:20px">
+  <p style="color:#00b83f;font-weight:600">Storage · Apps · Containers · Virtual Machines</p>
   <p><span class="dot"></span>Starting the local control center…</p>
   <p id="status">Waiting for LightNAS services.</p>
   <small>Web access will remain available at http://&lt;this-system-IP&gt;:3080</small>
@@ -652,7 +652,7 @@ cat >/usr/local/bin/lightnas-xsession <<'XSESSION'
 set -Eeuo pipefail
 
 export DISPLAY="${DISPLAY:-:0}"
-xsetroot -solid '#08111f' >/dev/null 2>&1 || true
+xsetroot -solid '#15191d' >/dev/null 2>&1 || true
 xset -dpms >/dev/null 2>&1 || true
 xset s off >/dev/null 2>&1 || true
 xset s noblank >/dev/null 2>&1 || true
@@ -783,10 +783,10 @@ ImageDir=/usr/share/plymouth/themes/lightnas
 ScriptFile=/usr/share/plymouth/themes/lightnas/lightnas.script
 PLYMOUTH
 cat >/usr/share/plymouth/themes/lightnas/lightnas.script <<'PLYMOUTH_SCRIPT'
-Window.SetBackgroundTopColor(0.03, 0.07, 0.12);
-Window.SetBackgroundBottomColor(0.03, 0.07, 0.12);
+Window.SetBackgroundTopColor(0.082, 0.098, 0.114);
+Window.SetBackgroundBottomColor(0.082, 0.098, 0.114);
 title = Image.Text("LightNAS", 0.94, 0.98, 1.0);
-subtitle = Image.Text("Storage  •  Apps  •  Containers  •  Virtual Machines", 0.36, 0.88, 0.76);
+subtitle = Image.Text("Storage  •  Apps  •  Containers  •  Virtual Machines", 0.0, 0.722, 0.247);
 ts = Sprite(title);
 ss = Sprite(subtitle);
 ts.SetX(Window.GetWidth()/2 - title.GetWidth()/2);

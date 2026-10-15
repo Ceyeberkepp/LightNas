@@ -6,25 +6,25 @@
   --bg:#101316; --panel:#1a1e22; --panel-2:#20252a;
   --line:#30373d; --line-strong:#46505a;
   --text:#eef0f2; --muted:#a3abb3;
-  --accent:#80b3e2; --accent-2:#80b3e2;
+  --accent:#00b83f; --accent-2:#00b83f;
   --warning:#e7b86b; --danger:#ec8585; --success:#74c9a5;
   --radius:8px; --shadow:0 6px 22px rgba(0,0,0,.16);
   --sidebar:#15191d; --topbar:#171b1f; --input:#20252a; --button:#292f35;
-  --primary-button:#80b3e2; --primary-button-contrast:#111d27;
+  --primary-button:#00b83f; --primary-button-contrast:#101316;
   --login-button:var(--primary-button); --login-button-contrast:var(--primary-button-contrast);
   --performance-tabs:var(--panel); --performance-tabs-active:var(--accent);
-  --performance-tabs-text:var(--muted); --performance-tabs-active-text:#111d27;
+  --performance-tabs-text:var(--muted); --performance-tabs-active-text:#101316;
   font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
 }
 :root[data-theme="light"] {
   color-scheme:light;
-  --bg:#fff; --panel:#fff; --panel-2:#f7f8f9;
+  --bg:#f4f7f4; --panel:#fff; --panel-2:#f7f8f9;
   --line:#e4e7ea; --line-strong:#cbd2d8;
-  --text:#242b32; --muted:#646e78; --accent:#245c8f; --accent-2:#245c8f;
+  --text:#242b32; --muted:#646e78; --accent:#008a30; --accent-2:#008a30;
   --warning:#a36a12; --danger:#ba353b; --success:#18764f;
   --sidebar:#f8f9fa; --topbar:#fff; --input:#fff; --button:#f3f5f6;
-  --primary-button:#245c8f; --primary-button-contrast:#fff;
-  --login-button:var(--primary-button); --login-button-contrast:#fff;
+  --primary-button:#00b83f; --primary-button-contrast:#101316;
+  --login-button:var(--primary-button); --login-button-contrast:#101316;
   --shadow:0 6px 20px rgba(20,30,40,.08);
 }
 html,body { background:var(--bg);color:var(--text); }
@@ -474,4 +474,23 @@ label { font-size:13px;font-weight:550;gap:6px; }
 @media(max-width:760px) {
   .lightnas-viewer .viewer-desktop-menu { display:none!important; }
   .lightnas-viewer .viewer-menu-wrap { display:contents; }
+}
+
+/* The bundled horizontal wordmark stays readable on every appliance background. */
+.brand-mark.default-logo {
+  background-image:url('/assets/lightnas-logo.png');
+  background-color:#ffffff;
+  border:0;
+  box-shadow:none;
+  background-repeat:no-repeat;
+  background-position:center;
+  background-size:contain;
+  width:180px;
+  height:62px;
+  border-radius:8px;
+}
+.brand-mark.default-logo > span { display:none; }
+.brand:has(.default-logo) > [data-brand-name] { display:none; }
+.console.sidebar-collapsed .sidebar-brand .brand-mark.default-logo {
+  width:48px; height:48px; background-size:216px auto; background-position:4px center;
 }
