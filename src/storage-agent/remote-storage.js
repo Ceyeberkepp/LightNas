@@ -1,12 +1,13 @@
 import https from 'node:https';
 import tls from 'node:tls';
 const normalizePin=value=>String(value||'').replaceAll(':','').toLowerCase();
-export function remoteRequest(url,{headers={},method='GET',body,pin}={}){
+export function remoteRequest(url,{headers={},method='GET',body,pin,certificatePem}={}){
  return new Promise((resolve,reject)=>{
   const agent=new https.Agent({keepAlive:false});
+  if(certificatePem&&!pin){reject(Error('A verified SHA-256 fingerprint is required to enroll a custom certificate'));return;}
   if(pin){const expected=normalizePin(pin);if(!/^[0-9a-f]{64}$/.test(expected)){reject(Error('Enter the server certificate SHA-256 fingerprint'));return;}
    // Authenticate a pinned certificate before giving HTTP a connected socket.
-   agent.createConnection=(options,callback)=>{let done=false;const finish=(error,socket)=>{if(done)return;done=true;callback(error,socket);};const socket=tls.connect({...options,rejectUnauthorized:true,minVersion:'TLSv1.2'},()=>{if(normalizePin(socket.getPeerCertificate().fingerprint256)!==expected){finish(Error('Remote storage certificate fingerprint does not match'));socket.destroy();return;}finish(null,socket);});socket.once('error',error=>finish(error));};
+   agent.createConnection=(options,callback)=>{let done=false;const finish=(error,socket)=>{if(done)return;done=true;callback(error,socket);};const socket=tls.connect({...options,...(certificatePem?{ca:certificatePem}:{}),rejectUnauthorized:true,minVersion:'TLSv1.2'},()=>{if(normalizePin(socket.getPeerCertificate().fingerprint256)!==expected){finish(Error('Remote storage certificate fingerprint does not match'));socket.destroy();return;}finish(null,socket);});socket.once('error',error=>finish(error));};
   }
   const request=https.request(url,{method,headers,agent,minVersion:'TLSv1.2'},response=>{let text='';response.setEncoding('utf8');response.on('data',chunk=>{text+=chunk;if(Buffer.byteLength(text)>4*1024*1024)request.destroy(Error('Remote storage response too large'));});response.on('error',reject);response.on('end',()=>{agent.destroy();if(response.statusCode<200||response.statusCode>=300){reject(Error('Remote storage returned HTTP '+response.statusCode+'. Check endpoint, credentials and datastore permissions.'));return;}resolve(text);});});const timer=setTimeout(()=>request.destroy(Error('Remote storage connection timed out')),15000);request.once('close',()=>clearTimeout(timer));request.setTimeout(15000,()=>request.destroy(Error('Remote storage connection timed out')));request.on('error',error=>{agent.destroy();reject(error);});request.end(body);
  });
@@ -15,7 +16,7 @@ const unescape=value=>value.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace
 const extensions={iso:/\.iso$/i,images:/\.(qcow2|raw|vmdk|vhdx?)$/i,backup:/\.(vma(?:\.zst|\.gz)?|tar(?:\.zst|\.gz)?)$/i,snippets:/\.(txt|conf|cfg|yaml|yml|json|sh)$/i,files:/./};
 export class RemoteStorage{
  constructor(request=remoteRequest){this.request=request;}
- options(provider,config,credentials){const authorization=provider==='proxmox-backup-server'?'PBSAPIToken='+config.username+':'+credentials.secret:'Basic '+Buffer.from(config.username+':'+credentials.password).toString('base64');return {headers:{Authorization:authorization},pin:config.fingerprint};}
+ options(provider,config,credentials){const authorization=provider==='proxmox-backup-server'?'PBSAPIToken='+config.username+':'+credentials.secret:'Basic '+Buffer.from(config.username+':'+credentials.password).toString('base64');return {headers:{Authorization:authorization},pin:config.fingerprint,certificatePem:config.certificatePem};}
  url(config,path){const url=new URL(path,'https://'+config.server);if(path.startsWith('/api2/')&&!url.port&&!/(?:\]:|^[^:]+:)\d+$/.test(config.server))url.port='8007';return url;}
  async pbs(config,credentials,suffix){const text=await this.request(this.url(config,'/api2/json/admin/datastore/'+encodeURIComponent(config.datastore)+'/'+suffix),this.options('proxmox-backup-server',config,credentials));const response=JSON.parse(text);if(!response||!Object.hasOwn(response,'data'))throw Error('Invalid PBS API response');return response.data;}
  async esxiFolder(config,credentials){
