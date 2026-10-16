@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { access, constants, readFile, lstat, statfs, writeFile, rm } from 'node:fs/promises';
+import { access, constants, readFile, readdir, lstat, statfs, writeFile, rm } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -77,6 +77,38 @@ export async function getStorageInventory() {
       }));
   } catch {}
 
+  // Older util-linux builds and minimal installs may reject optional lsblk
+  // columns. Retry a minimal JSON shape, then enumerate /sys/block read-only.
+  // Never interpret this fallback as authorization to initialize a device.
+  let diskDiscoverySource = 'lsblk';
+  if (!inContainer && disks.length === 0) {
+    const minimal = await command('lsblk', ['-J', '-b', '-o', 'NAME,TYPE,SIZE']);
+    try {
+      const nodes = JSON.parse(minimal || '{}').blockdevices || [];
+      disks = nodes.filter(node => node.type === 'disk').map(node => ({
+        name: node.name, path: '/dev/' + node.name,
+        sizeBytes: Number(node.size) || 0, model: null, transport: null,
+        partitions: (node.children || []).map(part => ({
+          name: part.name, path: '/dev/' + part.name,
+          sizeBytes: Number(part.size) || 0,
+          filesystem: null, mountPoint: null
+        }))
+      }));
+      if (disks.length) diskDiscoverySource = 'lsblk-minimal';
+    } catch {}
+  }
+  if (!inContainer && disks.length === 0) {
+    const names = await readdir('/sys/block').catch(() => []);
+    const physicalNames = names.filter(name => /^(?:sd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\\d+n\\d+|mmcblk\\d+)$/.test(name));
+    disks = (await Promise.all(physicalNames.map(async name => {
+      const sectors = Number((await readText('/sys/block/' + name + '/size')).trim());
+      if (!Number.isFinite(sectors) || sectors <= 0) return null;
+      const model = (await readText('/sys/block/' + name + '/device/model')).trim() || null;
+      return { name, path: '/dev/' + name, sizeBytes: sectors * 512,
+        model, transport: null, partitions: [], discoveryIncomplete: true };
+    }))).filter(Boolean);
+    if (disks.length) diskDiscoverySource = 'sysfs-readonly';
+  }
   if (inContainer) disks = [];
 
   const dataRoot = dirname(resolve(process.env.NAS_DATA_FILE || 'data/state.json'));
@@ -195,6 +227,11 @@ export async function getStorageInventory() {
 
   return {
     disks,
+    diskDiscovery: { source: inContainer ? 'container-isolated' : diskDiscoverySource,
+      incomplete: !inContainer && (disks.length === 0 || diskDiscoverySource === 'sysfs-readonly'),
+      message: !inContainer && disks.length === 0
+        ? 'No block disks detected. Check device passthrough and lsblk availability.'
+        : null },
     local,
     attachedVolumes,
     // Preserve exact managed mount paths even when capacity accounting groups
