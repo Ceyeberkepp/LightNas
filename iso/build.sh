@@ -311,6 +311,9 @@ xserver-xorg-video-all
 xserver-xorg-video-vesa
 xserver-xorg-video-fbdev
 xserver-xorg-input-all
+xserver-xorg-input-libinput
+libinput-tools
+usbutils
 fbset
 xinit
 xauth
@@ -358,6 +361,14 @@ zfsutils-linux
 docker.io
 libraw-bin
 EOF
+
+# Keep hardware input modules loaded in both the installed appliance and
+# graphical live environment; Debian Installer initrd has its own input stack.
+mkdir -p config/includes.chroot/etc/modules-load.d
+cat >config/includes.chroot/etc/modules-load.d/lightnas-input.conf <<'INPUT'
+usbhid
+hid_generic
+INPUT
 
 #
 # Make ZFS available for normal LightNAS boots.
@@ -1117,16 +1128,65 @@ echo "ZFS module confirmed inside final LightNAS filesystem."
 # binary hooks. Remaster changed menu files into the ISO and replay El Torito
 # metadata, rather than merely editing the staging tree.
 #
-echo "=== Branding final GRUB menus ==="
-while IFS= read -r -d '' cfg; do
+echo "=== Setting installer-first BIOS and UEFI menus ==="
+# Build a direct graphical-installer entry from the actual installer payload.
+# Never default to the live system, kiosk or auto-login session.
+gtk_kernel=""
+gtk_initrd=""
+for k in binary/install/gtk/vmlinuz binary/install/gtk/linux; do
+  [[ -f "$k" ]] && { gtk_kernel="${k#binary}"; break; }
+done
+for i in binary/install/gtk/initrd.gz binary/install/gtk/initrd; do
+  [[ -f "$i" ]] && { gtk_initrd="${i#binary}"; break; }
+done
+[[ -n "$gtk_kernel" && -n "$gtk_initrd" ]] || {
+  echo "ERROR: graphical Debian Installer payload missing; refusing live-session default." >&2
+  exit 1
+}
+
+for cfg in binary/boot/grub/grub.cfg binary/boot/grub/loopback.cfg; do
+  [[ -f "$cfg" ]] || continue
   sed -i \
     -e 's|Debian GNU/Linux 13 (trixie)|LightNAS|g' \
     -e 's|Debian GNU/Linux|LightNAS|g' \
-    -e 's|Live system (amd64)|LightNAS Live (amd64)|g' \
-    -e 's|Start installer with speech synthesis|Install LightNAS (Accessible)|g' \
-    -e 's|Start installer|Install LightNAS|g' \
-    "$cfg"
-done < <(find binary/boot/grub -type f -name '*.cfg' -print0 2>/dev/null || true)
+    -e 's|Live system (amd64)|LightNAS Recovery (amd64)|g' "$cfg"
+  # Prepend a known graphical installer entry as the first GRUB menu item.
+  # Numeric default is unaffected by distro-specific menu wording/submenus.
+  grep -q 'lightnas-installer-first' "$cfg" || {
+    tmp="$(mktemp)"
+    cat >"$tmp" <<EOF_GRUB
+set default=0
+set timeout=1
+menuentry "Install LightNAS" --id=lightnas-installer-first {
+  linux $gtk_kernel priority=high
+  initrd $gtk_initrd
+}
+EOF_GRUB
+    cat "$cfg" >>"$tmp"
+    mv "$tmp" "$cfg"
+  }
+done
+
+# Isolinux/Syslinux uses the graphical installer label from Debian live-build.
+# Add our own label to the first loaded configuration and make it the default.
+for cfg in binary/isolinux/isolinux.cfg binary/syslinux/syslinux.cfg; do
+  [[ -f "$cfg" ]] || continue
+  if ! grep -q 'label lightnas-installer-first' "$cfg"; then
+    tmp="$(mktemp)"
+    cat >"$tmp" <<EOF_BIOS
+DEFAULT lightnas-installer-first
+PROMPT 0
+TIMEOUT 10
+LABEL lightnas-installer-first
+  MENU LABEL ^Install LightNAS
+  KERNEL $gtk_kernel
+  APPEND initrd=$gtk_initrd priority=high
+
+EOF_BIOS
+    cat "$cfg" >>"$tmp"
+    mv "$tmp" "$cfg"
+  fi
+done
 
 #
 # Find resulting ISO.
@@ -1137,11 +1197,16 @@ ISO="$(find . -maxdepth 1 -name '*.iso' -type f -print -quit)"
   echo 'Build did not produce an ISO.' >&2
   exit 1
 }
-if [[ -d binary/boot/grub ]]; then
+if [[ -d binary/boot/grub || -d binary/isolinux || -d binary/syslinux ]]; then
   BRANDED_ISO="${ISO%.iso}-branded.iso"
+  update_args=()
+  for subdir in boot/grub isolinux syslinux; do
+    if [[ -d "binary/$subdir" ]]; then
+      update_args+=(-update_r "binary/$subdir" "/$subdir")
+    fi
+  done
   xorriso -indev "$ISO" -outdev "$BRANDED_ISO" \
-    -update_r binary/boot/grub /boot/grub \
-    -boot_image any replay -commit
+    "${update_args[@]}" -boot_image any replay -commit
   test -s "$BRANDED_ISO"
   mv -f "$BRANDED_ISO" "$ISO"
 fi

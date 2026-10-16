@@ -92,6 +92,26 @@ jobs:
           fi
           echo "ISO remained bootable for the smoke-test window."
 
+      - name: USB keyboard and mouse installer boot smoke test
+        run: |
+          set +e
+          timeout 35s qemu-system-x86_64 \
+            -machine q35 \
+            -m 2048 -smp 2 \
+            -device qemu-xhci,id=xhci \
+            -device usb-kbd,bus=xhci.0 \
+            -device usb-tablet,bus=xhci.0 \
+            -cdrom dist/LightNAS-amd64.iso \
+            -boot d -display none -serial stdio -no-reboot
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
+            echo "USB keyboard/tablet VM boot failed ($rc)" >&2
+            exit "$rc"
+          fi
+          echo "Installer booted with emulated USB keyboard and tablet attached."
+          echo "NOTE: This checks device attachment/boot, not graphical clicks or typing."
+
       - name: VGA compatibility smoke test
         run: |
           set +e
@@ -149,6 +169,16 @@ jobs:
             echo 'Unbranded Debian boot menu remains in ISO' >&2
             exit 1
           fi
+          # Verify the actual mounted ISO boots the graphical installer first.
+          if [ -f /tmp/lightnas-iso/boot/grub/grub.cfg ]; then
+            grep -q 'lightnas-installer-first' /tmp/lightnas-iso/boot/grub/grub.cfg
+            grep -q '^set default=0' /tmp/lightnas-iso/boot/grub/grub.cfg
+            grep -q 'linux /install/gtk/' /tmp/lightnas-iso/boot/grub/grub.cfg
+          fi
+          if [ -f /tmp/lightnas-iso/isolinux/isolinux.cfg ]; then
+            grep -q '^DEFAULT lightnas-installer-first' /tmp/lightnas-iso/isolinux/isolinux.cfg
+          fi
+          echo "Graphical installer is the configured first boot entry."
           echo "All universal LightNAS installer modes are present."
 
       - name: UEFI boot smoke test
