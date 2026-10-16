@@ -70,6 +70,18 @@ lb config \
   --linux-flavours amd64 \
   --compression xz
 
+# Bootloaders must come from APT-installed Debian packages. This checks
+# package ownership for tools and templates; package signatures are verified
+# by APT against trusted Debian archive keys.
+for binary in /usr/bin/xorriso /usr/bin/grub-mkimage; do
+  if [[ -e "$binary" ]]; then
+    dpkg-query -S "$binary" >/dev/null || {
+      echo "ERROR: Unpackaged boot tool: $binary" >&2
+      exit 1
+    }
+  fi
+done
+
 # Brand both BIOS and UEFI boot menus as LightNAS.
 # live-build ships known-good bootloader templates for the installed version;
 # copy those templates rather than maintaining fragile bootloader configs here.
@@ -602,9 +614,9 @@ ubuntu_candidate="$(apt-cache policy ubuntu-keyring 2>/dev/null | awk '/Candidat
 if [[ -n "$ubuntu_candidate" && "$ubuntu_candidate" != "(none)" ]]; then
   apt-get install -y ubuntu-keyring
 else
-  curl -fsSL https://archive.ubuntu.com/ubuntu/project/ubuntu-archive-keyring.gpg \
-    -o /usr/share/keyrings/ubuntu-archive-keyring.gpg
-  chmod 0644 /usr/share/keyrings/ubuntu-archive-keyring.gpg
+  echo 'ERROR: ubuntu-keyring is unavailable from an authenticated APT repository.' >&2
+  echo 'Refusing to download and trust an unverified signing key.' >&2
+  exit 1
 fi
 
 #
