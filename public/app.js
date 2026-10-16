@@ -1293,7 +1293,7 @@ function runtimeBanner(kind) {
   if (scopedError) return `<div class="empty"><p>${escapeHtml(scopedError)}</p><button class="secondary" data-action="refresh-runtime">Retry</button></div>`;
   if (!state.runtimes || !state.runtimes[kind]) return `<div class="empty"><p>${kind === 'containers' ? 'Checking system containers…' : 'Checking this host’s runtimes…'}</p></div>`;
   const runtime = state.runtimes[kind];
-  if (!runtime.available) return `<div class="module-hero"><h2>Runtime unavailable</h2><p>${escapeHtml(runtime.reason)}</p></div>`;
+  if (!runtime.available) return `<div class="module-hero"><h2>Runtime unavailable</h2><p>${escapeHtml(runtime.reason || 'The local host service is not responding.')}</p><p class="muted">Local container inventory requires the LightNAS host agent. Verify the host-agent service and LXC installation if retry does not resolve this.</p><button class="secondary" data-action="refresh-runtime">Retry runtime detection</button></div>`;
   if (!runtime.enabled) return '<div class="module-hero"><h2>Creation is disabled</h2><p>The host operator must explicitly enable this runtime and grant the LightNAS service account access. Existing resources remain visible below.</p></div>';
   return '';
 }
