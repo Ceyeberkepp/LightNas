@@ -1113,6 +1113,22 @@ fi
 echo "ZFS module confirmed inside final LightNAS filesystem."
 
 #
+# Final bootloader branding repair: live-build may regenerate GRUB *after*
+# binary hooks. Remaster changed menu files into the ISO and replay El Torito
+# metadata, rather than merely editing the staging tree.
+#
+echo "=== Branding final GRUB menus ==="
+while IFS= read -r -d '' cfg; do
+  sed -i \
+    -e 's|Debian GNU/Linux 13 (trixie)|LightNAS|g' \
+    -e 's|Debian GNU/Linux|LightNAS|g' \
+    -e 's|Live system (amd64)|LightNAS Live (amd64)|g' \
+    -e 's|Start installer with speech synthesis|Install LightNAS (Accessible)|g' \
+    -e 's|Start installer|Install LightNAS|g' \
+    "$cfg"
+done < <(find binary/boot/grub -type f -name '*.cfg' -print0 2>/dev/null || true)
+
+#
 # Find resulting ISO.
 #
 ISO="$(find . -maxdepth 1 -name '*.iso' -type f -print -quit)"
@@ -1121,6 +1137,14 @@ ISO="$(find . -maxdepth 1 -name '*.iso' -type f -print -quit)"
   echo 'Build did not produce an ISO.' >&2
   exit 1
 }
+if [[ -d binary/boot/grub ]]; then
+  BRANDED_ISO="${ISO%.iso}-branded.iso"
+  xorriso -indev "$ISO" -outdev "$BRANDED_ISO" \
+    -update_r binary/boot/grub /boot/grub \
+    -boot_image any replay -commit
+  test -s "$BRANDED_ISO"
+  mv -f "$BRANDED_ISO" "$ISO"
+fi
 
 echo
 echo "=== Verifying BIOS + UEFI bootability ==="
