@@ -209,6 +209,16 @@ jobs:
           fi
           if [ -f /tmp/lightnas-iso/isolinux/isolinux.cfg ]; then
             grep -q '^DEFAULT lightnas-installer-first' /tmp/lightnas-iso/isolinux/isolinux.cfg
+            grep -q '^LABEL lightnas-installer-first' /tmp/lightnas-iso/isolinux/isolinux.cfg
+          fi
+          if [ -f /tmp/lightnas-iso/isolinux/menu.cfg ]; then
+            ! grep -Eq '^[[:space:]]*include[[:space:]]+live\\.cfg' /tmp/lightnas-iso/isolinux/menu.cfg
+          fi
+          if [ -f /tmp/lightnas-iso/isolinux/install.cfg ]; then
+            grep -qi 'menu default' /tmp/lightnas-iso/isolinux/install.cfg
+          fi
+          if [ -f /tmp/lightnas-iso/isolinux/splash.png ]; then
+            cmp /tmp/lightnas-iso/isolinux/splash.png .iso-build/lightnas-splash.png
           fi
           echo "Graphical installer is the configured first boot entry."
           echo "All universal LightNAS installer modes are present."
