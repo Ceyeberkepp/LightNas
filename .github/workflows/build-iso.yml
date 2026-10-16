@@ -27,12 +27,28 @@ on:
 permissions:
   contents: read
 
+# Only one heavy ISO build at a time, across all branches and manual runs.
 concurrency:
-  group: lightnas-iso-${{ github.ref }}
-  cancel-in-progress: true
+  group: lightnas-iso-build
+  cancel-in-progress: false
 
 jobs:
+  # PRs run fast configuration checks, not another 2.5 GB ISO build.
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate ISO sources
+        run: |
+          set -Eeuo pipefail
+          bash -n iso/build.sh scripts/lightnas-network-wizard.sh
+          python3 -m py_compile scripts/lightnas-network-setup.py scripts/lightnas-network-gui.py scripts/lightnas-install-hub.py
+          grep -q -- '--debian-installer-gui true' iso/build.sh
+          grep -q 'lightnas-installer-first' iso/build.sh
+          grep -q 'dpkg-query -S' iso/build.sh
   iso:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     steps:
