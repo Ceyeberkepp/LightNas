@@ -52,7 +52,7 @@ function probeWebPort(host, port, scheme, timeoutMs = 1800) {
     };
     const options = { host, port };
     const socket = scheme === 'https'
-      ? tls.connect({ ...options, rejectUnauthorized: false })
+      ? tls.connect({ ...options, rejectUnauthorized: true, minVersion: 'TLSv1.2' })
       : net.createConnection(options);
     socket.setTimeout(timeoutMs, () => finish(false));
     socket.once('error', () => finish(false));
