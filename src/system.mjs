@@ -149,6 +149,9 @@ export async function getStorageInventory() {
       .filter(item => !isSystemMount(item.mountPoint) && item.totalBytes > 0)
       .filter(item => item.device !== rootDevice)
       .filter(item => item.mountPoint !== localStoragePath)
+      // WSL maps Windows host drives as 9p/drvfs under /mnt/<letter>.
+      // They are not NAS block devices and must never be offered as claimable pools.
+      .filter(item => !(/^\/mnt\/[a-z](?:\/|$)/i.test(item.mountPoint) && /^(?:9p|drvfs)$/i.test(item.type)))
       .filter(item => !/^\/(?:proc|sys|dev|run)(?:\/|$)/.test(item.mountPoint));
 
     const uniqueVolumes = new Map();
