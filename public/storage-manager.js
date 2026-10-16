@@ -437,7 +437,7 @@ document.addEventListener('submit',async event=>{
 },true);
 
 function maybeStorageManager(){
-  if(!['#storage','#pools'].includes(location.hash)||!document.querySelector('#storage-manager')) return;
+  if(!document.querySelector('#storage-manager')) return;
   const slot=document.querySelector('#storage-manager');
   if(slot.dataset.loaded==='1') return;
   slot.dataset.loaded='1';
