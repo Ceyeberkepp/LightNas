@@ -49,6 +49,8 @@ jobs:
       - name: Validate ISO builder syntax
         run: |
           bash -n iso/build.sh
+          grep -q 'Wants=lightnas-network-bootstrap.service' iso/build.sh
+          grep -q 'lightnas-network-boot' iso/build.sh
           bash -n scripts/lightnas-network-wizard.sh
           python3 -m py_compile scripts/lightnas-network-setup.py
           python3 -m py_compile scripts/lightnas-network-gui.py
