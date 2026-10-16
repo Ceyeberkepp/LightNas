@@ -249,6 +249,25 @@ SVG
   done < <(find config/bootloaders -type f \( -name 'grub.cfg' -o -name 'grub*.cfg' \) -print0)
 fi
 
+# Apply branding to the generated GRUB menus at binary-build time: the
+# GRUB tree from live-build can be regenerated after config/bootloaders is
+# copied, so modifying templates alone does not change the actual ISO menu.
+mkdir -p config/hooks/live
+cat >config/hooks/live/0980-lightnas-grub-branding.hook.binary <<'GRUB_BRAND'
+#!/bin/sh
+set -eu
+find binary -type f \( -name 'grub.cfg' -o -name 'loopback.cfg' \) | while IFS= read -r cfg; do
+  sed -i \
+    -e 's/Debian GNU\/Linux 13 (trixie)/LightNAS/g' \
+    -e 's/Debian GNU\/Linux/LightNAS/g' \
+    -e 's/Live system (amd64)/LightNAS Live (amd64)/g' \
+    -e 's/Start installer with speech synthesis/Install LightNAS (Accessible)/g' \
+    -e 's/Start installer/Install LightNAS/g' \
+    "$cfg"
+done
+GRUB_BRAND
+chmod 0755 config/hooks/live/0980-lightnas-grub-branding.hook.binary
+
 mkdir -p \
   config/package-lists \
   config/binary_debian-installer \
@@ -404,12 +423,28 @@ Before=lightnas-runtime-init.service lightnas-host-agent.service lightnas.servic
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash /opt/lightnas/scripts/configure-appliance-network.sh
+# A missing DHCP lease or unsupported wireless adapter must not block local UI.
+# Persist diagnostics; retry after operators configure networking.
+ExecStart=/usr/local/sbin/lightnas-network-boot
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+mkdir -p config/includes.chroot/usr/local/sbin
+cat >config/includes.chroot/usr/local/sbin/lightnas-network-boot <<'NETWORK_BOOT'
+#!/bin/bash
+set -u
+mkdir -p /var/log/lightnas
+if /bin/bash /opt/lightnas/scripts/configure-appliance-network.sh >>/var/log/lightnas/network-bootstrap.log 2>&1; then
+  exit 0
+fi
+echo "LightNAS: network not configured; local setup remains available." >&2
+echo "Review /var/log/lightnas/network-bootstrap.log and launch network setup." >&2
+exit 0
+NETWORK_BOOT
+chmod 0755 config/includes.chroot/usr/local/sbin/lightnas-network-boot
 
 #
 # Runtime initialization service
@@ -417,7 +452,7 @@ EOF
 cat >config/includes.chroot/etc/systemd/system/lightnas-runtime-init.service <<'EOF'
 [Unit]
 Description=Initialize LightNAS native runtime engines
-Requires=lightnas-network-bootstrap.service
+Wants=lightnas-network-bootstrap.service
 After=lightnas-network-bootstrap.service
 
 [Service]
@@ -712,6 +747,21 @@ printf '%s LightNAS display console starting\n' "$(date -Is)" >>/var/log/lightna
 
 # Give udev/DRM a short moment to settle on VMs and older physical GPUs.
 udevadm settle --timeout=8 >/dev/null 2>&1 || true
+# VirtualBox exposes VMSVGA through vmwgfx; DRM initialization may succeed
+# without yielding a functional X display. Prefer the userspace modesetting
+# driver first, and leave normal hardware/VMware configurations untouched.
+virt="$(systemd-detect-virt 2>/dev/null || true)"
+if [[ "$virt" == oracle || "$virt" == virtualbox ]]; then
+  mkdir -p /etc/X11/xorg.conf.d
+  cat >/etc/X11/xorg.conf.d/90-lightnas-virtualbox.conf <<'VBOX_XORG'
+Section "Device"
+    Identifier "LightNAS VirtualBox Graphics"
+    Driver "modesetting"
+    Option "AccelMethod" "none"
+EndSection
+VBOX_XORG
+  export LIBGL_ALWAYS_SOFTWARE=1
+fi
 sleep 1
 
 # xinit must own a real VT. Redirecting stdout through a shell is not enough
