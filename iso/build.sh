@@ -92,14 +92,14 @@ if [[ -d /usr/share/live/build/bootloaders ]]; then
   # Product-branded BIOS/UEFI splash; keep the lower half clear for menus.
   cat >"${BUILD_DIR}/lightnas-splash.svg" <<SVG
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="640" height="480" viewBox="0 0 640 480">
- <rect width="640" height="480" fill="#15191d"/>
+ <rect width="640" height="480" fill="#07101d"/>
  <rect x="0" y="0" width="640" height="8" fill="#00b83f"/>
  <rect x="34" y="25" width="300" height="72" rx="8" fill="#ffffff"/>
  <image x="40" y="28" width="288" height="66" xlink:href="data:image/png;base64,$(base64 -w0 "${REPO_ROOT}/public/assets/lightnas-logo.png")"/>
- <text x="41" y="128" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#f4fbff">Welcome to LightNAS</text>
- <text x="41" y="153" font-family="DejaVu Sans,sans-serif" font-size="14" fill="#a3abb3">Storage  •  Apps  •  Containers  •  Virtual Machines</text>
+ <text x="41" y="128" font-family="DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#f1f7fb">Welcome to LightNAS</text>
+ <text x="41" y="153" font-family="DejaVu Sans,sans-serif" font-size="14" fill="#90a3b7">Storage  •  Apps  •  Containers  •  Virtual Machines</text>
  <line x1="40" y1="177" x2="600" y2="177" stroke="#46505a" stroke-width="2"/>
- <text x="42" y="450" font-family="DejaVu Sans,sans-serif" font-size="12" fill="#a3abb3">Debian 13 based   •   BIOS / UEFI   •   Graphics and terminal installation</text>
+ <text x="42" y="450" font-family="DejaVu Sans,sans-serif" font-size="12" fill="#90a3b7">Debian 13 based   •   BIOS / UEFI   •   Graphics and terminal installation</text>
 </svg>
 SVG
   rsvg-convert -w 640 -h 480 "${BUILD_DIR}/lightnas-splash.svg" >"${BUILD_DIR}/lightnas-splash.png"
