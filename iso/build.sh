@@ -311,6 +311,9 @@ xserver-xorg-video-all
 xserver-xorg-video-vesa
 xserver-xorg-video-fbdev
 xserver-xorg-input-all
+xserver-xorg-input-libinput
+libinput-tools
+usbutils
 fbset
 xinit
 xauth
@@ -358,6 +361,14 @@ zfsutils-linux
 docker.io
 libraw-bin
 EOF
+
+# Keep hardware input modules loaded in both the installed appliance and
+# graphical live environment; Debian Installer initrd has its own input stack.
+mkdir -p config/includes.chroot/etc/modules-load.d
+cat >config/includes.chroot/etc/modules-load.d/lightnas-input.conf <<'INPUT'
+usbhid
+hid_generic
+INPUT
 
 #
 # Make ZFS available for normal LightNAS boots.
