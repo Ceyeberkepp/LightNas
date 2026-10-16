@@ -202,6 +202,8 @@ const lightnasTasks = (() => {
     const cancelAllButton = document.getElementById('task-cancel-all');
     const clearAllButton = document.getElementById('task-clear-all');
     if (!dock || !list || !count || !summary) return;
+    const safeTaskStatus = value => ['running', 'complete', 'completed', 'success', 'failed', 'error', 'cancelled', 'pending'].includes(value) ? value : 'pending';
+    const safeTaskPercent = value => Math.max(2, Math.min(100, Number.isFinite(Number(value)) ? Number(value) : 2));
     const active = items.filter(item => item.status === 'running').length;
     count.textContent = String(active);
     count.classList.toggle('active', active > 0);
@@ -211,8 +213,8 @@ const lightnasTasks = (() => {
     list.innerHTML = items.length ? [...items].reverse().map(item => `
       <article class="task-row" data-task-id="${dialogEsc(item.id)}">
         <time>${dialogEsc(item.time || '')}</time>
-        <div><b>${dialogEsc(item.title)}</b><small>${dialogEsc(item.detail || '')}</small>${item.status === 'running' ? `<div class="task-mini-progress"><span style="width:${Math.max(2, Number(item.percent) || 2)}%"></span></div>` : ''}</div>
-        <span class="task-status ${item.status}">${statusLabel(item)}</span>
+        <div><b>${dialogEsc(item.title)}</b><small>${dialogEsc(item.detail || '')}</small>${item.status === 'running' ? `<div class="task-mini-progress"><span style="width:${safeTaskPercent(item.percent)}%"></span></div>` : ''}</div>
+        <span class="task-status ${safeTaskStatus(item.status)}">${statusLabel(item)}</span>
         <div class="task-row-actions">${item.status === 'running' ? `<button class="secondary" type="button" data-task-cancel="${dialogEsc(item.id)}">Cancel</button>` : ''}<button class="secondary" type="button" data-task-clear="${dialogEsc(item.id)}">Clear</button></div>
       </article>`).join('') : '<div class="task-empty">Uploads, installs, VM/container jobs, and transfers will appear here.</div>';
   };
