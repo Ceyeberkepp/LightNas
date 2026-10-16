@@ -883,7 +883,14 @@ function storageView() {
   const spaces = Array.isArray(state.spaces) ? state.spaces : [];
   const actions = `<div class="head-actions"><button class="secondary refresh-icon-button" data-action="refresh-storage" aria-label="Refresh" title="Refresh">↻</button><button class="primary" data-view-link="pools">Manage storage</button>${storageAddMenuHeader()}</div>`;
   return `${pageHead('Storage', 'LightNAS storage pools, capacity and content libraries.', actions)}
-    <div id="storage-manager"></div>
+    <div id="storage-manager">
+      <section class="panel" aria-live="polite">
+        <div class="panel-head"><h2>Storage inventory</h2></div>
+        <p class="muted">Loading detailed storage pools and attached volumes…</p>
+        ${(state.overview?.storage?.configuredPools || []).length ? `<div class="inventory-grid">${state.overview.storage.configuredPools.map(pool => `<article class="inventory-card"><h3>${escapeHtml(pool.name || pool.id || 'Storage pool')}</h3><p>${escapeHtml(pool.mountPoint || pool.provider || 'Managed storage')}</p></article>`).join('')}</div>` : ''}
+        ${(state.overview?.storage?.availableSources || []).length ? `<h3>Detected volumes</h3><div class="inventory-grid">${state.overview.storage.availableSources.map(volume => `<article class="inventory-card"><h3>${escapeHtml(volume.mountPoint || volume.device || 'Attached volume')}</h3><p>${escapeHtml(volume.device || volume.type || '')}</p></article>`).join('')}</div>` : ''}
+      </section>
+    </div>
     ${spaces.length ? `<section class="storage-spaces-section"><div class="section-heading"><div><span class="eyebrow">FILE STORAGE</span><h2>LightNAS storage spaces</h2></div></div><div class="storage-list">${spaces.map(space => `<article class="storage-row"><div><h3>${escapeHtml(space.label)}</h3><p>Spaces/${escapeHtml(space.name)}</p></div><button class="secondary" data-open-space="${escapeHtml(space.name)}">Open</button></article>`).join('')}</div></section>` : ''}`;
 }
 
