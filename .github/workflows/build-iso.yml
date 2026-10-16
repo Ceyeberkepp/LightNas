@@ -149,6 +149,16 @@ jobs:
             echo 'Unbranded Debian boot menu remains in ISO' >&2
             exit 1
           fi
+          # Verify the actual mounted ISO boots the graphical installer first.
+          if [ -f /tmp/lightnas-iso/boot/grub/grub.cfg ]; then
+            grep -q 'lightnas-installer-first' /tmp/lightnas-iso/boot/grub/grub.cfg
+            grep -q '^set default=0' /tmp/lightnas-iso/boot/grub/grub.cfg
+            grep -q 'linux /install/gtk/' /tmp/lightnas-iso/boot/grub/grub.cfg
+          fi
+          if [ -f /tmp/lightnas-iso/isolinux/isolinux.cfg ]; then
+            grep -q '^DEFAULT lightnas-installer-first' /tmp/lightnas-iso/isolinux/isolinux.cfg
+          fi
+          echo "Graphical installer is the configured first boot entry."
           echo "All universal LightNAS installer modes are present."
 
       - name: UEFI boot smoke test
