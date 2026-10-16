@@ -6,21 +6,19 @@ on:
     paths:
       - 'iso/**'
       - '.github/workflows/build-iso.yml'
-      - 'scripts/**'
-      - 'src/**'
-      - 'public/**'
-      - 'config/**'
-      - 'package.json'
+      - 'scripts/lightnas-install-hub.py'
+      - 'scripts/lightnas-network-*.py'
+      - 'scripts/lightnas-network-wizard.sh'
+      - 'public/assets/lightnas-logo.png'
       - 'install.sh'
   pull_request:
     paths:
       - 'iso/**'
       - '.github/workflows/build-iso.yml'
-      - 'scripts/**'
-      - 'src/**'
-      - 'public/**'
-      - 'config/**'
-      - 'package.json'
+      - 'scripts/lightnas-install-hub.py'
+      - 'scripts/lightnas-network-*.py'
+      - 'scripts/lightnas-network-wizard.sh'
+      - 'public/assets/lightnas-logo.png'
       - 'install.sh'
   workflow_dispatch:
 
