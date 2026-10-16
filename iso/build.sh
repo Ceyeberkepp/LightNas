@@ -728,6 +728,21 @@ printf '%s LightNAS display console starting\n' "$(date -Is)" >>/var/log/lightna
 
 # Give udev/DRM a short moment to settle on VMs and older physical GPUs.
 udevadm settle --timeout=8 >/dev/null 2>&1 || true
+# VirtualBox exposes VMSVGA through vmwgfx; DRM initialization may succeed
+# without yielding a functional X display. Prefer the userspace modesetting
+# driver first, and leave normal hardware/VMware configurations untouched.
+virt="$(systemd-detect-virt 2>/dev/null || true)"
+if [[ "$virt" == oracle || "$virt" == virtualbox ]]; then
+  mkdir -p /etc/X11/xorg.conf.d
+  cat >/etc/X11/xorg.conf.d/90-lightnas-virtualbox.conf <<'VBOX_XORG'
+Section "Device"
+    Identifier "LightNAS VirtualBox Graphics"
+    Driver "modesetting"
+    Option "AccelMethod" "none"
+EndSection
+VBOX_XORG
+  export LIBGL_ALWAYS_SOFTWARE=1
+fi
 sleep 1
 
 # xinit must own a real VT. Redirecting stdout through a shell is not enough
