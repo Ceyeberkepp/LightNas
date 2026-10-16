@@ -121,7 +121,7 @@ export async function getStorageInventory() {
     const system = disk.path === rootDevice || partitions.some(partition =>
       partition.path === rootDevice || ['/', '/boot', '/boot/efi'].includes(partition.mountPoint)
     );
-    const blank = !system && partitions.length === 0;
+    const blank = !disk.discoveryIncomplete && !system && partitions.length === 0;
     return { ...disk, system: system, blank: blank };
   });
 
