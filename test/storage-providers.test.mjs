@@ -56,9 +56,9 @@ test('managed mount identities remain stable if a helper canonicalizes its remot
 
 test('a pinned HTTPS connection checks the certificate before sending credentials',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'nas-provider-tls-'));t.after(()=>rm(dir,{recursive:true,force:true}));
- execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=localhost','-keyout',join(dir,'key.pem'),'-out',join(dir,'cert.pem')],{stdio:'ignore'});
+ execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=localhost','-addext','subjectAltName=IP:127.0.0.1,DNS:localhost','-keyout',join(dir,'key.pem'),'-out',join(dir,'cert.pem')],{stdio:'ignore'});
  const cert=await readFile(join(dir,'cert.pem')),key=await readFile(join(dir,'key.pem'));let requests=0;
  const server=https.createServer({cert,key},(req,res)=>{requests++;assert.equal(req.headers.authorization,'private-authorization');res.end('ok');});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>{server.closeAllConnections();server.close();});
- const url=new URL('https://127.0.0.1:'+server.address().port+'/');await assert.rejects(remoteRequest(url,{pin:'00'.repeat(32),headers:{Authorization:'private-authorization'}}),/fingerprint does not match/);assert.equal(requests,0);
- assert.equal(await remoteRequest(url,{pin:new X509Certificate(cert).fingerprint256,headers:{Authorization:'private-authorization'}}),'ok');assert.equal(requests,1);
+ const url=new URL('https://127.0.0.1:'+server.address().port+'/');await assert.rejects(remoteRequest(url,{pin:'00'.repeat(32),certificatePem:cert.toString(),headers:{Authorization:'private-authorization'}}),/fingerprint does not match/);assert.equal(requests,0);
+ assert.equal(await remoteRequest(url,{pin:new X509Certificate(cert).fingerprint256,certificatePem:cert.toString(),headers:{Authorization:'private-authorization'}}),'ok');assert.equal(requests,1);
 });
