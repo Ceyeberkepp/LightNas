@@ -111,7 +111,11 @@ function storageCard(pool) {
 function renderStorageManager() {
   const slot=document.querySelector('#storage-manager');
   const data=storageUi.data;
-  if(!slot||!data) return;
+  if(!slot) return;
+  if(!data) {
+    slot.innerHTML = '<div class="empty"><p>Storage inventory is not loaded yet.</p><button type="button" class="secondary" data-storage-refresh>Retry storage discovery</button></div>';
+    return;
+  }
   const visible=data.visibleSummary||data.summary||{};
   const unconfigured=(data.availableSources||[]).filter(item=>!item.configured);
   const verified=visible.verified!==false;
