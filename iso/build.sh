@@ -118,7 +118,7 @@ SVG
       -e 's/Graphical installer/Install LightNAS (Graphical)/g' \
       -e 's/splash\.svg/splash.png/g' \
       "$menu"
-  done < <(find config/bootloaders -type f \( -name '*.cfg' -o -name '*.conf' \) -print0)
+  done < <(find config/bootloaders -type f \( -name '*.cfg' -o -name '*.conf' -o -name 'splash.png' \) -print0)
 
   # Brand Syslinux installer choices by their stable label IDs instead of
   # depending on Debian's human-readable menu wording. Trixie live-build uses
@@ -1199,6 +1199,48 @@ EOF_BIOS
     mv "$tmp" "$cfg"
   fi
 done
+
+# The VirtualBox screenshots use BIOS Syslinux, not GRUB. Its menu is
+# assembled from menu.cfg / install.cfg and the rendered splash.png. A new
+# label in isolinux.cfg alone does NOT override the menu's selected live entry.
+# Replace the generated Debian artwork and set the graphical installer as the
+# sole normal menu entry; do not boot into the live login/kiosk.
+if [[ -d binary/isolinux ]]; then
+  [[ -s "${BUILD_DIR}/lightnas-splash.png" ]] || {
+    echo 'ERROR: LightNAS branded BIOS splash was not generated.' >&2
+    exit 1
+  }
+  install -m 0644 "${BUILD_DIR}/lightnas-splash.png" binary/isolinux/splash.png
+  for cfg in binary/isolinux/*.cfg; do
+    [[ -f "$cfg" ]] || continue
+    # The top-level Syslinux menu includes the installer-specific config.
+    # Do not leave a menu-default directive pointing at the live entry.
+    sed -i -E '/^[[:space:]]*menu[[:space:]]+default([[:space:]]|$)/Id' "$cfg"
+  done
+  # Do not present Debian's live recovery menu during ordinary install boot.
+  if [[ -f binary/isolinux/menu.cfg ]]; then
+    sed -i -E '/^[[:space:]]*include[[:space:]]+live\.cfg([[:space:]]|$)/Id' binary/isolinux/menu.cfg
+  fi
+  # Syslinux menu.c32 selects 'menu default' rather than DEFAULT; put the
+  # correct default on the installer entry, not the generated live stanza.
+  if [[ -f binary/isolinux/install.cfg ]]; then
+    awk '
+      /^[[:space:]]*[Ll][Aa][Bb][Ee][Ll][[:space:]]+/ {
+        match_label=($2=="installgui" || $2=="lightnas-installer-first")
+        print
+        if (match_label) print "  menu default"
+        next
+      }
+      { print }
+    ' binary/isolinux/install.cfg >binary/isolinux/install.cfg.tmp
+    mv binary/isolinux/install.cfg.tmp binary/isolinux/install.cfg
+  fi
+  # Menu-entry ID is present in our top-level config; prevent live.cfg from
+  # being re-included via the generated default menu for legacy BIOS.
+  if [[ -f binary/isolinux/isolinux.cfg ]]; then
+    sed -i -E '/^[[:space:]]*include[[:space:]]+live\.cfg([[:space:]]|$)/Id' binary/isolinux/isolinux.cfg
+  fi
+fi
 
 #
 # Find resulting ISO.
