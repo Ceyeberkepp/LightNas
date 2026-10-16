@@ -144,6 +144,11 @@ jobs:
           grep -Rqs 'Install LightNAS (VGA Safe Mode)' /tmp/lightnas-iso
           grep -Rqs 'Install LightNAS (Terminal UI)' /tmp/lightnas-iso
           grep -Rqs 'Install LightNAS (Serial Console)' /tmp/lightnas-iso
+          # Reject the Debian GRUB menu seen on real VirtualBox boots.
+          if grep -RqE 'Debian GNU/Linux 13|Live system \(amd64\)' /tmp/lightnas-iso/boot/grub 2>/dev/null; then
+            echo 'Unbranded Debian boot menu remains in ISO' >&2
+            exit 1
+          fi
           echo "All universal LightNAS installer modes are present."
 
       - name: UEFI boot smoke test
