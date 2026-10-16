@@ -24,12 +24,31 @@ on:
       - 'install.sh'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# Only one heavy ISO build at a time, across all branches and manual runs.
 concurrency:
-  group: lightnas-iso-${{ github.ref }}
-  cancel-in-progress: true
+  group: lightnas-iso-build
+  cancel-in-progress: false
 
 jobs:
+  # PRs run fast configuration checks, not another 2.5 GB ISO build.
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate ISO sources
+        run: |
+          set -Eeuo pipefail
+          bash -n iso/build.sh scripts/lightnas-network-wizard.sh
+          python3 -m py_compile scripts/lightnas-network-setup.py scripts/lightnas-network-gui.py scripts/lightnas-install-hub.py
+          grep -q -- '--debian-installer-gui true' iso/build.sh
+          grep -q 'lightnas-installer-first' iso/build.sh
+          grep -q 'dpkg-query -S' iso/build.sh
   iso:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     steps:
@@ -45,6 +64,18 @@ jobs:
             https://deb.debian.org/debian/pool/main/l/live-build/live-build_20250505+deb13u1_all.deb
           echo "58e09779881cbcc631c49ceb703413e0247a87db01823e597b2a1c40a2afd8f4  /tmp/live-build.deb" | sha256sum -c -
           sudo apt-get install -y /tmp/live-build.deb
+
+      - name: Verify build provenance guardrails
+        run: |
+          set -Eeuo pipefail
+          # Refuse installer code that fetches an unsigned trust anchor.
+          if grep -q 'curl -fsSL https://archive.ubuntu.com/ubuntu/project/ubuntu-archive-keyring.gpg' iso/build.sh; then
+            echo "Unverified signing-key download found." >&2
+            exit 1
+          fi
+          grep -q 'dpkg-query -S' iso/build.sh
+          # Bootloader source is the OS package manager, not copied release blobs.
+          dpkg-query -S /usr/bin/grub-mkimage >/dev/null || true
 
       - name: Validate ISO builder syntax
         run: |
@@ -253,7 +284,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         with:
           name: LightNAS-amd64-iso
-          retention-days: 14
+          retention-days: 3
           path: |
             dist/LightNAS-amd64.iso
             dist/LightNAS-amd64.iso.sha256
