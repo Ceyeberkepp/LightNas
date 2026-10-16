@@ -162,7 +162,7 @@ async function openCreateStorage(sourceId='', provider='directory') {
 
   dialog.querySelector('[data-storage-dialog-footer]').hidden=true;
   const providerHelp=definition.help;
-  const labels={vgName:'Volume group',thinPool:'Thin pool',server:'Server',exportPath:'NFS export',share:'Share',username:provider==='proxmox-backup-server'?'API token ID (user@realm!token)':'Username',domain:'Domain / workgroup',volume:'Gluster volume',portal:'iSCSI portal',target:'Target IQN',monitors:'Monitor hosts (comma separated)',filesystem:'Ceph filesystem',rbdPool:'RBD pool',image:'RBD image',zfsPool:'Exporting ZFS pool',dataset:'Dataset',datastore:'Datastore',fingerprint:'Certificate SHA-256 fingerprint (optional)'};
+  const labels={vgName:'Volume group',thinPool:'Thin pool',server:'Server',exportPath:'NFS export',share:'Share',username:provider==='proxmox-backup-server'?'API token ID (user@realm!token)':'Username',domain:'Domain / workgroup',volume:'Gluster volume',portal:'iSCSI portal',target:'Target IQN',monitors:'Monitor hosts (comma separated)',filesystem:'Ceph filesystem',rbdPool:'RBD pool',image:'RBD image',zfsPool:'Exporting ZFS pool',dataset:'Dataset',datastore:'Datastore',fingerprint:'Verified certificate SHA-256 fingerprint',certificatePem:'Self-signed certificate (PEM; optional)'};
   const connectDefault=definition.remote||definition.connect&&!writableSources.length;
   const canConnect=!creationError&&(definition.remote||definition.connect||writableSources.length);
 
@@ -173,7 +173,7 @@ async function openCreateStorage(sourceId='', provider='directory') {
       <div class="storage-create-grid">
         <label>Storage name<input name="name" required pattern="[A-Za-z][A-Za-z0-9_-]{1,31}" placeholder="fastssd" autocomplete="off"><small>2–32 letters, numbers, dashes, or underscores.</small></label>
         ${definition.connect?`<label>Setup<select name="connectionMode"><option value="existing" ${connectDefault?'':'selected'}>Use existing mount</option><option value="connect" ${connectDefault?'selected':''}>Connect server</option></select></label>`:''}
-        ${definition.fields.map(field=>`<label>${sEsc(labels[field]||field)}<input name="${sEsc(field)}" data-provider-field placeholder="${field==='server'&&provider==='proxmox-backup-server'?'pbs.example.com:8007':''}" autocomplete="off"></label>`).join('')}
+        ${definition.fields.map(field=>`<label>${sEsc(labels[field]||field)}${field==='certificatePem'?`<textarea name="certificatePem" data-provider-field rows="5" placeholder="Paste the certificate PEM obtained from your server administrator"></textarea>`:`<input name="${sEsc(field)}" data-provider-field placeholder="${field==='server'&&provider==='proxmox-backup-server'?'pbs.example.com:8007':''}" autocomplete="off">`}</label>`).join('}')
         ${definition.credential?`<label data-provider-credential>${provider==='proxmox-backup-server'?'API token secret':definition.credential==='secret'?'Ceph authentication key':'Password'}<input name="credential" type="password" autocomplete="new-password"></label>`:''}
         <label data-provider-volume>Volume<select name="sourceId" required ${writableSources.length?'':'disabled'}>
           ${writableSources.length?'<option value="">Select a volume…</option>':'<option value="">No writable volumes available</option>'}
@@ -196,7 +196,7 @@ async function openCreateStorage(sourceId='', provider='directory') {
     const volume=dialog.querySelector('[data-provider-volume]');volume.hidden=!!connect;
     select.disabled=!!connect||!writableSources.length;select.required=!connect;
     const credentials=dialog.querySelector('[data-provider-credential]');if(credentials){credentials.hidden=!connect;form.elements.credential.disabled=!connect;form.elements.credential.required=!!connect;}
-    form.querySelectorAll('[data-provider-field]').forEach(input=>{input.required=!!connect&&!['domain','fingerprint'].includes(input.name);});
+    form.querySelectorAll('[data-provider-field]').forEach(input=>{input.required=!!connect&&!['domain','fingerprint','certificatePem'].includes(input.name);});
     form.querySelector('[type="submit"]').disabled=!!creationError||!connect&&!writableSources.length;
   };
   form.elements.connectionMode?.addEventListener('change',applyMode);
