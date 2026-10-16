@@ -1120,13 +1120,13 @@ echo "ZFS module confirmed inside final LightNAS filesystem."
 echo "=== Branding final GRUB menus ==="
 while IFS= read -r -d '' cfg; do
   sed -i \
-    -e 's/Debian GNU\\/Linux 13 (trixie)/LightNAS/g' \
-    -e 's/Debian GNU\\/Linux/LightNAS/g' \
-    -e 's/Live system (amd64)/LightNAS Live (amd64)/g' \
-    -e 's/Start installer with speech synthesis/Install LightNAS (Accessible)/g' \
-    -e 's/Start installer/Install LightNAS/g' \
+    -e 's|Debian GNU/Linux 13 (trixie)|LightNAS|g' \
+    -e 's|Debian GNU/Linux|LightNAS|g' \
+    -e 's|Live system (amd64)|LightNAS Live (amd64)|g' \
+    -e 's|Start installer with speech synthesis|Install LightNAS (Accessible)|g' \
+    -e 's|Start installer|Install LightNAS|g' \
     "$cfg"
-done < <(find binary/boot/grub -type f \\( -name 'grub.cfg' -o -name 'loopback.cfg' \\) -print0 2>/dev/null || true)
+done < <(find binary/boot/grub -type f -name '*.cfg' -print0 2>/dev/null || true)
 
 #
 # Find resulting ISO.
