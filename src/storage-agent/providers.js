@@ -20,7 +20,7 @@ export function validateProviderConfig(provider,raw={}){
  if(config.dataset&&!/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,255}$/.test(config.dataset))throw Error('Invalid ZFS dataset');
  if(config.portal&&!/^(?:[A-Za-z0-9][A-Za-z0-9.-]*|\[[0-9a-fA-F:]+\])(?::\d{1,5})?$/.test(config.portal))throw Error('Invalid iSCSI portal');
  if(config.target&&!/^iqn\.[A-Za-z0-9_.:-]{1,220}$/.test(config.target))throw Error('Invalid iSCSI target IQN');
- if(config.certificatePem){if(typeof config.certificatePem!=='string'||config.certificatePem.length>16384||!/^-----BEGIN CERTIFICATE-----[\\s\\S]+-----END CERTIFICATE-----\\s*$/.test(config.certificatePem))throw Error('Invalid PEM certificate');if(!config.fingerprint)throw Error('Certificate fingerprint is required for custom certificate trust');}
+ if(config.certificatePem){if(typeof config.certificatePem!=='string'||config.certificatePem.length>16384||!/^-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----\s*$/.test(config.certificatePem))throw Error('Invalid PEM certificate');if(!config.fingerprint)throw Error('Certificate fingerprint is required for custom certificate trust');}
  if(config.fingerprint&&!/^(?:[0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$|^[0-9A-Fa-f]{64}$/.test(config.fingerprint))throw Error('Invalid SHA-256 certificate fingerprint');
  for(const field of ['username','domain'])if(config[field]&&/[\s,=%]/.test(config[field]))throw Error('Invalid '+field);
  return config;
