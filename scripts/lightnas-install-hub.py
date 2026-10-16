@@ -10,8 +10,8 @@ from tkinter import messagebox, ttk
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 NETWORK = os.path.join(HERE, "lightnas-network-gui.py")
-THEME = {"background": "#15191d", "foreground": "#edf7f4",
-         "accent": "#00b83f", "panel": "#252d32"}
+THEME = {"background": "#07101d", "foreground": "#f1f7fb",
+         "accent": "#00b83f", "panel": "#0d1928", "muted": "#90a3b7"}
 
 
 def command(*args):
@@ -39,6 +39,19 @@ class Hub:
         root.geometry("860x640")
         root.minsize(720, 540)
         root.configure(bg=THEME["background"])
+        style = ttk.Style(root)
+        if "clam" in style.theme_names():
+            style.theme_use("clam")
+        style.configure(".", background=THEME["background"],
+                        foreground=THEME["foreground"], font=("Sans", 11))
+        style.configure("TFrame", background=THEME["background"])
+        style.configure("TLabel", background=THEME["background"],
+                        foreground=THEME["foreground"])
+        style.configure("TButton", background=THEME["panel"],
+                        foreground=THEME["foreground"], padding=(14, 10),
+                        borderwidth=1)
+        style.map("TButton", background=[("active", THEME["accent"])],
+                  foreground=[("active", THEME["background"])])
         frame = tk.Frame(root, bg=THEME["background"], padx=30, pady=28)
         frame.pack(fill="both", expand=True)
         tk.Label(frame, text="LightNAS", fg=THEME["accent"],
