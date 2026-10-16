@@ -1170,7 +1170,7 @@ for cfg in binary/boot/grub/grub.cfg binary/boot/grub/loopback.cfg; do
 set default=0
 set timeout=1
 menuentry "Install LightNAS" --id=lightnas-installer-first {
-  linux $gtk_kernel priority=high
+  linux $gtk_kernel priority=medium DEBIAN_FRONTEND=gtk
   initrd $gtk_initrd
 }
 EOF_GRUB
@@ -1192,7 +1192,7 @@ TIMEOUT 10
 LABEL lightnas-installer-first
   MENU LABEL ^Install LightNAS
   KERNEL $gtk_kernel
-  APPEND initrd=$gtk_initrd priority=high
+  APPEND initrd=$gtk_initrd priority=medium DEBIAN_FRONTEND=gtk
 
 EOF_BIOS
     cat "$cfg" >>"$tmp"
