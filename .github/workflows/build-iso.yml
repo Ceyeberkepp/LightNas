@@ -205,6 +205,7 @@ jobs:
             grep -q 'lightnas-installer-first' /tmp/lightnas-iso/boot/grub/grub.cfg
             grep -q '^set default=0' /tmp/lightnas-iso/boot/grub/grub.cfg
             grep -q 'linux /install/gtk/' /tmp/lightnas-iso/boot/grub/grub.cfg
+            grep -q 'DEBIAN_FRONTEND=gtk' /tmp/lightnas-iso/boot/grub/grub.cfg
           fi
           if [ -f /tmp/lightnas-iso/isolinux/isolinux.cfg ]; then
             grep -q '^DEFAULT lightnas-installer-first' /tmp/lightnas-iso/isolinux/isolinux.cfg
