@@ -12,7 +12,7 @@ export const STORAGE_PROVIDERS = Object.freeze([
   {id:'rbd',label:'RBD',help:'Use an existing mapped and mounted Ceph RBD image.',fields:['rbdPool','image']},
   {id:'zfs-over-iscsi',label:'ZFS over iSCSI',help:'Use a mounted filesystem on a connected LUN exported by your ZFS server.',fields:['portal','target','zfsPool']},
   {id:'zfs',label:'ZFS',help:'Use an existing mounted ZFS dataset.',fields:['dataset']},
-  {id:'proxmox-backup-server',label:'Proxmox Backup Server',help:'Connect a native PBS datastore with an API token. Browse backup snapshots without exposing its chunk store as a normal directory.',fields:['server','datastore','username','fingerprint'],remote:true,credential:'secret',content:['backup']},
+  {id:'proxmox-backup-server',label:'Proxmox Backup Server',help:'Connect a native PBS datastore with an API token. Browse backup snapshots without exposing its chunk store as a normal directory.',fields:['server','datastore','username','fingerprint','certificatePem'],remote:true,credential:'secret',content:['backup']},
   {id:'esxi',label:'ESXi',help:'Connect a native ESXi datastore over HTTPS. Browse its existing files; remote VM disks are not local VM disk paths.',fields:['server','datastore','username','fingerprint'],remote:true,credential:'password',content:['iso','images','backup','snippets','files']}
 ]);
 export function providerDefinition(id){const provider=STORAGE_PROVIDERS.find(p=>p.id===id);if(!provider)throw Error('Unknown storage provider');return provider;}
