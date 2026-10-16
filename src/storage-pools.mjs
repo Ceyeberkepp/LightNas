@@ -120,7 +120,14 @@ function sourceForPool(pool, inventory) {
       dedicated: Boolean(inventory.local?.dedicated)
     };
   }
-  return [...inventory.attachedVolumes, ...(inventory.mountedDataSources || [])].find(item => item.id === pool.sourceId || (pool.preparedByHostAgent && item.mountPoint === pool.mountPoint && (Buffer.from(`${item.device}:${item.mountPoint}`).toString('base64url') === pool.sourceId || (pool.managedMount && pool.sourceId === 'lightnas-mount:'+pool.id)))) || null;
+  // Device identifiers can change across boot (e.g. /dev/loop61 -> loop63).
+  // For existing local pools, the configured mountpoint is the stable identity.
+  // Only accept a mounted, observed filesystem; never mark absent mounts online.
+  const mounted = [...inventory.attachedVolumes, ...(inventory.mountedDataSources || [])];
+  return mounted.find(item => item.id === pool.sourceId)
+    || (pool.mountPoint && mounted.find(item =>
+      item.mountPoint === pool.mountPoint && item.totalBytes > 0))
+    || null;
 }
 
 function publicPool(pool, source) {
@@ -169,7 +176,8 @@ export async function listStoragePools() {
     let source;try{source=await storageAgentJson('/v1/remote-storage?name='+encodeURIComponent(pool.id),undefined,1500);}catch{source={online:false,capacityKnown:false};}
     return publicPool(pool,source);
   }));
-  const configuredSources = new Set(config.pools.flatMap(pool => [pool.sourceId, sourceForPool(pool, inventory)?.id]).filter(Boolean));
+  const configuredSources = new Set(config.pools.flatMap(pool =>
+    [pool.sourceId, sourceForPool(pool, inventory)?.id].filter(Boolean)));
   const availableSources = inventory.attachedVolumes.map(volume => ({
     id: volume.id,
     mountPoint: volume.mountPoint,
