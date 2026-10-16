@@ -404,12 +404,28 @@ Before=lightnas-runtime-init.service lightnas-host-agent.service lightnas.servic
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash /opt/lightnas/scripts/configure-appliance-network.sh
+# A missing DHCP lease or unsupported wireless adapter must not block local UI.
+# Persist diagnostics; retry after operators configure networking.
+ExecStart=/usr/local/sbin/lightnas-network-boot
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+mkdir -p config/includes.chroot/usr/local/sbin
+cat >config/includes.chroot/usr/local/sbin/lightnas-network-boot <<'NETWORK_BOOT'
+#!/bin/bash
+set -u
+mkdir -p /var/log/lightnas
+if /bin/bash /opt/lightnas/scripts/configure-appliance-network.sh >>/var/log/lightnas/network-bootstrap.log 2>&1; then
+  exit 0
+fi
+echo "LightNAS: network not configured; local setup remains available." >&2
+echo "Review /var/log/lightnas/network-bootstrap.log and launch network setup." >&2
+exit 0
+NETWORK_BOOT
+chmod 0755 config/includes.chroot/usr/local/sbin/lightnas-network-boot
 
 #
 # Runtime initialization service
@@ -417,7 +433,7 @@ EOF
 cat >config/includes.chroot/etc/systemd/system/lightnas-runtime-init.service <<'EOF'
 [Unit]
 Description=Initialize LightNAS native runtime engines
-Requires=lightnas-network-bootstrap.service
+Wants=lightnas-network-bootstrap.service
 After=lightnas-network-bootstrap.service
 
 [Service]
