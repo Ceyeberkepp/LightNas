@@ -249,6 +249,25 @@ SVG
   done < <(find config/bootloaders -type f \( -name 'grub.cfg' -o -name 'grub*.cfg' \) -print0)
 fi
 
+# Apply branding to the generated GRUB menus at binary-build time: the
+# GRUB tree from live-build can be regenerated after config/bootloaders is
+# copied, so modifying templates alone does not change the actual ISO menu.
+mkdir -p config/hooks/live
+cat >config/hooks/live/0980-lightnas-grub-branding.hook.binary <<'GRUB_BRAND'
+#!/bin/sh
+set -eu
+find binary -type f \( -name 'grub.cfg' -o -name 'loopback.cfg' \) | while IFS= read -r cfg; do
+  sed -i \
+    -e 's/Debian GNU\/Linux 13 (trixie)/LightNAS/g' \
+    -e 's/Debian GNU\/Linux/LightNAS/g' \
+    -e 's/Live system (amd64)/LightNAS Live (amd64)/g' \
+    -e 's/Start installer with speech synthesis/Install LightNAS (Accessible)/g' \
+    -e 's/Start installer/Install LightNAS/g' \
+    "$cfg"
+done
+GRUB_BRAND
+chmod 0755 config/hooks/live/0980-lightnas-grub-branding.hook.binary
+
 mkdir -p \
   config/package-lists \
   config/binary_debian-installer \
