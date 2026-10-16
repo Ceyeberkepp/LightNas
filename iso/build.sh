@@ -1262,7 +1262,7 @@ if [[ -d binary/boot/grub || -d binary/isolinux || -d binary/syslinux ]]; then
       relative="${cfg#binary/}"
       update_args+=(-update "$cfg" "/$relative")
     done < <(find "binary/$subdir" -type f \
-      \( -name '*.cfg' -o -name '*.conf' \) -print0)
+      \( -name '*.cfg' -o -name '*.conf' -o -name 'splash.png' \) -print0)
   done
   (( ${#update_args[@]} > 0 )) || {
     echo 'ERROR: no boot menu configuration files found to remaster.' >&2
