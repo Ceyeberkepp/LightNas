@@ -399,8 +399,9 @@ EOF
 cat >/etc/systemd/system/lightnas-host-agent.service <<EOF
 [Unit]
 Description=LightNAS Privileged Local Host Agent
-Wants=network-online.target lightnas-network-bootstrap.service
-After=network-online.target lightnas-network-bootstrap.service
+# Local inventory must be available even without DHCP or external networking.
+After=local-fs.target
+Wants=local-fs.target
 
 [Service]
 Type=simple
