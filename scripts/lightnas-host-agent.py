@@ -3822,58 +3822,36 @@ def vm_storage_access(data: dict) -> dict:
 
 
 def software_status(data: dict | None = None) -> dict:
-    fetch_remote = bool((data or {}).get("fetch"))
-    if not (INSTALL_ROOT / ".git").exists():
-        raise RuntimeError("LightNAS installation is not a Git checkout")
+    """Report installed software without depending on Git or network access.
+
+    A signed tier repository must be configured before remote update checks
+    and installations are available. Do not execute source-tree installers.
+    """
     version = "unknown"
     try:
         package = json.loads((INSTALL_ROOT / "package.json").read_text(encoding="utf-8"))
         version = str(package.get("version") or "unknown")
-    except Exception:
-        pass
-    if fetch_remote:
-        result = subprocess.run(
-            ["git", "-C", str(INSTALL_ROOT), "fetch", "--quiet", "origin", "main"],
-            text=True, capture_output=True, timeout=45,
-        )
-        if result.returncode != 0:
-            raise RuntimeError((result.stderr or result.stdout or "Unable to check for updates").strip()[:500])
-    current = run(["git", "-C", str(INSTALL_ROOT), "rev-parse", "--short=12", "HEAD"], timeout=10)
-    branch = run(["git", "-C", str(INSTALL_ROOT), "rev-parse", "--abbrev-ref", "HEAD"], timeout=10)
-    latest = current
-    update_available = False
-    try:
-        latest = run(["git", "-C", str(INSTALL_ROOT), "rev-parse", "--short=12", "origin/main"], timeout=10)
-        behind = run(["git", "-C", str(INSTALL_ROOT), "rev-list", "--count", "HEAD..origin/main"], timeout=10)
-        update_available = int(behind or "0") > 0
-    except Exception:
+    except (OSError, ValueError, TypeError):
         pass
     return {
         "version": version,
-        "commit": current,
-        "branch": branch,
-        "latestCommit": latest,
-        "updateAvailable": update_available,
+        "commit": None,
+        "branch": None,
+        "channel": "stable",
+        "repository": None,
+        "updateAvailable": False,
+        "checkStatus": "not_configured",
+        "updateEnabled": False,
+        "message": "Signed LightNAS update repository is not configured. Installed version is available locally.",
     }
 
 
 def software_update(data: dict | None = None) -> dict:
-    if not (INSTALL_ROOT / ".git").exists():
-        raise RuntimeError("LightNAS installation is not a Git checkout")
-    installer = INSTALL_ROOT / "install.sh"
-    if not installer.is_file():
-        raise RuntimeError("LightNAS installer is missing")
-    unit = f"lightnas-update-{int(time.time())}"
-    result = subprocess.run(
-        [
-            "systemd-run", f"--unit={unit}", "--collect", "--no-block",
-            "--property=Type=oneshot", "/bin/bash", str(installer),
-        ],
-        text=True, capture_output=True, timeout=20,
+    """Never run install.sh or git pull from the web update button."""
+    raise RuntimeError(
+        "In-app installation is unavailable until the signed NAS update "
+        "repository and verified package installer are configured."
     )
-    if result.returncode != 0:
-        raise RuntimeError((result.stderr or result.stdout or "Unable to start LightNAS update").strip()[:500])
-    return {"started": True, "unit": unit}
 
 
 def dispatch(request: dict) -> dict:
