@@ -67,3 +67,8 @@ The initial implementation verifies HTTPS metadata and reports availability,
 but explicitly **does not enable installation**. Before activating the Install
 button, implement verified artifact staging, hash checks, anti-rollback,
 transactional installation, watchdog health checks, and recovery testing.
+
+## Default appliance LAN HTTPS (new installs)
+New NAS installations use `https://<assigned-LAN-IP>:3080` with Node's TLS listener. The installer creates a unique local certificate with IP subject alternative names observed at installation. Because this is a self-signed certificate, browsers will warn until the operator imports/trusts it or supplies a CA-signed certificate containing the LAN IP in its SAN. HTTPS encrypts traffic even before the certificate is trusted, but identity authentication is not trustworthy until then. Reserve or statically assign a LAN IP; regenerate the certificate for a changed IP. Do not automatically regenerate on every reboot.
+
+Existing installations, including the `nasos.cyverax.com` tunnel, stay on their current origin protocol until an administrator explicitly migrates them using `LIGHTNAS_LOCAL_TLS=1` during installer execution and updates the tunnel's origin URL/trust settings. The Caddy configuration is an optional public-domain reverse proxy, not a requirement for local IP HTTPS. Ensure no direct plaintext login interface remains exposed after migration.
