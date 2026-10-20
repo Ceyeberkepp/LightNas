@@ -480,6 +480,32 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
+# On new installs serve the NAS UI over HTTPS on its IP and port 3080.
+# Existing tunnel deployments require explicit opt-in to avoid interrupting access.
+LIGHTNAS_LOCAL_TLS="${LIGHTNAS_LOCAL_TLS:-$([[ "${EXISTING_INSTALL}" == "0" ]] && echo 1 || echo 0)}"
+TLS_SERVICE_ENV=""
+if [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]]; then
+  install -d -m 0750 -o root -g lightnas /etc/lightnas/tls
+  TLS_CERT=/etc/lightnas/tls/nas.crt
+  TLS_KEY=/etc/lightnas/tls/nas.key
+  if [[ ! -s "${TLS_CERT}" || ! -s "${TLS_KEY}" ]]; then
+    tls_san="DNS:localhost,IP:127.0.0.1"
+    for ip in $(hostname -I 2>/dev/null); do
+      if [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+        tls_san+=",IP:$ip"
+      fi
+    done
+    openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 397 \
+      -keyout "${TLS_KEY}" -out "${TLS_CERT}" \
+      -subj "/CN=LightNAS Local" -addext "subjectAltName=${tls_san}" \
+      -addext "extendedKeyUsage=serverAuth"
+  fi
+  chown root:lightnas "${TLS_CERT}" "${TLS_KEY}"
+  chmod 0644 "${TLS_CERT}"
+  chmod 0640 "${TLS_KEY}"
+  TLS_SERVICE_ENV=$'Environment=LIGHTNAS_TLS_CERT_FILE=/etc/lightnas/tls/nas.crt\nEnvironment=LIGHTNAS_TLS_KEY_FILE=/etc/lightnas/tls/nas.key'
+fi
+
 cat >/etc/systemd/system/${SERVICE_NAME}.service <<EOF
 [Unit]
 Description=LightNAS Management Control Plane
@@ -499,6 +525,7 @@ Environment=NODE_ENV=production
 Environment=NODE_OPTIONS=--max-old-space-size=256
 Environment=NAS_HOST=0.0.0.0
 Environment=NAS_PORT=3080
+${TLS_SERVICE_ENV}
 Environment=NAS_DATA_FILE=${DATA_DIRECTORY}/state.json
 ExecStart=${NODE_BINARY} ${INSTALL_DIRECTORY}/src/server.mjs
 Restart=on-failure
@@ -578,12 +605,13 @@ esac
 
 echo "[6/6] Verifying LightNAS..."
 for attempt in {1..15}; do
-  if curl -fsS http://127.0.0.1:3080/api/status >/dev/null 2>&1; then
+  if curl -kfsS "$([[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo https || echo http)://127.0.0.1:3080/api/status" >/dev/null 2>&1; then
     address="$(hostname -I 2>/dev/null | awk '{print $1}')"
     echo
     echo "LightNAS installation completed. Runtime results:"
     cat "${DATA_DIRECTORY}/runtime-status.txt"
-    echo "Open: http://${address:-SERVER-IP}:3080"
+    echo "Open: $([[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo https || echo http)://${address:-SERVER-IP}:3080"
+    [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo "Import the local certificate into your trusted store to avoid browser warnings."
     exit 0
   fi
   sleep 1
