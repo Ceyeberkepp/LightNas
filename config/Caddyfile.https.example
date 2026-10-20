@@ -1,0 +1,13 @@
+# HTTPS reverse proxy for LightNAS
+# Replace nas.example.com with a hostname pointing to this appliance.
+# Caddy obtains a publicly trusted certificate when DNS and ports 80/443 are available.
+# Only expose HTTPS 443; port 80 may be used strictly for ACME challenge and redirect.
+nas.example.com {
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+    }
+    reverse_proxy 127.0.0.1:3080
+}
