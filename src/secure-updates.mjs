@@ -43,10 +43,10 @@ export async function checkSignedUpdates({ currentVersion, edition = 'community'
     const p = envelope.payload;
     if (p.product !== 'lightnas-nas' || p.tier !== tier || p.channel !== selectedChannel || p.arch !== arch || p.platform !== platform) throw new Error('Manifest does not match device or edition.');
     if (!Number.isFinite(Date.parse(p.expiresAt)) || Date.parse(p.expiresAt) <= Date.now()) throw new Error('Update metadata expired.');
-    if (!/^\\d+\\.\\d+\\.\\d+$/.test(String(p.version || ''))) throw new Error('Invalid release version.');
+    if (!/^\d+\.\d+\.\d+$/.test(String(p.version || ''))) throw new Error('Invalid release version.');
     const comparable = v => v.split('.').map(Number);
     const a = comparable(p.version);
-    const b = /^\\d+\\.\\d+\\.\\d+$/.test(String(currentVersion)) ? comparable(String(currentVersion)) : null;
+    const b = /^\d+\.\d+\.\d+$/.test(String(currentVersion)) ? comparable(String(currentVersion)) : null;
     if (!b) throw new Error('Installed version cannot be compared safely.');
     const newer = a.findIndex((v, i) => v !== b[i]);
     const available = newer >= 0 && a[newer] > b[newer];
