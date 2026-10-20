@@ -480,7 +480,8 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
-# Fresh installations use HTTPS on the LAN. Existing tunnels remain unchanged until opt-in.
+# On new installs serve the NAS UI over HTTPS on its IP and port 3080.
+# Existing tunnel deployments require explicit opt-in to avoid interrupting access.
 LIGHTNAS_LOCAL_TLS="${LIGHTNAS_LOCAL_TLS:-$([[ "${EXISTING_INSTALL}" == "0" ]] && echo 1 || echo 0)}"
 TLS_SERVICE_ENV=""
 if [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]]; then
@@ -502,7 +503,10 @@ if [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]]; then
   chown root:lightnas "${TLS_CERT}" "${TLS_KEY}"
   chmod 0644 "${TLS_CERT}"
   chmod 0640 "${TLS_KEY}"
-  TLS_SERVICE_ENV=
+  TLS_SERVICE_ENV=$'Environment=LIGHTNAS_TLS_CERT_FILE=/etc/lightnas/tls/nas.crt\nEnvironment=LIGHTNAS_TLS_KEY_FILE=/etc/lightnas/tls/nas.key'
+fi
+
+cat >/etc/systemd/system/${SERVICE_NAME}.service <<EOF
 [Unit]
 Description=LightNAS Management Control Plane
 Wants=network-online.target lightnas-host-agent.service lightnas-storage-agent.service
@@ -607,122 +611,7 @@ for attempt in {1..15}; do
     echo "LightNAS installation completed. Runtime results:"
     cat "${DATA_DIRECTORY}/runtime-status.txt"
     echo "Open: $([[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo https || echo http)://${address:-SERVER-IP}:3080"
-    [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo "Local certificate trust is needed to avoid browser warnings; IP changes require a new matching certificate."
-    exit 0
-  fi
-  sleep 1
-done
-
-echo "LightNAS did not pass its health check." >&2
-systemctl status "${SERVICE_NAME}" --no-pager --full >&2 || true
-journalctl -u "${SERVICE_NAME}" -n 50 --no-pager >&2 || true
-exit 1Environment=LIGHTNAS_TLS_CERT_FILE=/etc/lightnas/tls/nas.crt\nEnvironment=LIGHTNAS_TLS_KEY_FILE=/etc/lightnas/tls/nas.key'
-fi
-
-cat >/etc/systemd/system/${SERVICE_NAME}.service <<EOF
-[Unit]
-Description=LightNAS Management Control Plane
-Wants=network-online.target lightnas-host-agent.service lightnas-storage-agent.service
-After=network-online.target lightnas-host-agent.service lightnas-storage-agent.service
-
-[Service]
-Type=simple
-User=lightnas
-Group=lightnas
-WorkingDirectory=${INSTALL_DIRECTORY}
-EnvironmentFile=-/etc/lightnas/runtime.env
-EnvironmentFile=-/etc/lightnas/license.env
-EnvironmentFile=-/etc/lightnas/sms.env
-Environment=LIGHTNAS_HOST_SOCKET=/run/lightnas/host-agent.sock
-Environment=NODE_ENV=production
-Environment=NODE_OPTIONS=--max-old-space-size=256
-Environment=NAS_HOST=0.0.0.0
-Environment=NAS_PORT=3080
-Environment=NAS_DATA_FILE=${DATA_DIRECTORY}/state.json
-ExecStart=${NODE_BINARY} ${INSTALL_DIRECTORY}/src/server.mjs
-Restart=on-failure
-RestartSec=5
-MemoryHigh=300M
-MemoryMax=384M
-TasksMax=1024
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectHome=false
-ProtectSystem=full
-# /usr, /boot and /etc stay read-only; explicitly attached NAS mounts remain usable.
-ReadWritePaths=${DATA_DIRECTORY}
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-install -d -m 0755 /etc/systemd/journald.conf.d
-cat >/etc/systemd/journald.conf.d/lightnas-limits.conf <<'EOF'
-[Journal]
-SystemMaxUse=128M
-RuntimeMaxUse=64M
-MaxRetentionSec=7day
-EOF
-
-systemctl daemon-reload
-systemctl try-restart systemd-journald.service >/dev/null 2>&1 || true
-systemctl enable lightnas-network-bootstrap.service
-if [[ "${EXISTING_INSTALL}" == "0" || "${LIGHTNAS_REPAIR_NETWORK:-0}" == "1" ]]; then
-  echo "      Applying LightNAS network bootstrap..."
-  systemctl restart lightnas-network-bootstrap.service || true
-else
-  echo "      Existing network configuration detected; skipping live network changes during update."
-  echo "      Set LIGHTNAS_REPAIR_NETWORK=1 only when an administrator explicitly wants network repair."
-fi
-systemctl enable lightnas-storage-agent.service
-systemctl restart lightnas-storage-agent.service
-systemctl enable lightnas-host-agent.service
-systemctl restart lightnas-host-agent.service
-systemctl enable "${SERVICE_NAME}"
-systemctl restart "${SERVICE_NAME}"
-
-if [[ "${RUNTIME_PROVISION_NEEDED}" == "1" ]]; then
-  echo "      Starting container, VM, and App Store provisioning in the background..."
-  systemd-run --unit=lightnas-runtime-bootstrap --collect --no-block \
-    --property=Type=oneshot \
-    --setenv="LIGHTNAS_RUNTIME_STATUS_FILE=${DATA_DIRECTORY}/runtime-status.txt" \
-    /bin/bash -lc "bash '${INSTALL_DIRECTORY}/scripts/provision-runtimes.sh'; chown lightnas:lightnas '${DATA_DIRECTORY}/runtime-status.txt' 2>/dev/null || true" \
-    >/dev/null
-fi
-
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
-  ufw allow 3080/tcp >/dev/null
-fi
-
-# Optional on the base 2 GiB NAS; UI installation uses an approved root job.
-case "${LIGHTNAS_KUBERNETES_MODE:-off}" in
-  off) ;;
-  server|agent)
-    kubernetes_request="$(mktemp /etc/lightnas/kubernetes-install.XXXXXX)"
-    chmod 0600 "${kubernetes_request}"
-    python3 - "${kubernetes_request}" <<'PY_K8S_REQUEST'
-import json,os,sys
-from pathlib import Path
-mode=os.environ['LIGHTNAS_KUBERNETES_MODE']
-config={'mode':mode}
-if mode=='agent': config.update(server=os.environ.get('LIGHTNAS_KUBERNETES_SERVER',''),token=os.environ.get('LIGHTNAS_KUBERNETES_TOKEN',''))
-else: config.update(bindAddress=os.environ.get('LIGHTNAS_KUBERNETES_BIND','0.0.0.0'),clusterCidr=os.environ.get('LIGHTNAS_KUBERNETES_POD_CIDR','10.242.0.0/16'),serviceCidr=os.environ.get('LIGHTNAS_KUBERNETES_SERVICE_CIDR','10.243.0.0/16'))
-Path(sys.argv[1]).write_text(json.dumps(config))
-PY_K8S_REQUEST
-    if ! python3 "${INSTALL_DIRECTORY}/scripts/install-kubernetes.py" "${kubernetes_request}"; then rm -f "${kubernetes_request}"; exit 1; fi
-    rm -f "${kubernetes_request}"
-    ;;
-  *) echo 'LIGHTNAS_KUBERNETES_MODE must be off, server or agent.' >&2; exit 1 ;;
-esac
-
-echo "[6/6] Verifying LightNAS..."
-for attempt in {1..15}; do
-  if curl -fsS http://127.0.0.1:3080/api/status >/dev/null 2>&1; then
-    address="$(hostname -I 2>/dev/null | awk '{print $1}')"
-    echo
-    echo "LightNAS installation completed. Runtime results:"
-    cat "${DATA_DIRECTORY}/runtime-status.txt"
-    echo "Open: http://${address:-SERVER-IP}:3080"
+    [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo "Import the local certificate into your trusted store to avoid browser warnings."
     exit 0
   fi
   sleep 1
