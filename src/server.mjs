@@ -34,6 +34,7 @@ import {
 import { generateTotpSecret, totpUri, verifyTotp } from './totp.mjs';
 import { featureGateState } from './feature-gates.mjs';
 import { licenseStatus, verifyLicense } from './license.mjs';
+import { checkSignedUpdates } from './secure-updates.mjs';
 import {
   qrCodeDataUrl, challenge as mfaChallenge, relyingParty,
   verifyRegistration, verifyAssertion,
@@ -2213,7 +2214,14 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/software') {
     if (!isAdmin && !permissions.includes('system.view') && !hasPermission(permissions, 'settings.software.view') && !hasPermission(permissions, 'settings.software.manage') && !hasPermission(permissions, 'settings.manage')) return send(res, 403, { error: 'Software settings permission is required.' });
-    return send(res, 200, await localSoftwareStatus(url.searchParams.get('check') === '1'));
+    const local = await localSoftwareStatus(false);
+    const status = url.searchParams.get('check') === '1'
+      ? await checkSignedUpdates({
+          currentVersion: local.version,
+          edition: (await licenseStatus({ instanceId: store.state.config.instanceId, version: SOFTWARE_VERSION })).edition,
+        })
+      : {};
+    return send(res, 200, { ...local, ...status });
   }
   if (req.method === 'POST' && url.pathname === '/api/software/update') {
     if (!isAdmin && !hasPermission(permissions, 'settings.software.manage') && !hasPermission(permissions, 'settings.manage')) return send(res, 403, { error: 'Software management permission is required.' });
