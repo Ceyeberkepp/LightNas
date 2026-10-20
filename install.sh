@@ -480,8 +480,7 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
-# Fresh appliances serve HTTPS directly on their LAN address and port 3080.
-# Existing tunnel installations retain their transport until an explicit opt-in.
+# Fresh installations use HTTPS on the LAN. Existing tunnels remain unchanged until opt-in.
 LIGHTNAS_LOCAL_TLS="${LIGHTNAS_LOCAL_TLS:-$([[ "${EXISTING_INSTALL}" == "0" ]] && echo 1 || echo 0)}"
 TLS_SERVICE_ENV=""
 if [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]]; then
@@ -491,13 +490,13 @@ if [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]]; then
   if [[ ! -s "${TLS_CERT}" || ! -s "${TLS_KEY}" ]]; then
     tls_san="DNS:localhost,IP:127.0.0.1"
     for ip in $(hostname -I 2>/dev/null); do
-      if [[ "$ip" =~ ^[0-9]{1,3}(\\.[0-9]{1,3}){3}$ ]]; then
+      if [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
         tls_san+=",IP:$ip"
       fi
     done
-    openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 397 \\
-      -keyout "${TLS_KEY}" -out "${TLS_CERT}" \\
-      -subj "/CN=LightNAS Local" -addext "subjectAltName=${tls_san}" \\
+    openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 397 \
+      -keyout "${TLS_KEY}" -out "${TLS_CERT}" \
+      -subj "/CN=LightNAS Local" -addext "subjectAltName=${tls_san}" \
       -addext "extendedKeyUsage=serverAuth"
   fi
   chown root:lightnas "${TLS_CERT}" "${TLS_KEY}"
@@ -607,7 +606,8 @@ for attempt in {1..15}; do
     echo
     echo "LightNAS installation completed. Runtime results:"
     cat "${DATA_DIRECTORY}/runtime-status.txt"
-    echo "Open: $([[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo https || echo http)://${address:-SERVER-IP}:3080"\n    [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo "Trust the local certificate to avoid browser warnings; new LAN IPs require a certificate with the new IP SAN."
+    echo "Open: $([[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo https || echo http)://${address:-SERVER-IP}:3080"
+    [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo "Local certificate trust is needed to avoid browser warnings; IP changes require a new matching certificate."
     exit 0
   fi
   sleep 1
@@ -616,7 +616,7 @@ done
 echo "LightNAS did not pass its health check." >&2
 systemctl status "${SERVICE_NAME}" --no-pager --full >&2 || true
 journalctl -u "${SERVICE_NAME}" -n 50 --no-pager >&2 || true
-exit 1Environment=LIGHTNAS_TLS_CERT_FILE=/etc/lightnas/tls/nas.crt\\nEnvironment=LIGHTNAS_TLS_KEY_FILE=/etc/lightnas/tls/nas.key'
+exit 1Environment=LIGHTNAS_TLS_CERT_FILE=/etc/lightnas/tls/nas.crt\nEnvironment=LIGHTNAS_TLS_KEY_FILE=/etc/lightnas/tls/nas.key'
 fi
 
 cat >/etc/systemd/system/${SERVICE_NAME}.service <<EOF
