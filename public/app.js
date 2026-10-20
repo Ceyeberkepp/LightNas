@@ -2188,15 +2188,20 @@ function aiView() {
 
 
 async function loadSoftwareAndLicense(check = false) {
-  try {
-    const [software, license] = await Promise.all([
-      request(`/api/software${check ? '?check=1' : ''}`),
-      request('/api/license')
-    ]);
-    state.software = software;
-    state.license = license;
-    if (state.view === 'settings') render('settings');
-  } catch (error) { toast(error.message); }
+  const [software, license] = await Promise.allSettled([
+    request(`/api/software${check ? '?check=1' : ''}`),
+    request('/api/license')
+  ]);
+  state.software = software.status === 'fulfilled' ? software.value : {
+    version: 'Unavailable', updateAvailable: false, updateEnabled: false,
+    checkStatus: 'error', message: software.reason?.message || 'Could not read software status.'
+  };
+  state.license = license.status === 'fulfilled' ? license.value : {
+    edition: 'community', verified: false, serverConfigured: false,
+    statusError: license.reason?.message || 'License status unavailable.'
+  };
+  if (state.view === 'settings') render('settings');
+  if (check && software.status === 'rejected') throw software.reason;
 }
 
 function settingsSectionCollapsed(id) {
@@ -2282,26 +2287,26 @@ function settingsView() {
       </form>` : ''}
 
       ${canSoftware ? `<section class="panel software-card settings-collapsible ${settingsSectionCollapsed('software') ? 'collapsed' : ''}" data-settings-section="software">
-        <div class="settings-card-head"><div><span class="eyebrow">SOFTWARE & EDITION</span><h2>LightNAS version and updates</h2><p class="muted">Check the installed build and verify a paid Pro or Enterprise entitlement for permitted production or organizational use.</p></div>${settingsCollapseButton('software','LightNAS version and updates')}</div>
+        <div class="settings-card-head"><div><span class="eyebrow">SOFTWARE UPDATES & LICENSING</span><h2>LightNAS software updates and licensing</h2><p class="muted">NAS-only release status and Community, Premium or Enterprise licensing. Updates require a configured signed release repository.</p></div>${settingsCollapseButton('software','LightNAS version and updates')}</div>
         <div class="settings-section-body" ${settingsSectionCollapsed('software') ? 'hidden' : ''}>
         <div class="manager-summary software-summary">
           <div><span>Version</span><b>${escapeHtml(state.software?.version || 'Loading…')}</b></div>
-          <div><span>Commit</span><b>${escapeHtml(state.software?.commit || '—')}</b></div>
-          <div><span>Update</span><b>${state.software?.updateAvailable ? 'Available' : state.software ? 'Current' : 'Checking…'}</b></div>
-          <div><span>Edition</span><b>${escapeHtml(state.license?.edition === 'community' ? 'Community development / evaluation' : (state.license?.edition || 'Community development / evaluation'))}</b></div>
-          <div><span>License verification</span><b>${state.license?.verified ? 'Verified' : state.license?.serverConfigured ? 'Not verified' : 'Server not configured'}</b></div>
+          <div><span>Channel</span><b>${escapeHtml(state.software?.channel || 'stable')}</b></div>
+          <div><span>Update</span><b>${state.software?.checkStatus === 'not_configured' ? 'Repository not configured' : state.software?.checkStatus === 'error' ? 'Unavailable' : state.software?.updateAvailable ? 'Available' : state.software ? 'No update available' : 'Loading…'}</b></div>
+          <div><span>Edition</span><b>${escapeHtml(state.license?.edition === 'community' ? 'Community' : (state.license?.edition || 'Community'))}</b></div>
+          <div><span>License verification</span><b>${state.license?.statusError ? 'Unavailable' : state.license?.verified ? 'Verified' : state.license?.serverConfigured ? 'Not activated' : 'Server not configured'}</b></div>
           <div><span>Instance ID</span><b class="mono">${escapeHtml(state.license?.instanceId || '—')}</b></div>
         </div>
         <div class="head-actions software-actions">
           <button class="secondary" type="button" data-software-check>Check for updates</button>
-          ${canSoftwareManage ? `<button class="primary" type="button" data-software-update ${state.software?.updateAvailable ? '' : 'disabled'}>Install update</button>` : ''}
+          ${canSoftwareManage ? `<button class="primary" type="button" data-software-update ${state.software?.updateAvailable && state.software?.updateEnabled ? '' : 'disabled'}>Install update</button>` : ''}
         </div>
         ${canSoftwareManage ? `<form data-license-form class="license-verify-form">
-          <label>Pro / Enterprise license key<input name="licenseKey" type="password" autocomplete="off" placeholder="Enter license key when your authentication server is ready"></label>
+          <label>Premium / Enterprise license key<input name="licenseKey" type="password" autocomplete="off" placeholder="Enter license key when your authentication server is ready"></label>
           <button class="secondary" type="submit">Verify edition</button>
           <div class="form-error" role="alert"></div>
         </form>` : ''}
-        <p class="module-note"><b>Pre-production license:</b> Community use is free only for development, lab, education, evaluation, and early testing. Production, enterprise, commercial, hosting, managed-service, and organizational operational use require a separate paid license. A verified Pro/Enterprise receipt is accepted only from the configured HTTPS license server and must carry a valid signed receipt for this appliance.</p>
+        <p class="module-note"><b>Update repository:</b> ${escapeHtml(state.software?.message || 'Checking local software status…')} Community NAS functions remain available without a paid activation. Premium and Enterprise activation requires a configured HTTPS license server and a valid signed receipt. Existing license terms remain in effect until updated and approved.</p>
         </div>
       </section>` : ''}
     </section>`;
@@ -2869,7 +2874,8 @@ function bindViewActions() {
   }));
   $('[data-software-check]', $('#content'))?.addEventListener('click', async event => {
     event.currentTarget.disabled = true;
-    try { await loadSoftwareAndLicense(true); toast(state.software?.updateAvailable ? 'A LightNAS update is available.' : 'LightNAS is up to date.'); }
+    try { await loadSoftwareAndLicense(true); toast(state.software?.message || (state.software?.updateAvailable ? 'A LightNAS update is available.' : 'No update available.')); }
+    catch (error) { toast(error.message); }
     finally { event.currentTarget.disabled = false; }
   });
   $('[data-software-update]', $('#content'))?.addEventListener('click', async event => {
