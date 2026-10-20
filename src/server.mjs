@@ -1,4 +1,5 @@
 import http from 'node:http';
+import https from 'node:https';
 import {storageAgentRoute,forwardStorageAgent,classifyStorageMutation,storageAgentJson} from './storage-agent-client.mjs';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -2886,8 +2887,8 @@ function bridgeWebSocketToProcess(ws, process) {
   ws.on('error', stop);
 }
 
-export function createServer() {
-  const server = http.createServer(async (req, res) => {
+export function createServer(options = {}) {
+  const server = (options.tls ? https.createServer.bind(https, options.tls) : http.createServer.bind(http))(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const bearer = /^Bearer\s+/i.test(req.headers.authorization || '');
@@ -2953,8 +2954,12 @@ export function createServer() {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const host = process.env.NAS_HOST || '127.0.0.1';
   const port = Number(process.env.NAS_PORT || 3080);
-  createServer().listen(port, host, () => {
-    console.log(`LightNAS is running at http://${host}:${port}`);
+  const certPath = process.env.LIGHTNAS_TLS_CERT_FILE;
+  const keyPath = process.env.LIGHTNAS_TLS_KEY_FILE;
+  if (Boolean(certPath) !== Boolean(keyPath)) throw new Error('Both TLS certificate and private key must be configured.');
+  const tls = certPath ? { cert: await readFile(certPath), key: await readFile(keyPath), minVersion: 'TLSv1.2' } : null;
+  createServer({ tls }).listen(port, host, () => {
+    console.log(`LightNAS is running at ${tls ? 'https' : 'http'}://${host}:${port}`);
     // Prime the community App Store cache shortly after boot. Fresh installs
     // often reach the UI before WAN/DNS is fully ready, so retry quietly in
     // the background instead of making the operator press Refresh apps.
