@@ -40,9 +40,12 @@ jobs:
       - name: Validate ISO sources
         run: |
           set -Eeuo pipefail
-          bash -n iso/build.sh scripts/lightnas-network-wizard.sh
+          bash -n iso/build.sh scripts/lightnas-network-wizard.sh scripts/lightnas-native-install.sh scripts/lightnas-native-wizard.sh
           python3 -m py_compile scripts/lightnas-network-setup.py scripts/lightnas-network-gui.py scripts/lightnas-install-hub.py
-          grep -q -- '--debian-installer-gui true' iso/build.sh
+          grep -q -- '--debian-installer false' iso/build.sh
+          ! grep -q -- '--debian-installer-gui true' iso/build.sh
+          test -s scripts/lightnas-native-install.sh
+          test -s scripts/lightnas-native-wizard.sh
           grep -q 'lightnas-native-live' iso/build.sh
           grep -q 'dpkg-query -S' iso/build.sh
   iso:
