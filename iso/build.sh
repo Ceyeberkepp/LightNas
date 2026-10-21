@@ -1149,6 +1149,17 @@ echo "ZFS module confirmed inside final LightNAS filesystem."
 # metadata, rather than merely editing the staging tree.
 #
 echo "=== Configuring LightNAS-native live ISO boot ==="
+# Branding must cover every GRUB config (including loopback and generated submenu
+# configs), not only the two files used to prepend the native boot entry.
+# Keep recovery entries, but do not expose Debian branding in any boot menu.
+while IFS= read -r -d '' cfg; do
+  sed -i -E \
+    -e 's/Debian GNU\/Linux( 13( \(trixie\))?)?/LightNAS/g' \
+    -e 's/Live system \(amd64\)/LightNAS Recovery (amd64)/g' \
+    "$cfg"
+done < <(find binary/boot/grub -type f \\( -name '*.cfg' -o -name '*.conf' \\) -print0 2>/dev/null)
+
+
 # Native live system boots the LightNAS installer; no Debian Installer payload.
 for cfg in binary/boot/grub/grub.cfg binary/boot/grub/loopback.cfg; do
   [[ -f "$cfg" ]] || continue
