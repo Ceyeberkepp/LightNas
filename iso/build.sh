@@ -318,6 +318,26 @@ iproute2
 nftables
 ufw
 smartmontools
+# Hardware inventory for bare metal and hypervisors.
+pciutils
+usbutils
+lshw
+ethtool
+dmidecode
+hwinfo
+# Kernel-matched firmware for common wired/Wi-Fi NICs and graphics.
+# These packages are installed in the LIVE root as well as the installed OS.
+firmware-linux
+firmware-misc-nonfree
+firmware-realtek
+firmware-iwlwifi
+firmware-atheros
+firmware-brcm80211
+firmware-mediatek
+firmware-amd-graphics
+firmware-intel-graphics
+firmware-sof-signed
+wireless-regdb
 xserver-xorg
 xserver-xorg-video-all
 xserver-xorg-video-vesa
