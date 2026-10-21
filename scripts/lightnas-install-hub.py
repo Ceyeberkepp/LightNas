@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LightNAS live installer hub. Read-only inventory; installation delegated to Debian Installer."""
+"""LightNAS native graphical installation and network wizard."""
 import json
 import os
 import shutil
@@ -110,18 +110,59 @@ class Hub:
         subprocess.Popen([sys.executable, NETWORK], close_fds=True)
 
     def install(self):
-        launcher = shutil.which("debian-installer-launcher")
-        if not launcher:
-            messagebox.showinfo("Installer boot option",
-                                "This session does not provide the live installer launcher. "
-                                "Reboot and select Install LightNAS (Graphical) from the ISO boot menu. "
-                                "The installer will ask you to select and confirm the target disk.")
+        from tkinter import simpledialog
+        if os.geteuid() != 0:
+            messagebox.showerror("LightNAS", "Installation requires administrator access.")
             return
-        if not messagebox.askyesno("Start LightNAS installation",
-                                   "Open the Debian graphical disk installer? "
-                                   "No disk will be formatted until you choose a target and confirm its changes."):
+        candidates = [d for d in disks() if not d.get("ro") and
+                      int(d.get("size") or 0) >= 37580963840]
+        if not candidates:
+            messagebox.showerror("LightNAS", "No writable installation disks of at least 35 GiB were found.")
             return
-        subprocess.Popen([launcher], close_fds=True)
+        labels = [f"{d.get('path')} - {int(d.get('size') or 0)/10**9:.1f} GB - {d.get('model') or 'Disk'}"
+                  for d in candidates]
+        chooser = tk.Toplevel(self.root)
+        chooser.title("Select LightNAS destination disk")
+        chooser.geometry("750x230")
+        chooser.configure(bg=THEME["background"])
+        tk.Label(chooser, text="All data on the selected disk will be permanently erased.",
+                 bg=THEME["background"], fg=THEME["foreground"]).pack(pady=16)
+        chosen = tk.StringVar(value=labels[0])
+        combo = ttk.Combobox(chooser, state="readonly", textvariable=chosen, values=labels, width=85)
+        combo.pack(pady=10)
+
+        def confirm():
+            index = labels.index(chosen.get())
+            target = candidates[index].get("path")
+            if not target or not target.startswith("/dev/"):
+                messagebox.showerror("LightNAS", "Invalid installation disk.", parent=chooser)
+                return
+            if not messagebox.askyesno("Erase selected disk?",
+                    f"Erase ALL files and partitions on {target}? This is irreversible.",
+                    parent=chooser):
+                return
+            typed = simpledialog.askstring("Final confirmation",
+                    f"Type ERASE:{target} exactly to confirm.", parent=chooser)
+            if typed != f"ERASE:{target}":
+                messagebox.showwarning("LightNAS", "Installation was cancelled.", parent=chooser)
+                return
+            chooser.destroy()
+            self.root.update_idletasks()
+            try:
+                proc = subprocess.run(
+                    ["/bin/bash", os.path.join(HERE, "lightnas-native-install.sh"), target],
+                    env={**os.environ, "LIGHTNAS_ERASE_CONFIRM": typed},
+                    capture_output=True, text=True, timeout=3600)
+                if proc.returncode != 0:
+                    messagebox.showerror("LightNAS install failed",
+                                         (proc.stderr + "\n" + proc.stdout)[-1800:])
+                    return
+                messagebox.showinfo("LightNAS", "Installation completed. Remove the ISO and reboot.")
+                self.root.destroy()
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                messagebox.showerror("LightNAS", str(exc))
+
+        ttk.Button(chooser, text="Review and install", command=confirm).pack(pady=12)
 
 
 if __name__ == "__main__":
