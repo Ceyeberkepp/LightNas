@@ -4,6 +4,11 @@ set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 [[ -e /etc/lightnas-installed ]] && exit 0
 [[ -e /run/live/medium || -e /lib/live/mount/medium ]] || exit 0
+ # Keep routine kernel notices from drawing across the ncurses installer.
+# Errors are still available via dmesg and journalctl.
+if [[ -w /proc/sys/kernel/printk ]]; then
+  printf '3 4 1 3\n' >/proc/sys/kernel/printk || true
+fi
 clear || true
 printf '\n       LightNAS Native Installer\n'
 printf '       Detecting storage, networking and graphics...\n\n'
@@ -15,7 +20,12 @@ if [[ -n "${DISPLAY:-}" ]]; then
 elif [[ -x /usr/bin/xinit && -f /opt/lightnas/scripts/lightnas-install-hub.py ]]; then
   # Attempt software-friendly X first. If no graphics, fall back automatically
   # to a keyboard-operated terminal wizard without stopping installation.
-  timeout 35 xinit /usr/bin/python3 /opt/lightnas/scripts/lightnas-install-hub.py -- :0 -nolisten tcp >/run/lightnas-installer-x.log 2>&1 && exit 0 || true
+  # A working graphical installer must remain open until the user finishes.
+  # The former 35-second timeout killed it during normal use.
+  if xinit /usr/bin/python3 /opt/lightnas/scripts/lightnas-install-hub.py -- :0 -nolisten tcp >/run/lightnas-installer-x.log 2>&1; then
+    exit 0
+  fi
+  printf '\nLightNAS: graphical session could not start; using keyboard installer.\n'
 fi
 if ! command -v whiptail >/dev/null; then
   echo "Graphical environment unavailable; whiptail is missing."
