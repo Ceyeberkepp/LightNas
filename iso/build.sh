@@ -1164,18 +1164,18 @@ menuentry "Install LightNAS" --id=lightnas-native-live {
 }
 NATIVE_GRUB
     # live-build sometimes names kernels with suffixes; replace in a later pass.
-    kernel="$(find binary/live -maxdepth 1 -name 'vmlinuz*' -printf '%f\\n' | head -1)"
-    initrd="$(find binary/live -maxdepth 1 -name 'initrd*' -printf '%f\\n' | head -1)"
+    kernel="$(find binary/live -maxdepth 1 -name 'vmlinuz*' -printf '%f\n' | head -1)"
+    initrd="$(find binary/live -maxdepth 1 -name 'initrd*' -printf '%f\n' | head -1)"
     [[ -n "$kernel" && -n "$initrd" ]] || exit 1
     sed -i "s|/live/vmlinuz |/live/$kernel |; s|/live/initrd.img|/live/$initrd|" "$tmp"
-    cat "$cfg" >>"$tmp"
+    sed -E '/^set default=/d; /^set timeout=/d' "$cfg" >>"$tmp"
     mv "$tmp" "$cfg"
   }
 done
 for cfg in binary/isolinux/isolinux.cfg binary/syslinux/syslinux.cfg; do
   [[ -f "$cfg" ]] || continue
-  kernel="$(find binary/live -maxdepth 1 -name 'vmlinuz*' -printf '%f\\n' | head -1)"
-  initrd="$(find binary/live -maxdepth 1 -name 'initrd*' -printf '%f\\n' | head -1)"
+  kernel="$(find binary/live -maxdepth 1 -name 'vmlinuz*' -printf '%f\n' | head -1)"
+  initrd="$(find binary/live -maxdepth 1 -name 'initrd*' -printf '%f\n' | head -1)"
   [[ -n "$kernel" && -n "$initrd" ]] || exit 1
   tmp="$(mktemp)"
   cat >"$tmp" <<NATIVE_BIOS
@@ -1187,7 +1187,7 @@ LABEL lightnas-native-live
   KERNEL /live/$kernel
   APPEND initrd=/live/$initrd boot=live components systemd.unit=multi-user.target quiet lightnas.installer=1
 NATIVE_BIOS
-  cat "$cfg" >>"$tmp"
+  sed -E '/^[[:space:]]*(DEFAULT|default|menu default)[[:space:]]/Id' "$cfg" >>"$tmp"
   mv "$tmp" "$cfg"
 done
 if [[ -d binary/isolinux ]]; then
