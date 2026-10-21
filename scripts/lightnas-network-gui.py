@@ -88,8 +88,9 @@ class Wizard:
         self.summary.pack(fill="x", pady=(12, 3))
         buttons = ttk.Frame(self.row)
         buttons.pack(fill="x", pady=8)
-        ttk.Button(buttons, text="Rescan", command=self.refresh).pack(side="left")
-        ttk.Button(buttons, text="Review & Apply", command=self.apply).pack(side="right")
+        ttk.Button(buttons, text="Rescan adapters", command=self.refresh).pack(side="left")
+        ttk.Button(buttons, text="Search nearby Wi-Fi", command=self.scan_wifi).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Connect & Continue", command=self.apply).pack(side="right")
         self.toggle()
 
     def toggle(self):
@@ -106,7 +107,7 @@ class Wizard:
             return
         nics = self.data.get("interfaces", [])
         self.adapters["values"] = [n["name"] for n in nics]
-        self.wifi["values"] = self.data.get("wifi_ssids", [])
+        self.wifi["values"] = []
         self.fqdn.set(self.data.get("hostname") or "")
         if nics:
             current = self.nic.get()
@@ -129,6 +130,8 @@ class Wizard:
         self.wifi_password.set("")
         self.ssid.set("")
         self.status.set(f"{selected['name']} • {selected['type']} • {selected.get('state') or 'unknown'}")
+        if is_wifi:
+            self.scan_wifi()
         lines = [
             f"Adapter: {selected['name']} ({selected['type']})",
             f"IP: {self.address.get() or 'Unassigned / DHCP pending'}",
@@ -139,6 +142,29 @@ class Wizard:
         self.summary.delete("1.0", "end")
         self.summary.insert("1.0", "\n".join(lines))
         self.summary.configure(state="disabled")
+
+    def scan_wifi(self):
+        """Scan the SELECTED wireless NIC, not all nearby NICs combined."""
+        selected = next((n for n in self.data.get("interfaces", [])
+                         if n["name"] == self.nic.get()), None)
+        if not selected or selected["type"] != "wifi":
+            self.wifi["values"] = []
+            return
+        self.status.set("Searching nearby Wi-Fi networks…")
+        self.root.update_idletasks()
+        try:
+            scan = subprocess.run(["nmcli", "-g", "SSID", "device", "wifi",
+                                   "list", "ifname", selected["name"],
+                                   "--rescan", "yes"], text=True,
+                                  capture_output=True, timeout=35)
+            if scan.returncode:
+                raise RuntimeError(scan.stderr.strip() or "Wi-Fi scan failed")
+            networks = sorted(set(x.strip() for x in scan.stdout.splitlines() if x.strip()))
+            self.wifi["values"] = networks
+            self.status.set(f"Found {len(networks)} visible Wi-Fi networks on {selected['name']}")
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            self.status.set("Wi-Fi scan unavailable")
+            messagebox.showwarning("Wi-Fi discovery", str(exc))
 
     def apply(self):
         if os.geteuid() != 0:
@@ -195,7 +221,8 @@ class Wizard:
                 raise RuntimeError((result.stderr or result.stdout)[-1200:])
             self.wifi_password.set("")
             self.refresh()
-            messagebox.showinfo("Network updated", "NetworkManager applied the configuration. Live values have been rescanned.")
+            messagebox.showinfo("Network connected", "NetworkManager activated the selected connection. Continue the LightNAS installation.")
+            self.root.destroy()
         except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
             messagebox.showerror("Network activation failed", str(exc))
         finally:
