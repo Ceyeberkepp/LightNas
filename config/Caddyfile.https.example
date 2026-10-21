@@ -1,13 +1,18 @@
-# HTTPS reverse proxy for LightNAS
-# Replace nasos.cyverax.com with a hostname pointing to this appliance.
-# Caddy obtains a publicly trusted certificate when DNS and ports 80/443 are available.
-# Only expose HTTPS 443; port 80 may be used strictly for ACME challenge and redirect.
-nasos.cyverax.com {
+# OPTIONAL custom-domain reverse proxy; not required for LightNAS LAN HTTPS.
+# Each appliance serves HTTPS directly at https://<its-own-LAN-IP>:3080.
+# This template is ONLY for an administrator-configured domain.
+# Replace lightnas.example.com with a hostname that belongs to THAT appliance.
+# When forwarding to a TLS upstream, configure TLS verification/trust explicitly.
+lightnas.example.com {
     encode zstd gzip
     header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options nosniff
         Referrer-Policy no-referrer
     }
-    reverse_proxy 127.0.0.1:3080
+    reverse_proxy https://127.0.0.1:3080 {
+        transport http {
+            tls_server_name localhost
+            tls_trusted_ca_certs /etc/lightnas/tls/nas.crt
+        }
+    }
 }
