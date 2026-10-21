@@ -1157,7 +1157,7 @@ while IFS= read -r -d '' cfg; do
     -e 's/Debian GNU\/Linux( 13( \(trixie\))?)?/LightNAS/g' \
     -e 's/Live system \(amd64\)/LightNAS Recovery (amd64)/g' \
     "$cfg"
-done < <(find binary/boot/grub -type f \\( -name '*.cfg' -o -name '*.conf' \\) -print0 2>/dev/null)
+done < <(find binary/boot/grub -type f \( -name '*.cfg' -o -name '*.conf' \) -print0 2>/dev/null)
 
 
 # Native live system boots the LightNAS installer; no Debian Installer payload.
