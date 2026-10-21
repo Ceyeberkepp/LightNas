@@ -38,13 +38,6 @@ fi
 mkdir -p "${BUILD_DIR}" "$(dirname "${OUTPUT}")"
 cd "${BUILD_DIR}"
 
-# Stage the Debian Installer preseed before lb config. live-build detects this
-# file while configuring the installer and automatically wires it into the
-# installer boot parameters. Staging it later can leave the file on the ISO
-# without actually applying the LightNAS partition recipe.
-mkdir -p config/binary_debian-installer
-cp "${REPO_ROOT}/iso/preseed.cfg" config/binary_debian-installer/preseed.cfg
-
 echo "=== Configuring LightNAS Debian 13 live image ==="
 
 lb config \
@@ -53,9 +46,7 @@ lb config \
   --architectures amd64 \
   --binary-image iso-hybrid \
   --bootloaders 'syslinux,grub-efi' \
-  --debian-installer live \
-  --debian-installer-gui true \
-  --debian-installer-preseedfile preseed.cfg \
+  --debian-installer false \
   --firmware-binary true \
   --firmware-chroot true \
   --uefi-secure-boot auto \
@@ -1089,46 +1080,10 @@ lb build
 # Validate that the finished image contains the installer payload before it is
 # published. The graphical installer is preferred, while the text installer
 # remains an explicit fallback for older or unusual graphics hardware.
-#
-echo
-echo "=== Validating LightNAS installer payload ==="
-INSTALLER_KERNEL_COUNT="$(find binary -type f \( -name 'linux' -o -name 'vmlinuz' \) -path '*install*' | wc -l)"
-INSTALLER_INITRD_COUNT="$(find binary -type f -name 'initrd*' -path '*install*' | wc -l)"
-if [[ "${INSTALLER_KERNEL_COUNT}" -lt 1 || "${INSTALLER_INITRD_COUNT}" -lt 1 ]]; then
-  echo "ERROR: Debian Installer kernel/initrd payload is missing from the LightNAS ISO tree." >&2
-  exit 1
-fi
-if [[ ! -f binary/install/preseed.cfg && ! -f binary/preseed.cfg && ! -f config/binary_debian-installer/preseed.cfg ]]; then
-  echo "ERROR: LightNAS installer preseed was not staged." >&2
-  exit 1
-fi
-echo "Installer kernel/initrd and LightNAS preseed confirmed."
-
-if ! grep -Rqs -- 'Install LightNAS (Graphical)' binary 2>/dev/null; then
-  echo "ERROR: final ISO tree does not contain the branded graphical LightNAS installer entry." >&2
-  exit 1
-fi
-if ! grep -Rqs -- 'Install LightNAS (Terminal UI)' binary 2>/dev/null; then
-  echo "ERROR: final ISO tree does not contain the terminal installer entry." >&2
-  exit 1
-fi
-if ! grep -Rqs -- 'Install LightNAS (VGA Safe Mode)' binary 2>/dev/null; then
-  echo "ERROR: final ISO tree does not contain the VGA-safe installer entry." >&2
-  exit 1
-fi
-if ! grep -Rqs -- 'Install LightNAS (Serial Console)' binary 2>/dev/null; then
-  echo "ERROR: final ISO tree does not contain the serial-console installer entry." >&2
-  exit 1
-fi
-echo "Graphical, VGA-safe, terminal, and serial LightNAS installer entries confirmed."
-# Check branding shipped to the actual ISO boot menus, not just build templates.
-if ! grep -Rqs 'LightNAS' binary 2>/dev/null; then
-  echo 'ERROR: LightNAS bootloader branding missing from binary ISO tree.' >&2
-  exit 1
-fi
-
-#
-# Verify the final SquashFS actually contains ZFS.
+# Verify LightNAS-native installer and boot scripts are staged.
+test -s config/includes.chroot/opt/lightnas/scripts/lightnas-native-install.sh || {
+  echo "ERROR: native LightNAS installer missing." >&2; exit 1;
+}
 #
 echo
 echo "=== Verifying final LightNAS filesystem ==="
@@ -1160,106 +1115,50 @@ echo "ZFS module confirmed inside final LightNAS filesystem."
 # binary hooks. Remaster changed menu files into the ISO and replay El Torito
 # metadata, rather than merely editing the staging tree.
 #
-echo "=== Setting installer-first BIOS and UEFI menus ==="
-# Build a direct graphical-installer entry from the actual installer payload.
-# Never default to the live system, kiosk or auto-login session.
-gtk_kernel=""
-gtk_initrd=""
-for k in binary/install/gtk/vmlinuz binary/install/gtk/linux; do
-  [[ -f "$k" ]] && { gtk_kernel="${k#binary}"; break; }
-done
-for i in binary/install/gtk/initrd.gz binary/install/gtk/initrd; do
-  [[ -f "$i" ]] && { gtk_initrd="${i#binary}"; break; }
-done
-[[ -n "$gtk_kernel" && -n "$gtk_initrd" ]] || {
-  echo "ERROR: graphical Debian Installer payload missing; refusing live-session default." >&2
-  exit 1
-}
-
+echo "=== Configuring LightNAS-native live ISO boot ==="
+# Native live system boots the LightNAS installer; no Debian Installer payload.
 for cfg in binary/boot/grub/grub.cfg binary/boot/grub/loopback.cfg; do
   [[ -f "$cfg" ]] || continue
-  sed -i \
-    -e 's|Debian GNU/Linux 13 (trixie)|LightNAS|g' \
-    -e 's|Debian GNU/Linux|LightNAS|g' \
-    -e 's|Live system (amd64)|LightNAS Recovery (amd64)|g' "$cfg"
-  # Prepend a known graphical installer entry as the first GRUB menu item.
-  # Numeric default is unaffected by distro-specific menu wording/submenus.
-  grep -q 'lightnas-installer-first' "$cfg" || {
+  sed -i -e 's/Debian GNU\/Linux 13 (trixie)/LightNAS/g' -e 's/Debian GNU\/Linux/LightNAS/g' "$cfg"
+  grep -q 'lightnas-native-live' "$cfg" || {
     tmp="$(mktemp)"
-    cat >"$tmp" <<EOF_GRUB
+    cat >"$tmp" <<'NATIVE_GRUB'
 set default=0
-set timeout=1
-menuentry "Install LightNAS" --id=lightnas-installer-first {
-  linux $gtk_kernel priority=medium DEBIAN_FRONTEND=gtk
-  initrd $gtk_initrd
+set timeout=2
+menuentry "Install LightNAS" --id=lightnas-native-live {
+  linux /live/vmlinuz boot=live components systemd.unit=multi-user.target quiet lightnas.installer=1
+  initrd /live/initrd.img
 }
-EOF_GRUB
+NATIVE_GRUB
+    # live-build sometimes names kernels with suffixes; replace in a later pass.
+    kernel="$(find binary/live -maxdepth 1 -name 'vmlinuz*' -printf '%f\\n' | head -1)"
+    initrd="$(find binary/live -maxdepth 1 -name 'initrd*' -printf '%f\\n' | head -1)"
+    [[ -n "$kernel" && -n "$initrd" ]] || exit 1
+    sed -i "s|/live/vmlinuz |/live/$kernel |; s|/live/initrd.img|/live/$initrd|" "$tmp"
     cat "$cfg" >>"$tmp"
     mv "$tmp" "$cfg"
   }
 done
-
-# Isolinux/Syslinux uses the graphical installer label from Debian live-build.
-# Add our own label to the first loaded configuration and make it the default.
 for cfg in binary/isolinux/isolinux.cfg binary/syslinux/syslinux.cfg; do
   [[ -f "$cfg" ]] || continue
-  if ! grep -q 'label lightnas-installer-first' "$cfg"; then
-    tmp="$(mktemp)"
-    cat >"$tmp" <<EOF_BIOS
-DEFAULT lightnas-installer-first
+  kernel="$(find binary/live -maxdepth 1 -name 'vmlinuz*' -printf '%f\\n' | head -1)"
+  initrd="$(find binary/live -maxdepth 1 -name 'initrd*' -printf '%f\\n' | head -1)"
+  [[ -n "$kernel" && -n "$initrd" ]] || exit 1
+  tmp="$(mktemp)"
+  cat >"$tmp" <<NATIVE_BIOS
+DEFAULT lightnas-native-live
 PROMPT 0
-TIMEOUT 10
-LABEL lightnas-installer-first
+TIMEOUT 20
+LABEL lightnas-native-live
   MENU LABEL ^Install LightNAS
-  KERNEL $gtk_kernel
-  APPEND initrd=$gtk_initrd priority=medium DEBIAN_FRONTEND=gtk
-
-EOF_BIOS
-    cat "$cfg" >>"$tmp"
-    mv "$tmp" "$cfg"
-  fi
+  KERNEL /live/$kernel
+  APPEND initrd=/live/$initrd boot=live components systemd.unit=multi-user.target quiet lightnas.installer=1
+NATIVE_BIOS
+  cat "$cfg" >>"$tmp"
+  mv "$tmp" "$cfg"
 done
-
-# The VirtualBox screenshots use BIOS Syslinux, not GRUB. Its menu is
-# assembled from menu.cfg / install.cfg and the rendered splash.png. A new
-# label in isolinux.cfg alone does NOT override the menu's selected live entry.
-# Replace the generated Debian artwork and set the graphical installer as the
-# sole normal menu entry; do not boot into the live login/kiosk.
 if [[ -d binary/isolinux ]]; then
-  [[ -s "${BUILD_DIR}/lightnas-splash.png" ]] || {
-    echo 'ERROR: LightNAS branded BIOS splash was not generated.' >&2
-    exit 1
-  }
   install -m 0644 "${BUILD_DIR}/lightnas-splash.png" binary/isolinux/splash.png
-  for cfg in binary/isolinux/*.cfg; do
-    [[ -f "$cfg" ]] || continue
-    # The top-level Syslinux menu includes the installer-specific config.
-    # Do not leave a menu-default directive pointing at the live entry.
-    sed -i -E '/^[[:space:]]*menu[[:space:]]+default([[:space:]]|$)/Id' "$cfg"
-  done
-  # Do not present Debian's live recovery menu during ordinary install boot.
-  if [[ -f binary/isolinux/menu.cfg ]]; then
-    sed -i -E '/^[[:space:]]*include[[:space:]]+live\.cfg([[:space:]]|$)/Id' binary/isolinux/menu.cfg
-  fi
-  # Syslinux menu.c32 selects 'menu default' rather than DEFAULT; put the
-  # correct default on the installer entry, not the generated live stanza.
-  if [[ -f binary/isolinux/install.cfg ]]; then
-    awk '
-      /^[[:space:]]*[Ll][Aa][Bb][Ee][Ll][[:space:]]+/ {
-        match_label=($2=="installgui" || $2=="lightnas-installer-first")
-        print
-        if (match_label) print "  menu default"
-        next
-      }
-      { print }
-    ' binary/isolinux/install.cfg >binary/isolinux/install.cfg.tmp
-    mv binary/isolinux/install.cfg.tmp binary/isolinux/install.cfg
-  fi
-  # Menu-entry ID is present in our top-level config; prevent live.cfg from
-  # being re-included via the generated default menu for legacy BIOS.
-  if [[ -f binary/isolinux/isolinux.cfg ]]; then
-    sed -i -E '/^[[:space:]]*include[[:space:]]+live\.cfg([[:space:]]|$)/Id' binary/isolinux/isolinux.cfg
-  fi
 fi
 
 #
@@ -1308,18 +1207,9 @@ fi
 echo 'BIOS and UEFI boot entries confirmed.'
 
 echo
-echo "=== Verifying installer files inside final ISO ==="
+echo "=== Verifying native live boot files ==="
 ISO_FILE_LIST="$(xorriso -indev "${ISO}" -find / -type f -exec lsdl -- 2>/dev/null || true)"
-if ! grep -Eqi '/install[^ ]*/.*(vmlinuz|linux)' <<<"${ISO_FILE_LIST}"; then
-  echo 'ERROR: final ISO does not contain an installer kernel.' >&2
-  exit 1
-fi
-if ! grep -Eqi '/install[^ ]*/.*initrd' <<<"${ISO_FILE_LIST}"; then
-  echo 'ERROR: final ISO does not contain an installer initrd.' >&2
-  exit 1
-fi
-echo 'Installer payload confirmed inside final ISO.'
-
+grep -q '/live/' <<<"$ISO_FILE_LIST" || { echo "ERROR: live boot missing." >&2; exit 1; }
 #
 # Copy final artifact.
 #
