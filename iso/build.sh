@@ -309,6 +309,13 @@ iproute2
 nftables
 ufw
 smartmontools
+parted
+gdisk
+dosfstools
+e2fsprogs
+rsync
+grub-pc-bin
+grub-efi-amd64-bin
 # Hardware inventory for bare metal and hypervisors.
 pciutils
 usbutils
@@ -411,6 +418,32 @@ cp -a \
 if [[ -f "${REPO_ROOT}/package-lock.json" ]]; then
   cp "${REPO_ROOT}/package-lock.json" config/includes.chroot/opt/lightnas/
 fi
+
+# Native LightNAS installer is launched only on booted installation media.
+# The installed system has /etc/lightnas-installed and will not run this unit.
+mkdir -p config/includes.chroot/etc/systemd/system/multi-user.target.wants
+cat >config/includes.chroot/etc/systemd/system/lightnas-native-installer.service <<'NATIVE_SERVICE'
+[Unit]
+Description=LightNAS native ISO installation wizard
+After=systemd-udev-settle.service NetworkManager.service
+ConditionPathExists=!/etc/lightnas-installed
+ConditionKernelCommandLine=lightnas.installer=1
+Conflicts=getty@tty1.service
+Before=lightnas.service
+[Service]
+Type=idle
+ExecStart=/bin/bash /opt/lightnas/scripts/lightnas-native-wizard.sh
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+Restart=no
+[Install]
+WantedBy=multi-user.target
+NATIVE_SERVICE
+ln -s ../lightnas-native-installer.service config/includes.chroot/etc/systemd/system/multi-user.target.wants/lightnas-native-installer.service
 
 # Console setup is opt-in and does not block automated boot.
 # The helper and wizard are packaged with the main LightNAS scripts tree.
