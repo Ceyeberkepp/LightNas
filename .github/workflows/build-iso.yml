@@ -43,7 +43,7 @@ jobs:
           bash -n iso/build.sh scripts/lightnas-network-wizard.sh
           python3 -m py_compile scripts/lightnas-network-setup.py scripts/lightnas-network-gui.py scripts/lightnas-install-hub.py
           grep -q -- '--debian-installer-gui true' iso/build.sh
-          grep -q 'lightnas-installer-first' iso/build.sh
+          grep -q 'lightnas-native-live' iso/build.sh
           grep -q 'dpkg-query -S' iso/build.sh
   iso:
     if: github.event_name != 'pull_request'
@@ -189,10 +189,10 @@ jobs:
           set -Eeuo pipefail
           mkdir -p /tmp/lightnas-iso
           xorriso -osirrox on -indev dist/LightNAS-amd64.iso -extract / /tmp/lightnas-iso >/dev/null 2>&1
-          grep -Rqs 'Install LightNAS (Graphical)' /tmp/lightnas-iso
-          grep -Rqs 'Install LightNAS (VGA Safe Mode)' /tmp/lightnas-iso
-          grep -Rqs 'Install LightNAS (Terminal UI)' /tmp/lightnas-iso
-          grep -Rqs 'Install LightNAS (Serial Console)' /tmp/lightnas-iso
+          grep -Rqs 'Install LightNAS' /tmp/lightnas-iso
+          ! grep -Rqs 'DEBIAN_FRONTEND=gtk' /tmp/lightnas-iso/boot /tmp/lightnas-iso/isolinux 2>/dev/null
+          grep -q 'lightnas-native-live' iso/build.sh
+          ! grep -Rqs 'linux /install/gtk/' /tmp/lightnas-iso/boot 2>/dev/null
           # Reject the Debian GRUB menu seen on real VirtualBox boots.
           if grep -RqE 'Debian GNU/Linux 13|Live system \(amd64\)' /tmp/lightnas-iso/boot/grub 2>/dev/null; then
             echo 'Unbranded Debian boot menu remains in ISO' >&2
@@ -200,20 +200,20 @@ jobs:
           fi
           # Verify the actual mounted ISO boots the graphical installer first.
           if [ -f /tmp/lightnas-iso/boot/grub/grub.cfg ]; then
-            grep -q 'lightnas-installer-first' /tmp/lightnas-iso/boot/grub/grub.cfg
+            grep -q 'lightnas-native-live' /tmp/lightnas-iso/boot/grub/grub.cfg
             grep -q '^set default=0' /tmp/lightnas-iso/boot/grub/grub.cfg
-            grep -q 'linux /install/gtk/' /tmp/lightnas-iso/boot/grub/grub.cfg
-            grep -q 'DEBIAN_FRONTEND=gtk' /tmp/lightnas-iso/boot/grub/grub.cfg
+            grep -q 'boot=live' /tmp/lightnas-iso/boot/grub/grub.cfg
+            grep -q 'lightnas.installer=1' /tmp/lightnas-iso/boot/grub/grub.cfg
           fi
           if [ -f /tmp/lightnas-iso/isolinux/isolinux.cfg ]; then
-            grep -q '^DEFAULT lightnas-installer-first' /tmp/lightnas-iso/isolinux/isolinux.cfg
-            grep -q '^LABEL lightnas-installer-first' /tmp/lightnas-iso/isolinux/isolinux.cfg
+            grep -q '^DEFAULT lightnas-native-live' /tmp/lightnas-iso/isolinux/isolinux.cfg
+            grep -q '^LABEL lightnas-native-live' /tmp/lightnas-iso/isolinux/isolinux.cfg
           fi
           if [ -f /tmp/lightnas-iso/isolinux/menu.cfg ]; then
             ! grep -Eq '^[[:space:]]*include[[:space:]]+live\\.cfg' /tmp/lightnas-iso/isolinux/menu.cfg
           fi
           if [ -f /tmp/lightnas-iso/isolinux/install.cfg ]; then
-            grep -qi 'menu default' /tmp/lightnas-iso/isolinux/install.cfg
+            grep -q 'lightnas-native-live' /tmp/lightnas-iso/isolinux/isolinux.cfg
           fi
           if [ -f /tmp/lightnas-iso/isolinux/splash.png ]; then
             cmp /tmp/lightnas-iso/isolinux/splash.png .iso-build/lightnas-splash.png
