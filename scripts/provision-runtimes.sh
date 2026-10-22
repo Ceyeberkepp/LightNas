@@ -190,193 +190,12 @@ if command -v lxc-create >/dev/null 2>&1 && command -v lxc-start >/dev/null 2>&1
       ip link delete lightnas0 type bridge >/dev/null 2>&1 || true
     fi
   fi
-  # Use the standard lxc-net helper as the owner of the LightNAS container
-  # bridge. This works even when the outer LXC's eth0 is intentionally
-  # unmanaged by NetworkManager. lxc-net supplies the bridge, DHCP/DNS and
-  # outbound NAT through the host's current default route.
-  if [[ "${network_mode}" != "lxc-nat" && "${network_mode}" != "nested-macvlan" && "${network_mode}" != "nested-ipvlan" && "${network_mode}" != "pending-uplink" && "${lan_bridge_ready}" != "1" ]] && systemctl list-unit-files lxc-net.service --no-legend 2>/dev/null | grep -q '^lxc-net.service'; then
-    systemctl stop lxc-net.service >/dev/null 2>&1 || true
-
-    # Older LightNAS builds created a NetworkManager profile with this name.
-    # Remove the inactive profile so NetworkManager and lxc-net never fight
-    # over the same bridge device.
-    if command -v nmcli >/dev/null 2>&1; then
-      while IFS= read -r uuid; do
-        [[ -n "$uuid" ]] && nmcli connection delete uuid "$uuid" >/dev/null 2>&1 || true
-      done < <(nmcli -t -f UUID,NAME connection show 2>/dev/null | awk -F: '$2=="lightnas0"{print $1}')
-    fi
-
-    if ip link show lightnas0 >/dev/null 2>&1; then
-      ip link set lightnas0 down >/dev/null 2>&1 || true
-      ip link delete lightnas0 type bridge >/dev/null 2>&1 || true
-    fi
-
-    install -d -m 0755 /etc/default
-    touch /etc/default/lxc-net
-    for setting in \
-      'USE_LXC_BRIDGE="true"' \
-      'LXC_BRIDGE="lightnas0"' \
-      'LXC_ADDR="10.77.0.1"' \
-      'LXC_NETMASK="255.255.255.0"' \
-      'LXC_NETWORK="10.77.0.0/24"' \
-      'LXC_DHCP_RANGE="10.77.0.20,10.77.0.250"' \
-      'LXC_DHCP_MAX="231"'; do
-      key="${setting%%=*}"
-      sed -i "/^${key}=/d" /etc/default/lxc-net
-      printf '%s\n' "$setting" >> /etc/default/lxc-net
-    done
-
-    systemctl enable lxc-net.service >/dev/null 2>&1 || true
-    systemctl restart lxc-net.service >/dev/null 2>&1 || true
-
-    for attempt in {1..10}; do
-      if ip link show lightnas0 2>/dev/null | grep -q 'UP' \
-        && ip -4 address show dev lightnas0 2>/dev/null | grep -q '10\.77\.0\.1/24'; then
-        break
-      fi
-      sleep 1
-    done
-  fi
-
-  # Ubuntu's stock lxc-net can fail inside a nested Proxmox LXC even when
-  # network namespaces/veth are available. Install a small LightNAS-owned
-  # bridge service as a fallback so system-container creation does not depend
-  # on that distro helper.
-  if [[ ${EUID} -eq 0 ]] && { [[ "${network_mode}" == "lxc-nat" ]] || { [[ "${network_mode}" != "nested-macvlan" && "${network_mode}" != "nested-ipvlan" && "${network_mode}" != "pending-uplink" && "${lan_bridge_ready}" != "1" ]] && ! (ip link show lightnas0 2>/dev/null | grep -q 'UP' \
-    && ip -4 address show dev lightnas0 2>/dev/null | grep -q '10\.77\.0\.1/24'); }; }; then
-    install -d -m 0755 /usr/local/libexec /run/lightnas
-    cat >/usr/local/libexec/lightnas-container-network <<'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-bridge=lightnas0
-subnet=10.77.0.0/24
-gateway=10.77.0.1
-pidfile=/run/lightnas/dnsmasq-lightnas0.pid
-case "${1:-start}" in
-  start)
-    ip link show "$bridge" >/dev/null 2>&1 || ip link add name "$bridge" type bridge
-    ip addr replace "$gateway/24" dev "$bridge"
-    ip link set "$bridge" up
-    sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
-    if [[ -s "$pidfile" ]]; then kill "$(cat "$pidfile")" >/dev/null 2>&1 || true; rm -f "$pidfile"; fi
-    upstream_dns="$(awk '/^nameserver[[:space:]]+/ && $2 !~ /^127\./ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)"
-    [[ -n "$upstream_dns" ]] || upstream_dns=1.1.1.1
-    mkdir -p /var/lib/misc
-    dnsmasq --conf-file=/dev/null --port=0 --interface="$bridge" --bind-dynamic \
-      --dhcp-authoritative \
-      --dhcp-range=10.77.0.20,10.77.0.250,255.255.255.0,12h \
-      --dhcp-option=3,"$gateway" --dhcp-option=6,"$upstream_dns" \
-      --dhcp-leasefile=/var/lib/misc/dnsmasq-lightnas0.leases \
-      --pid-file="$pidfile"
-    if command -v nft >/dev/null 2>&1; then
-      nft delete table ip lightnas_nat >/dev/null 2>&1 || true
-      nft add table ip lightnas_nat >/dev/null 2>&1 || true
-      nft 'add chain ip lightnas_nat postrouting { type nat hook postrouting priority srcnat; policy accept; }' >/dev/null 2>&1 || true
-      nft add rule ip lightnas_nat postrouting ip saddr "$subnet" masquerade >/dev/null 2>&1 || true
-    fi
-    ;;
-  stop)
-    if [[ -s "$pidfile" ]]; then kill "$(cat "$pidfile")" >/dev/null 2>&1 || true; rm -f "$pidfile"; fi
-    nft delete table ip lightnas_nat >/dev/null 2>&1 || true
-    ip link set "$bridge" down >/dev/null 2>&1 || true
-    ip link delete "$bridge" type bridge >/dev/null 2>&1 || true
-    ;;
-esac
-EOF
-    chmod 0755 /usr/local/libexec/lightnas-container-network
-    cat >/etc/systemd/system/lightnas-container-network.service <<'EOF'
-[Unit]
-Description=LightNAS native container bridge
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/local/libexec/lightnas-container-network start
-ExecStop=/usr/local/libexec/lightnas-container-network stop
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    systemctl daemon-reload
-    systemctl enable lightnas-container-network.service >/dev/null 2>&1 || true
-    if [[ "${network_mode}" == "lxc-nat" ]]; then
-      systemctl disable --now lxc-net.service >/dev/null 2>&1 || true
-      systemctl restart lightnas-container-network.service >/dev/null 2>&1 || /usr/local/libexec/lightnas-container-network start >/dev/null 2>&1 || true
-    else
-      systemctl enable --now lightnas-container-network.service >/dev/null 2>&1 || true
-    fi
-  fi
-
-  # LXC appliance mode always keeps nested system containers on LightNAS's
-  # private container bridge. Migrate any containers created during the old
-  # transparent-bridge experiment back to lightnas0 automatically.
-  if [[ "${network_mode}" == "lxc-nat" ]] && ip link show lightnas0 >/dev/null 2>&1; then
-    for config in /var/lib/lxc/*/config; do
-      [[ -f "$config" ]] || continue
-      link="$(sed -nE 's/^lxc\.net\.[0-9]+\.link\s*=\s*([^[:space:]]+).*/\1/p' "$config" | head -1)"
-      type="$(sed -nE 's/^lxc\.net\.[0-9]+\.type\s*=\s*([^[:space:]]+).*/\1/p' "$config" | head -1)"
-      [[ "$link" =~ ^(virbr0|lxcbr0|lightnas0)$ || "$type" == "macvlan" ]] || continue
-      name="$(basename "$(dirname "$config")")"
-      was_running=0
-      [[ "$(lxc-info -n "$name" -sH 2>/dev/null || true)" == "RUNNING" ]] && was_running=1
-      [[ "$was_running" == "1" ]] && lxc-stop -n "$name" -t 30 >/dev/null 2>&1 || true
-      sed -i '/^lxc\.net\.0\.type\s*=/d;/^lxc\.net\.0\.link\s*=/d;/^lxc\.net\.0\.macvlan\.mode\s*=/d;/^lxc\.net\.0\.vlan\.id\s*=/d' "$config"
-      printf '%s\n' 'lxc.net.0.type = veth' 'lxc.net.0.link = lightnas0' >>"$config"
-
-      rootfs="$(sed -nE 's#^lxc\.rootfs\.path\s*=\s*(dir:)?(.+?)\s*$#\2#p' "$config" | head -1)"
-      metadata="$(dirname "$config")/lightnas.json"
-      network_file="$rootfs/etc/systemd/network/10-lightnas-eth0.network"
-      explicit_mode=""
-      if [[ -f "$metadata" ]] && command -v python3 >/dev/null 2>&1; then
-        explicit_mode="$(python3 - "$metadata" <<'PY'
-import json, sys
-try:
-    print(json.load(open(sys.argv[1], encoding="utf-8")).get("ipv4Mode", ""))
-except Exception:
-    print("")
-PY
-)"
-      fi
-      # Older LightNAS builds silently converted DHCP into a generated
-      # 10.77.0.x static address. Restore those legacy auto-generated entries
-      # to DHCP only when there is no explicit user-selected IPv4 mode.
-      if [[ -z "$explicit_mode" && -f "$network_file" ]] && grep -Eq '^Address=10\.77\.0\.[0-9]+/24$' "$network_file"; then
-        cat >"$network_file" <<'EOF'
-[Match]
-Name=eth0
-
-[Network]
-DHCP=ipv4
-IPv6AcceptRA=yes
-
-[DHCPv4]
-ClientIdentifier=mac
-EOF
-        if command -v python3 >/dev/null 2>&1; then
-          python3 - "$metadata" <<'PY'
-import json, os, sys
-path=sys.argv[1]
-data={}
-try:
-    with open(path, encoding="utf-8") as f:
-        data=json.load(f)
-except Exception:
-    pass
-data["ipv4Mode"]="dhcp"
-os.makedirs(os.path.dirname(path), exist_ok=True)
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
-PY
-        fi
-      fi
-
-      [[ "$was_running" == "1" ]] && lxc-start -n "$name" -d >/dev/null 2>&1 || true
-    done
-  fi
-
+  # Do not create lightnas0 as a NAT router or run a private DHCP service.
+  # Guest network is direct LAN only; a bridge is a layer-2 passthrough,
+  # not a new 10.77.0.0/24 network. In nested Proxmox LXC, an
+  # unavailable uplink is an explicit setup error, never a NAT fallback.
+  # Existing legacy NAT services/configuration are left untouched here:
+  # dismantling active bridges requires a separately approved migration.
   if systemd-detect-virt --container >/dev/null 2>&1 && [[ "${LIGHTNAS_ALLOW_NESTED_LXC:-0}" != "1" ]]; then
     report Containers 'native LXC installed, but this appliance is itself in a container and nested LXC was not enabled'
   elif [[ "${network_mode}" =~ ^nested-(macvlan|ipvlan)$ && -n "${container_parent}" ]]; then
@@ -384,7 +203,7 @@ PY
   elif [[ "${lan_bridge_ready}" == "1" ]]; then
     report Containers "native LXC/liblxc ready on ${lan_bridge}; containers receive real LAN addresses"
   elif [[ "${network_mode}" == "pending-uplink" ]]; then
-    report Containers 'native LXC/liblxc installed; waiting for the physical LAN uplink to receive DHCP before guest networking starts'
+    report Containers 'native LXC/liblxc installed; waiting for permitted LAN passthrough; check Proxmox LXC network capabilities and DHCP'
   elif ip link show lightnas0 2>/dev/null | grep -q 'UP' \
     && ip -4 address show dev lightnas0 2>/dev/null | grep -q '10\.77\.0\.1/24'; then
     report Containers 'native LXC/liblxc ready on lightnas0 (10.77.0.0/24 NAT fallback)'
