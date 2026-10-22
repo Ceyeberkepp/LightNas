@@ -1495,6 +1495,40 @@ def create_container(data: dict) -> dict:
     nested_mode = str(network_state.get("LIGHTNAS_NETWORK_MODE") or "")
     nested_direct = nested_mode in {"nested-macvlan", "nested-ipvlan"}
     nested_nat = nested_mode == "lxc-nat"
+    # Network state is saved across installs and can become stale. On nested
+    # Proxmox LXC, test the real selected uplink when the stored mode is
+    # pending rather than rejecting a working macvlan host.
+    if in_container() and nested_mode in {"pending-uplink", "lxc-nat", ""}:
+        parent = requested_network or str(network_state.get("LIGHTNAS_UPLINK") or "eth0")
+        if parent in networks and IFACE_RE.fullmatch(parent):
+            for probe_type, probe_mode, args in (
+                ("macvlan", "nested-macvlan", ["type", "macvlan", "mode", "bridge"]),
+                ("ipvlan", "nested-ipvlan", ["type", "ipvlan", "mode", "l2"]),
+            ):
+                probe_name = f"lnprobe{os.getpid() % 100000}"
+                result = subprocess.run(
+                    ["ip", "link", "add", "link", parent, "name", probe_name, *args],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+                )
+                if result.returncode == 0:
+                    subprocess.run(["ip", "link", "delete", probe_name],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                    network_state["LIGHTNAS_NETWORK_MODE"] = probe_mode
+                    network_state["LIGHTNAS_UPLINK"] = parent
+                    network_state["LIGHTNAS_CONTAINER_PARENT"] = parent
+                    nested_mode = probe_mode
+                    nested_direct = True
+                    nested_nat = False
+                    # Persist the validated mode for the next creation, without
+                    # touching eth0's management address or legacy guest configs.
+                    state_path = Path("/etc/lightnas/network.env")
+                    try:
+                        state_path.parent.mkdir(parents=True, exist_ok=True)
+                        state_path.write_text("".join(f"{k}={v}\n" for k, v in network_state.items()
+                                                      if k.startswith("LIGHTNAS_")), encoding="utf-8")
+                    except OSError:
+                        pass
+                    break
     if nested_mode in {"pending-uplink", "lxc-nat"}:
         raise RuntimeError("LAN passthrough is unavailable. Configure the Proxmox uplink for guest DHCP; LightNAS will not create a private NAT subnet.")
     if nested_direct:
