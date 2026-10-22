@@ -70,7 +70,7 @@ install_missing_packages ca-certificates curl git gnupg python3
 echo "      Updating LightNAS source..."
 if [[ -d "${INSTALL_DIRECTORY}/.git" ]]; then
   # Never report a successful update if fetching/pulling failed.
-  git -C "${INSTALL_DIRECTORY}" rev-parse --is-inside-work-tree >/dev/null
+  git -c safe.directory="${INSTALL_DIRECTORY}" -C "${INSTALL_DIRECTORY}" rev-parse --is-inside-work-tree >/dev/null
   # Root-run install is allowed to update an appliance checkout owned by
   # lightnas. Scope Git's trust to this invocation, not the user's global config.
   git -c safe.directory="${INSTALL_DIRECTORY}" -C "${INSTALL_DIRECTORY}" fetch origin main
