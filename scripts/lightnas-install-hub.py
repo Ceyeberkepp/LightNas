@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """LightNAS native graphical installation and network wizard."""
 import json
+import threading
+import queue
 import os
 import shutil
 import subprocess
@@ -147,20 +149,63 @@ class Hub:
                 messagebox.showwarning("LightNAS", "Installation was cancelled.", parent=chooser)
                 return
             chooser.destroy()
-            self.root.update_idletasks()
-            try:
-                proc = subprocess.run(
-                    ["/bin/bash", os.path.join(HERE, "lightnas-native-install.sh"), target],
-                    env={**os.environ, "LIGHTNAS_ERASE_CONFIRM": typed},
-                    capture_output=True, text=True, timeout=3600)
-                if proc.returncode != 0:
-                    messagebox.showerror("LightNAS install failed",
-                                         (proc.stderr + "\n" + proc.stdout)[-1800:])
+            progress = tk.Toplevel(self.root)
+            progress.title("Installing LightNAS")
+            progress.geometry("700x410")
+            progress.configure(bg=THEME["background"])
+            progress.protocol("WM_DELETE_WINDOW", lambda: None)
+            tk.Label(progress, text="Installing LightNAS", font=("Sans", 22, "bold"),
+                     bg=THEME["background"], fg=THEME["accent"]).pack(pady=14)
+            tk.Label(progress, text="Keep this computer powered on. Disk operations are in progress.",
+                     bg=THEME["background"], fg=THEME["foreground"]).pack()
+            indicator = ttk.Progressbar(progress, mode="indeterminate")
+            indicator.pack(fill="x", padx=22, pady=16)
+            indicator.start(12)
+            details = tk.Text(progress, height=12, bg=THEME["panel"],
+                              fg=THEME["foreground"], state="disabled")
+            details.pack(fill="both", expand=True, padx=22, pady=12)
+            events = queue.Queue()
+
+            def worker():
+                try:
+                    env = {**os.environ, "LIGHTNAS_ERASE_CONFIRM": typed}
+                    process = subprocess.Popen(
+                        ["/bin/bash", os.path.join(HERE, "lightnas-native-install.sh"), target],
+                        env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        text=True, bufsize=1)
+                    for line in process.stdout:
+                        events.put(("log", line))
+                    events.put(("finished", process.wait()))
+                except OSError as exc:
+                    events.put(("error", str(exc)))
+
+            def poll():
+                finished = None
+                while not events.empty():
+                    kind, value = events.get_nowait()
+                    if kind == "log":
+                        details.configure(state="normal")
+                        details.insert("end", value)
+                        details.see("end")
+                        details.configure(state="disabled")
+                    else:
+                        finished = (kind, value)
+                if finished is None:
+                    progress.after(150, poll)
                     return
-                messagebox.showinfo("LightNAS", "Installation completed. Remove the ISO and reboot.")
-                self.root.destroy()
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                messagebox.showerror("LightNAS", str(exc))
+                indicator.stop()
+                kind, value = finished
+                progress.destroy()
+                if kind == "error" or value != 0:
+                    messagebox.showerror("LightNAS installation failed",
+                                         "Installation did not complete. Review /var/log/lightnas-install.log "
+                                         "before rebooting. No successful installation is assumed.")
+                else:
+                    messagebox.showinfo("LightNAS", "Installation completed. Remove the ISO and reboot.")
+                    self.root.destroy()
+
+            threading.Thread(target=worker, daemon=True).start()
+            progress.after(150, poll)
 
         ttk.Button(chooser, text="Review and install", command=confirm).pack(pady=12)
 
