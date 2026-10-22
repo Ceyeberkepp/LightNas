@@ -864,11 +864,11 @@ def bootstrap_deb_container(name: str, image: dict, storage_root_value: str) -> 
             if upstream_dns:
                 break
         if upstream_dns:
-            resolv.write_text("".join(f"nameserver {server}\\n" for server in upstream_dns), encoding="utf-8")
+            resolv.write_text("".join(f"nameserver {server}\n" for server in upstream_dns), encoding="utf-8")
         else:
             # Do not silently invent DNS; the container must obtain working
             # resolvers via DHCP or the administrator must configure them.
-            resolv.write_text("# Waiting for DNS from selected uplink/DHCP\\n", encoding="utf-8")
+            resolv.write_text("# Waiting for DNS from selected uplink/DHCP\n", encoding="utf-8")
     except OSError:
         pass
     services = ["systemd-networkd.service"]
