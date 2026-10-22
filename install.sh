@@ -71,7 +71,10 @@ echo "      Updating LightNAS source..."
 if [[ -d "${INSTALL_DIRECTORY}/.git" ]]; then
   # Never report a successful update if fetching/pulling failed.
   git -C "${INSTALL_DIRECTORY}" rev-parse --is-inside-work-tree >/dev/null
-  git -C "${INSTALL_DIRECTORY}" pull --ff-only
+  # Root-run install is allowed to update an appliance checkout owned by
+  # lightnas. Scope Git's trust to this invocation, not the user's global config.
+  git -c safe.directory="${INSTALL_DIRECTORY}" -C "${INSTALL_DIRECTORY}" fetch origin main
+  git -c safe.directory="${INSTALL_DIRECTORY}" -C "${INSTALL_DIRECTORY}" merge --ff-only FETCH_HEAD
 elif [[ -e "${INSTALL_DIRECTORY}" ]]; then
   echo "Refusing to overwrite existing non-Git path: ${INSTALL_DIRECTORY}" >&2
   exit 1
@@ -568,6 +571,15 @@ systemctl enable lightnas-host-agent.service
 systemctl restart lightnas-host-agent.service
 systemctl enable "${SERVICE_NAME}"
 systemctl restart "${SERVICE_NAME}"
+# A new instance must be usable immediately: fail loudly if core services
+# cannot start rather than incorrectly reporting a completed installation.
+for required in lightnas-host-agent.service "${SERVICE_NAME}.service"; do
+  if ! systemctl is-active --quiet "$required"; then
+    echo "ERROR: $required did not start. Check: journalctl -u $required -n 80" >&2
+    exit 1
+  fi
+done
+echo "      LightNAS core services active; first-run setup continuing."
 
 if [[ "${RUNTIME_PROVISION_NEEDED}" == "1" ]]; then
   echo "      Starting container, VM, and App Store provisioning in the background..."
