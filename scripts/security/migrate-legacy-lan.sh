@@ -38,10 +38,32 @@ for config in "${guests[@]}"; do
   if (( running )); then
     lxc-stop -n "$name" -t 60 || { echo "Could not stop $name. No edits applied to $name." >&2; exit 1; }
   fi
+  # Static addresses are not generated from host address or examples.
+  # Preserve an explicitly configured guest address; require operator review
+  # if the guest currently has an unrelated legacy private static subnet.
+  rootfs="$(sed -nE 's#^lxc\\.rootfs\\.path[[:space:]]*=[[:space:]]*(dir:)?([^[:space:]]+).*#\\2#p' "$config" | head -1)"
+  network_file="${rootfs}/etc/systemd/network/10-lightnas-eth0.network"
+  if [[ -f "$network_file" ]] && grep -Eq '^Address=10\\.77\\.0\\.' "$network_file"; then
+    echo "ERROR: $name has a legacy 10.77 static IP. Set a verified unique LAN static IP, correct prefix/gateway/DNS, or DHCP before migration." >&2
+    cp -a "$backup" "$config"
+    if (( running )); then lxc-start -n "$name" -d || true; fi
+    exit 1
+  fi
   # Modify only the host-side LXC connection; do not overwrite guest static IP,
   # routes, DNS, or metadata.
-  sed -i -E '/^lxc\.net\.0\.(type|link|macvlan\.mode)[[:space:]]*=/d' "$config"
-  printf '%s\n' 'lxc.net.0.type = macvlan' 'lxc.net.0.link = eth0' 'lxc.net.0.macvlan.mode = bridge' >> "$config"
+  # LXC requires lxc.net.0.type BEFORE all other lxc.net.0.* keys.
+  # Appending it after the existing name/hwaddr causes a parser failure.
+  python3 - "$config" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+lines = path.read_text().splitlines()
+old_keys = ("lxc.net.0.type", "lxc.net.0.link", "lxc.net.0.macvlan.mode")
+kept = [line for line in lines if not any(line.strip().startswith(key + " ") or line.strip().startswith(key + "=") for key in old_keys)]
+first = next((i for i, line in enumerate(kept) if line.strip().startswith("lxc.net.0.")), len(kept))
+kept[first:first] = ["lxc.net.0.type = macvlan", "lxc.net.0.link = eth0", "lxc.net.0.macvlan.mode = bridge"]
+path.write_text("\n".join(kept) + "\n")
+PY
   if (( running )); then
     if ! lxc-start -n "$name" -d; then
       echo "Failed to restart $name on eth0; restoring configuration" >&2
