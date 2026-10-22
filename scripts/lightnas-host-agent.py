@@ -608,10 +608,8 @@ def local_networks() -> list[str]:
         pass
 
     state = lightnas_network_state()
-    # Nested Proxmox appliance: the actual default-route uplink is selectable
-    # even when NetworkManager marks it UNMANAGED. It is not a Linux bridge.
-    # The selected LXC backend uses macvlan/ipvlan on this parent.
     if in_container():
+        # The actual nested uplink is selectable even when it is unmanaged by NM.
         try:
             routes = json.loads(run(["ip", "-j", "-4", "route", "show", "default"], timeout=10, check=False) or "[]")
             uplink = str(routes[0].get("dev") or "") if routes else ""
@@ -2258,14 +2256,55 @@ def _upgrade_nested_lan_state(state: dict, path: Path) -> dict:
     """Use direct nested L2 only when explicitly requested."""
     if not in_container() or str(state.get("LIGHTNAS_NETWORK_MODE") or "") != "lxc-nat":
         return state
-    # Existing nested direct-LAN state is authoritative. A missing optional
-    # environment setting must never reset it to the obsolete private NAT mode.
-    requested_mode = os.environ.get("LIGHTNAS_NESTED_LAN_MODE", "auto").strip().lower()
-    if requested_mode in {"macvlan", "ipvlan"}:
-        # Specific overrides are applied by network bootstrap, not by this
-        # read-only state accessor.
-        pass
+    requested_mode = os.environ.get("LIGHTNAS_NESTED_LAN_MODE", "nat").strip().lower()
+    if requested_mode not in {"macvlan", "ipvlan"}:
+        return state
 
+    uplink = str(state.get("LIGHTNAS_UPLINK") or "").strip()
+    if not uplink:
+        try:
+            routes = json.loads(run(["ip", "-j", "-4", "route", "show", "default"], timeout=5, check=False) or "[]")
+            uplink = str(routes[0].get("dev") or "") if routes else ""
+        except Exception:
+            uplink = ""
+    if not uplink or not IFACE_RE.fullmatch(uplink) or not Path("/sys/class/net", uplink).exists():
+        return state
+
+    all_probes = {
+        "macvlan": ("nested-macvlan", ["ip", "link", "add", "link", uplink, "name", f"lnmv{os.getpid() % 10000}", "type", "macvlan", "mode", "bridge"]),
+        "ipvlan": ("nested-ipvlan", ["ip", "link", "add", "link", uplink, "name", f"lniv{os.getpid() % 10000}", "type", "ipvlan", "mode", "l2"]),
+    }
+    probes = [all_probes[requested_mode]]
+    for mode, command_args in probes:
+        probe_name = command_args[command_args.index("name") + 1]
+        probe = subprocess.run(command_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if probe.returncode != 0:
+            continue
+        subprocess.run(["ip", "link", "delete", probe_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        upgraded = _derive_nested_lan_state(uplink, mode)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("\n".join(f"{key}={value}" for key, value in upgraded.items()) + "\n", encoding="utf-8")
+        except OSError:
+            pass
+        return upgraded
+    return state
+
+
+def lightnas_network_state() -> dict:
+    state = {}
+    path = Path("/etc/lightnas/network.env")
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            if key.startswith("LIGHTNAS_"):
+                state[key.strip()] = value.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    # Preserve saved direct-LAN configuration; do not rewrite it to private NAT
+    # when an optional environment override is absent.
     state = _upgrade_nested_lan_state(state, path)
     return state
 
