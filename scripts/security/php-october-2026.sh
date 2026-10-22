@@ -8,7 +8,7 @@ echo 'PHP emergency response: CVE-2026-109618 CVE-2026-109619'
 echo 'Upstream fixes: PHP 8.5.12, 8.4.27, 8.3.36, 8.2.35'
 echo 'Distribution backports must be verified against BOTH CVEs.'
 command -v dpkg-query >/dev/null || { echo "Non-Debian host: use distribution security updates." >&2; exit 2; }
-mapfile -t pkgs < <(dpkg-query -W -f='\${binary:Package} \${db:Status-Abbrev}\n' 'php*' 'libapache2-mod-php*' 2>/dev/null | awk '$2 ~ /^ii/ {print $1}' | sort -u || true)
+mapfile -t pkgs < <(dpkg-query -W -f='${binary:Package} ${db:Status-Abbrev}\n' 'php*' 'libapache2-mod-php*' 2>/dev/null | awk '$2 ~ /^ii/ {print $1}' | sort -u || true)
 echo 'Installed host PHP packages:'
 printf '  %s\n' "${pkgs[@]}"
 if [[ "$mode" == --patch-host ]]; then
