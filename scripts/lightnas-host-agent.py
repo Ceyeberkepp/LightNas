@@ -608,6 +608,15 @@ def local_networks() -> list[str]:
         pass
 
     state = lightnas_network_state()
+    if in_container():
+        # The actual nested uplink is selectable even when it is unmanaged by NM.
+        try:
+            routes = json.loads(run(["ip", "-j", "-4", "route", "show", "default"], timeout=10, check=False) or "[]")
+            uplink = str(routes[0].get("dev") or "") if routes else ""
+        except Exception:
+            uplink = ""
+        if uplink and IFACE_RE.fullmatch(uplink) and Path("/sys/class/net", uplink).exists():
+            return [uplink]
     if state.get("LIGHTNAS_NETWORK_MODE") in {"nested-macvlan", "nested-ipvlan"}:
         parent = str(state.get("LIGHTNAS_CONTAINER_PARENT") or state.get("LIGHTNAS_UPLINK") or "eth0")
         if IFACE_RE.fullmatch(parent) and Path("/sys/class/net", parent).exists():
@@ -2294,17 +2303,8 @@ def lightnas_network_state() -> dict:
                 state[key.strip()] = value.strip().strip('"').strip("'")
     except OSError:
         pass
-    requested_mode = os.environ.get("LIGHTNAS_NESTED_LAN_MODE", "nat").strip().lower()
-    current_mode = str(state.get("LIGHTNAS_NETWORK_MODE") or "")
-    if in_container() and current_mode in {"nested-macvlan", "nested-ipvlan"} and requested_mode not in {"macvlan", "ipvlan"}:
-        state["LIGHTNAS_NETWORK_MODE"] = "lxc-nat"
-        state["LIGHTNAS_CONTAINER_BRIDGE"] = str(state.get("LIGHTNAS_CONTAINER_BRIDGE") or "lightnas0")
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("\n".join(f"{key}={value}" for key, value in state.items()) + "\n", encoding="utf-8")
-        except OSError:
-            pass
-
+    # Preserve saved direct-LAN configuration; do not rewrite it to private NAT
+    # when an optional environment override is absent.
     state = _upgrade_nested_lan_state(state, path)
     return state
 
