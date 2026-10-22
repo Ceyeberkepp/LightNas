@@ -602,7 +602,7 @@ def local_networks() -> list[str]:
         for item in links:
             name = str(item.get("ifname") or "")
             flags = set(item.get("flags") or [])
-            if IFACE_RE.fullmatch(name) and name != "docker0" and "UP" in flags:
+            if IFACE_RE.fullmatch(name) and name not in {"docker0", "lightnas0"} and "UP" in flags:
                 result.append(name)
     except Exception:
         pass
@@ -623,7 +623,7 @@ def local_networks() -> list[str]:
         default_device = str(routes[0].get("dev") or "") if routes else ""
     except Exception:
         pass
-    preferred_order = ["lightnas0", default_device, "virbr0", "lxcbr0"]
+    preferred_order = [default_device, "virbr0", "lxcbr0"]
     for preferred in reversed([name for name in preferred_order if name]):
         if preferred in result:
             result.remove(preferred)
