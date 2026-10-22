@@ -340,6 +340,10 @@ xserver-xorg
 xserver-xorg-video-all
 xserver-xorg-video-vesa
 xserver-xorg-video-fbdev
+xserver-xorg-video-vmware
+xserver-xorg-video-qxl
+xserver-xorg-video-dummy
+libgl1-mesa-dri
 xserver-xorg-input-all
 xserver-xorg-input-libinput
 libinput-tools
