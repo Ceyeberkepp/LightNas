@@ -152,9 +152,12 @@ if [[ -n "$container_kind" && "$container_kind" != "none" ]]; then
     fi
   fi
 
-  pool_state="$(derive_managed_lan_pool "$nested_uplink" || true)"
-  printf 'LIGHTNAS_NETWORK_MODE=lxc-nat\nLIGHTNAS_UPLINK=%s\nLIGHTNAS_CONTAINER_BRIDGE=lightnas0\nLIGHTNAS_VM_NETWORK=default\n%s\n' "$nested_uplink" "$pool_state" >"$STATE_FILE"
-  echo "LightNAS network: nested appliance detected; preserving management networking and using safe container NAT fallback."
+  # Never silently create the obsolete lightnas0 / 10.77.0.0/24 subnet.
+  # An LXC guest cannot turn eth0 into a transparent bridge itself: the outer
+  # Proxmox host must allow additional guest MACs and macvlan/ipvlan, or expose
+  # a supported bridged interface. Do not move the management address.
+  printf 'LIGHTNAS_NETWORK_MODE=pending-uplink\nLIGHTNAS_UPLINK=%s\nLIGHTNAS_NETWORK_ERROR=direct-lan-unavailable\n' "$nested_uplink" >"$STATE_FILE"
+  echo "LightNAS network: direct LAN is unavailable on $nested_uplink; guest creation must wait. Enable permitted macvlan/ipvlan/bridged networking on Proxmox. The host eth0 IP is unchanged." >&2
   exit 0
 fi
 
