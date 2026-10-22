@@ -386,7 +386,9 @@ async function showRuntimeWizard(kind) {
   let inventory;
   try {
     if (isContainer) {
-      const containers = window.LightNASContainerInventory || await dialogApi('/api/containers/inventory');
+      // The dashboard's cached summary omits storageDetails and templates.
+      // Always retrieve the full inventory before opening the create wizard.
+      const containers = await dialogApi('/api/containers/inventory');
       window.LightNASContainerInventory = containers;
       inventory = { containers };
     } else {
