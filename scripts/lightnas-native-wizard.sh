@@ -22,7 +22,21 @@ elif [[ -x /usr/bin/xinit && -f /opt/lightnas/scripts/lightnas-install-hub.py ]]
   # to a keyboard-operated terminal wizard without stopping installation.
   # A working graphical installer must remain open until the user finishes.
   # The former 35-second timeout killed it during normal use.
-  # systemd owns tty1: start X on the same controlling VT so logind input\n  # access (VirtualBox USB tablet/mouse and physical keyboards) is valid.\n  if xinit /usr/bin/python3 /opt/lightnas/scripts/lightnas-install-hub.py -- :0 vt1 -keeptty -nolisten tcp >/run/lightnas-installer-x.log 2>&1; then
+  # systemd owns tty1: start X on the same controlling VT so logind input\n  # access (VirtualBox USB tablet/mouse and physical keyboards) is valid.\n  # Ensure the live system initializes input/graphics BEFORE starting X.
+  # USB tablet, PS/2 and common virtual DRM adapters use kernel HID/DRM.
+  modprobe usbhid 2>/dev/null || true
+  modprobe hid_generic 2>/dev/null || true
+  modprobe psmouse 2>/dev/null || true
+  udevadm trigger --subsystem-match=input --action=add >/dev/null 2>&1 || true
+  udevadm settle --timeout=10 >/dev/null 2>&1 || true
+  # Prevent old generated Xorg configurations from forcing a nonexistent
+  # /dev/fb0; let Xorg autoselect DRM/modesetting and libinput.
+  install -d /etc/X11/xorg.conf.d
+  rm -f /etc/X11/xorg.conf.d/90-lightnas-virtualbox.conf
+  export LIBGL_ALWAYS_SOFTWARE=1
+  export GALLIUM_DRIVER=llvmpipe
+  # Redirect all Xorg output to a persistent diagnostic log on the live OS.
+  if xinit /usr/bin/python3 /opt/lightnas/scripts/lightnas-install-hub.py -- :0 vt1 -keeptty -nolisten tcp -logfile /var/log/lightnas-installer-xorg.log >/run/lightnas-installer-x.log 2>&1; then
     exit 0
   fi
   printf '\nLightNAS: graphical session could not start; using keyboard installer.\n'
