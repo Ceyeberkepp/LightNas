@@ -22,7 +22,7 @@ elif [[ -x /usr/bin/xinit && -f /opt/lightnas/scripts/lightnas-install-hub.py ]]
   # to a keyboard-operated terminal wizard without stopping installation.
   # A working graphical installer must remain open until the user finishes.
   # The former 35-second timeout killed it during normal use.
-  if xinit /usr/bin/python3 /opt/lightnas/scripts/lightnas-install-hub.py -- :0 -nolisten tcp >/run/lightnas-installer-x.log 2>&1; then
+  # systemd owns tty1: start X on the same controlling VT so logind input\n  # access (VirtualBox USB tablet/mouse and physical keyboards) is valid.\n  if xinit /usr/bin/python3 /opt/lightnas/scripts/lightnas-install-hub.py -- :0 vt1 -keeptty -nolisten tcp >/run/lightnas-installer-x.log 2>&1; then
     exit 0
   fi
   printf '\nLightNAS: graphical session could not start; using keyboard installer.\n'
