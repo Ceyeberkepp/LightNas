@@ -613,9 +613,9 @@ def local_networks() -> list[str]:
         if IFACE_RE.fullmatch(parent) and Path("/sys/class/net", parent).exists():
             return [parent]
         return []
-    if state.get("LIGHTNAS_NETWORK_MODE") == "lxc-nat":
-        allowed = [name for name in ("lightnas0", "lxcbr0") if name in result]
-        return allowed
+    if state.get("LIGHTNAS_NETWORK_MODE") in {"pending-uplink", "lxc-nat"}:
+        # No private fallback: refuse new guests until actual LAN passthrough exists.
+        return []
 
     default_device = ""
     try:
@@ -623,7 +623,7 @@ def local_networks() -> list[str]:
         default_device = str(routes[0].get("dev") or "") if routes else ""
     except Exception:
         pass
-    preferred_order = [default_device, "virbr0", "lightnas0", "lxcbr0"]
+    preferred_order = ["lightnas0", default_device, "virbr0", "lxcbr0"]
     for preferred in reversed([name for name in preferred_order if name]):
         if preferred in result:
             result.remove(preferred)
@@ -1486,6 +1486,8 @@ def create_container(data: dict) -> dict:
     nested_mode = str(network_state.get("LIGHTNAS_NETWORK_MODE") or "")
     nested_direct = nested_mode in {"nested-macvlan", "nested-ipvlan"}
     nested_nat = nested_mode == "lxc-nat"
+    if nested_mode in {"pending-uplink", "lxc-nat"}:
+        raise RuntimeError("LAN passthrough is unavailable. Configure the Proxmox uplink for guest DHCP; LightNAS will not create a private NAT subnet.")
     if nested_direct:
         # In a nested Proxmox LightNAS appliance, container networking is not
         # a per-app choice. Every new system container uses the already-working
