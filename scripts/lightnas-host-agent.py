@@ -837,8 +837,38 @@ def bootstrap_deb_container(name: str, image: dict, storage_root_value: str) -> 
     try:
         if resolv.exists() or resolv.is_symlink():
             resolv.unlink()
-        host_resolv = Path("/etc/resolv.conf")
-        resolv.write_text(host_resolv.read_text(encoding="utf-8", errors="replace") if host_resolv.exists() else "nameserver 1.1.1.1\n", encoding="utf-8")
+        # systemd-resolved's 127.0.0.53 stub belongs to the HOST namespace.
+        # A copied stub (or hardcoded public resolver) makes guest DNS fail.
+        # Prefer the real upstream DHCP-provided DNS addresses.
+        resolver_candidates = [
+            Path("/run/systemd/resolve/resolv.conf"),
+            Path("/etc/resolv.conf"),
+        ]
+        upstream_dns = []
+        for resolver_file in resolver_candidates:
+            try:
+                lines = resolver_file.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                continue
+            for line in lines:
+                parts = line.split()
+                if len(parts) < 2 or parts[0] != "nameserver":
+                    continue
+                try:
+                    address = ipaddress.ip_address(parts[1])
+                except ValueError:
+                    continue
+                if not (address.is_loopback or address.is_unspecified or address.is_link_local):
+                    if str(address) not in upstream_dns:
+                        upstream_dns.append(str(address))
+            if upstream_dns:
+                break
+        if upstream_dns:
+            resolv.write_text("".join(f"nameserver {server}\\n" for server in upstream_dns), encoding="utf-8")
+        else:
+            # Do not silently invent DNS; the container must obtain working
+            # resolvers via DHCP or the administrator must configure them.
+            resolv.write_text("# Waiting for DNS from selected uplink/DHCP\\n", encoding="utf-8")
     except OSError:
         pass
     services = ["systemd-networkd.service"]
