@@ -16,8 +16,8 @@ test('nested LightNAS never risks the appliance management link for guest networ
   assert.match(network, /LIGHTNAS_NETWORK_MODE=nested-macvlan/);
   assert.match(network, /LIGHTNAS_NETWORK_MODE=nested-ipvlan/);
   assert.match(network, /LIGHTNAS_CONTAINER_PARENT=%s/);
-  assert.match(network, /LIGHTNAS_NETWORK_MODE=lxc-nat/);
-  assert.match(network, /preserving management networking and using safe container NAT fallback/);
+  assert.match(network, /LIGHTNAS_NETWORK_ERROR=direct-lan-unavailable/);
+  assert.match(network, /direct LAN is unavailable/);
 });
 
 test('host agent creates nested system containers with safe direct-LAN macvlan or ipvlan', async () => {
@@ -64,7 +64,7 @@ test('fresh ISO boot acquires wired DHCP before guest networking is provisioned'
   assert.match(network, /LIGHTNAS_NETWORK_MODE=pending-uplink/);
 
   assert.match(provision, /network_mode.*pending-uplink/);
-  assert.match(provision, /waiting for the physical LAN uplink to receive DHCP/);
+  assert.match(provision, /waiting for permitted LAN passthrough/);
 
   assert.match(iso, /lightnas-network-bootstrap\.service/);
   assert.match(iso, /Requires=lightnas-network-bootstrap\.service/);
@@ -84,7 +84,7 @@ test('nested networking never bridges over the appliance management interface', 
   const network = await readFile(new URL('../scripts/configure-appliance-network.sh', import.meta.url), 'utf8');
   assert.match(network, /never move the appliance management IP or default route/);
   assert.match(network, /LIGHTNAS_NETWORK_MODE=nested-macvlan/);
-  assert.match(network, /preserving management networking and using safe container NAT fallback/);
+  assert.match(network, /direct LAN is unavailable/);
   assert.doesNotMatch(network, /LIGHTNAS_NESTED_LAN_BRIDGE:-lightnas-lan0/);
 });
 
@@ -110,4 +110,18 @@ test('nested LightNAS derives a managed pool from its own LAN address', async ()
   assert.match(network, /LIGHTNAS_CONTAINER_GATEWAY/);
   assert.match(network, /start_index=50/);
   assert.match(network, /end_index=200/);
+});
+
+test('no new 10.77 NAT bridge or fake DNS resolver is provisioned', async () => {
+  const [network, provision, agent] = await Promise.all([
+    readFile(new URL('../scripts/configure-appliance-network.sh', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/provision-runtimes.sh', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/lightnas-host-agent.py', import.meta.url), 'utf8')
+  ]);
+  assert.match(network, /LIGHTNAS_NETWORK_ERROR=direct-lan-unavailable/);
+  assert.doesNotMatch(network, /LIGHTNAS_CONTAINER_BRIDGE=lightnas0/);
+  assert.doesNotMatch(provision, /LXC_ADDR="10\.77\.0\.1"/);
+  assert.doesNotMatch(provision, /--dhcp-range=10\.77/);
+  assert.match(agent, /LAN passthrough is unavailable/);
+  assert.match(agent, /systemd\/resolve\/resolv\.conf/);
 });
