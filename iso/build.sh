@@ -843,6 +843,8 @@ cat >/etc/systemd/system/lightnas-display-console.service <<'DISPLAY_UNIT'
 Description=LightNAS local graphical control center
 After=systemd-user-sessions.service lightnas.service
 Wants=lightnas.service
+# Appliance kiosk must never compete for graphics/input with live installer.
+ConditionKernelCommandLine=!lightnas.installer=1
 Conflicts=display-manager.service lightdm.service getty@tty7.service
 After=systemd-logind.service
 Wants=systemd-logind.service
