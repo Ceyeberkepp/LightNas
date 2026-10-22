@@ -40,8 +40,19 @@ for config in "${guests[@]}"; do
   fi
   # Modify only the host-side LXC connection; do not overwrite guest static IP,
   # routes, DNS, or metadata.
-  sed -i -E '/^lxc\.net\.0\.(type|link|macvlan\.mode)[[:space:]]*=/d' "$config"
-  printf '%s\n' 'lxc.net.0.type = macvlan' 'lxc.net.0.link = eth0' 'lxc.net.0.macvlan.mode = bridge' >> "$config"
+  # LXC requires lxc.net.0.type BEFORE all other lxc.net.0.* keys.
+  # Appending it after the existing name/hwaddr causes a parser failure.
+  python3 - "$config" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+lines = path.read_text().splitlines()
+old_keys = ("lxc.net.0.type", "lxc.net.0.link", "lxc.net.0.macvlan.mode")
+kept = [line for line in lines if not any(line.strip().startswith(key + " ") or line.strip().startswith(key + "=") for key in old_keys)]
+first = next((i for i, line in enumerate(kept) if line.strip().startswith("lxc.net.0.")), len(kept))
+kept[first:first] = ["lxc.net.0.type = macvlan", "lxc.net.0.link = eth0", "lxc.net.0.macvlan.mode = bridge"]
+path.write_text("\n".join(kept) + "\n")
+PY
   if (( running )); then
     if ! lxc-start -n "$name" -d; then
       echo "Failed to restart $name on eth0; restoring configuration" >&2
