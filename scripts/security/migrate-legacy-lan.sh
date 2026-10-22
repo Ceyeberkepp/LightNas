@@ -57,7 +57,7 @@ if grep -qlE '^lxc\.net\.0\.link[[:space:]]*=[[:space:]]*lightnas0[[:space:]]*$'
   exit 1
 fi
 # Prevent legacy DHCP and bridge from returning on reboot; stopping the unit
-# invokes its normal ExecStop hook to clean up the bridge and NAT rules.
-systemctl disable --now lightnas-container-network.service || true
+# must NOT invoke ExecStop: unrelated VM/guest traffic may still depend on it.
+systemctl disable lightnas-container-network.service || true
 systemctl mask lightnas-container-network.service || true
-echo "Legacy network service disabled. Verify no guest or VM depends on lightnas0."
+echo "Legacy network disabled for future boot; current bridge retained until all guests/VMs are verified and an approved teardown."
