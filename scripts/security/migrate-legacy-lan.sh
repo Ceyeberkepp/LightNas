@@ -38,6 +38,17 @@ for config in "${guests[@]}"; do
   if (( running )); then
     lxc-stop -n "$name" -t 60 || { echo "Could not stop $name. No edits applied to $name." >&2; exit 1; }
   fi
+  # Static addresses are not generated from host address or examples.
+  # Preserve an explicitly configured guest address; require operator review
+  # if the guest currently has an unrelated legacy private static subnet.
+  rootfs="$(sed -nE 's#^lxc\\.rootfs\\.path[[:space:]]*=[[:space:]]*(dir:)?([^[:space:]]+).*#\\2#p' "$config" | head -1)"
+  network_file="${rootfs}/etc/systemd/network/10-lightnas-eth0.network"
+  if [[ -f "$network_file" ]] && grep -Eq '^Address=10\\.77\\.0\\.' "$network_file"; then
+    echo "ERROR: $name has a legacy 10.77 static IP. Set a verified unique LAN static IP, correct prefix/gateway/DNS, or DHCP before migration." >&2
+    cp -a "$backup" "$config"
+    if (( running )); then lxc-start -n "$name" -d || true; fi
+    exit 1
+  fi
   # Modify only the host-side LXC connection; do not overwrite guest static IP,
   # routes, DNS, or metadata.
   # LXC requires lxc.net.0.type BEFORE all other lxc.net.0.* keys.
