@@ -2,7 +2,8 @@
 :root{font-family:system-ui,Arial,sans-serif;color:#1b2631;background:#f5f7f9}body{max-width:1100px;margin:0 auto;padding:32px}h1{margin-bottom:4px}small,p{color:#58636c}.panel{background:white;border:1px solid #dbe0e4;border-radius:12px;padding:22px;margin:18px 0}label{display:block;font-weight:650;margin:14px 0 6px}input,select,textarea{box-sizing:border-box;width:100%;padding:11px;border:1px solid #aab4c0;border-radius:7px;font:inherit}textarea{min-height:100px}button{border:0;border-radius:7px;background:#bd1628;color:white;padding:12px 20px;font:inherit;cursor:pointer}button:disabled{opacity:.5}table{border-collapse:collapse;width:100%;}th,td{text-align:left;border-bottom:1px solid #e4e7e9;padding:10px}code{background:#f0f2f3;padding:3px} .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.notice{padding:12px;background:#fff5df;border-radius:8px}.error{color:#b51b26}.bar{height:8px;background:#e8ebed;border-radius:8px;overflow:hidden}.bar div{height:100%;background:#bd1628;width:0}@media(max-width:680px){.grid{display:block}body{padding:15px}}</style></head><body>
 <p><a href="/#integrations">← LightNAS Integrations</a></p><h1>Migration Center</h1><p>Review infrastructure from VMware, Proxmox, TrueNAS or Red Hat. Discovery and planning do not change source systems.</p>
 <section class="panel"><h2>1. Connect to a source</h2><div class="grid"><div><label for="source">Platform</label><select id="source"><option value="proxmox">Proxmox VE</option><option value="vmware">VMware vCenter</option><option value="truenas">TrueNAS SCALE</option><option value="redhat">Red Hat KVM / Podman (manifest)</option></select></div><div><label for="host">Source LAN hostname or IP</label><input id="host" autocomplete="off" placeholder="Source private LAN hostname or IP"></div></div><label for="token">Read-only API token / session ID</label><input id="token" type="password" autocomplete="off" spellcheck="false"><p>Requires trusted HTTPS certificates and private LAN destinations. Credentials are used for this discovery request and are never saved by the Migration Center.</p><button id="discover">Discover source inventory</button><p id="status" role="status"></p></section>
-<section class="panel"><h2>2. Inventory and compatibility</h2><p>Alternatively, paste a reviewed inventory manifest as an array of {id, name, type} records. Supported item types: vm, container, storage, network, share, setting, identity.</p><textarea id="manifest" spellcheck="false" placeholder='[{"id":"101","name":"Example VM","type":"vm"}]'></textarea><button id="review">Build compatibility plan</button><div id="inventory"></div></section>
+<section class="panel"><h2>2. Inventory and compatibility</h2><p>Alternatively, paste a reviewed inventory manifest as an array of {id, name, type} records. Supported item types: vm, container, storage, network, share, setting, identity.</p><textarea id="manifest" spellcheck="false" placeholder='[{"id":"101","name":"Example VM","type":"vm"}]'></textarea><button id="review">Build compatibility plan</button><button id="export-manifest" type="button">Export portable migration manifest</button>
+<p id="manifest-export-status" role="status"></p><div id="inventory"></div></section>
 <section class="panel"><h2>3. Transfer readiness and verification</h2><div class="bar"><div id="progress"></div></div><p id="phase">No migration running. Discovery and planning only.</p><div class="notice">Direct source transfer, restore, cutover, and rollback are not implemented yet. Verified local export staging is available. A green compatibility plan is not a successful migration.</div><label for="import-file">Pre-exported file in LightNAS incoming staging</label>
 <input id="import-file" placeholder="example-vm.qcow2" autocomplete="off">
 <p>Place approved exports in <code>/var/lib/lightnas/imports/incoming</code> using your existing secure transfer method. LightNAS copies and SHA-256 verifies them. Restoration/activation requires a separate verified import step.</p>
@@ -78,5 +79,15 @@ $('vm-verify').onclick=async()=>{
  try { const result=await post('/api/migration/vm/verify',{name:$('verify-name').value});
   $('vm-verify-result').textContent=JSON.stringify(result,null,2);
  } catch(e){$('vm-verify-result').textContent=e.message;}
+};
+$('export-manifest').onclick=async()=>{
+ try{
+  const source=$('source').value, items=JSON.parse($('manifest').value);
+  const data=await post('/api/migration/manifest',{source,items});
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a');link.href=url;link.download='lightnas-'+source+'-inventory.json';link.click();
+  URL.revokeObjectURL(url);$('manifest-export-status').textContent='Inventory manifest exported locally. No source credentials included.';
+ }catch(e){$('manifest-export-status').textContent=e.message;}
 };
 </script></body></html>
