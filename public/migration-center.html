@@ -22,7 +22,9 @@
 <div><label>RAM (MiB)</label><input id="vm-memory" type="number" value="4096" min="1024"></div><div><label>vCPUs</label><input id="vm-cpus" type="number" value="2" min="1"></div>
 <div><label>Firmware</label><select id="vm-firmware"><option value="bios">BIOS</option><option value="uefi">UEFI</option></select></div></div>
 <label><input type="checkbox" id="vm-confirm" style="width:auto"> I approve defining this offline VM on the selected LightNAS storage.</label>
-<button id="vm-define">Define offline VM</button><p id="vm-result" role="status"></p></section>
+<button id="vm-define">Define offline VM</button><p id="vm-result" role="status"></p><h3>Verify an imported VM</h3><p>Read-only checks of libvirt definition, disk format, configured NIC and offline state. No boot or source cutover.</p>
+<label for="verify-name">Imported VM name</label><input id="verify-name" placeholder="MigratedVM">
+<button id="vm-verify">Verify offline VM</button><pre id="vm-verify-result" style="white-space:pre-wrap" role="status"></pre></section>
 <script type="module">
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 let items=[];
@@ -71,5 +73,10 @@ $('lxc-preflight').onclick=async()=>{
     const result=await post('/api/migration/lxc/preflight',{jobId:$('lxc-job').value});
     $('lxc-result').textContent=JSON.stringify(result,null,2);
   } catch(e){$('lxc-result').textContent=e.message;}
+};
+$('vm-verify').onclick=async()=>{
+ try { const result=await post('/api/migration/vm/verify',{name:$('verify-name').value});
+  $('vm-verify-result').textContent=JSON.stringify(result,null,2);
+ } catch(e){$('vm-verify-result').textContent=e.message;}
 };
 </script></body></html>
