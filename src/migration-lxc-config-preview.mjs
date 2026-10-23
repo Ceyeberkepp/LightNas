@@ -14,17 +14,15 @@ export function renderOfflineLxcConfig(input) {
   uidStart+idRange<=2147483647&&gidStart+idRange<=2147483647,'Unsafe UID/GID mapping');
  const lines=[
   'lxc.uts.name = '+name,
-  'lxc.apparmor.profile = generated',
   'lxc.idmap = u 0 '+uidStart+' '+idRange,
   'lxc.idmap = g 0 '+gidStart+' '+idRange,
   'lxc.cgroup2.memory.max = '+(memoryMiB*1024*1024),
-  'lxc.cgroup2.cpuset.cpus = 0-'+(cpus-1),
   'lxc.net.0.type = veth',
   'lxc.net.0.link = '+bridge,
   'lxc.net.0.flags = down',
   'lxc.start.auto = 0'
  ];
- return {phase:'lxc-offline-config-preview',name,manifestSha256,config:lines.join('\\n')+'\\n',
+ return {phase:'lxc-offline-config-preview',name,manifestSha256,config:lines.join('\n')+'\n',
   registrationAllowed:false,startAllowed:false,
   blockers:['Resolve approved rootfs path in restricted agent','Verify host network and idmap reservations',
    'Apply approved ownership, xattrs and ACL handling before registration']};
