@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { startMigrationImport, migrationJob } from './migration-transfer.mjs';
 import { inspectMigrationSource, previewMigrationManifest } from './migration-discovery.mjs';
 import { supportedMigrationSources } from './migration-planner.mjs';
 import https from 'node:https';
@@ -1151,6 +1152,16 @@ async function api(req, res, url) {
   if (!context) return;
   const { username, account, isAdmin, permissions } = context;
 
+  if (url.pathname === '/api/migration/import' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
+    return send(res, 202, await startMigrationImport(await bodyJson(req)));
+  }
+  if (url.pathname.startsWith('/api/migration/jobs/') && req.method === 'GET') {
+    if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
+    const id = url.pathname.slice('/api/migration/jobs/'.length);
+    if (!/^[a-f0-9-]{36}$/i.test(id)) return send(res, 400, { error: 'Invalid job identifier.' });
+    return send(res, 200, migrationJob(id));
+  }
   if (url.pathname === '/api/migration/sources' && req.method === 'GET') {
     if (!isAdmin) return send(res, 403, { error: 'Administrator required.' });
     return send(res, 200, { sources: supportedMigrationSources() });
