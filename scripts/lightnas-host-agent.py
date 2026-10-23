@@ -1135,7 +1135,8 @@ def configure_container_guest(config: Path, data: dict) -> None:
                 network_lines.append(f"DNS={item}")
         # DHCP gateway/DNS are provided by networkd; a stale static resolver
         # file prevents guests from using DNS offered with the DHCP lease.
-        network_lines.extend(["", "[DHCPv4]", "UseRoutes=yes", "UseGateway=yes", "UseDNS=yes"]) if mode == "manual" else network_lines.extend(["UseRoutes=yes", "UseGateway=yes", "UseDNS=yes"])
+        if mode == "dhcp":
+            network_lines.extend(["UseRoutes=yes", "UseGateway=yes", "UseDNS=yes"])
         resolv_conf = rootfs / "etc" / "resolv.conf"
         resolved_binary = any((rootfs / path).exists() for path in (
             "lib/systemd/systemd-resolved", "usr/lib/systemd/systemd-resolved"))
