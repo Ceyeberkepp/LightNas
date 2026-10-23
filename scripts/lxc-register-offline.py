@@ -25,7 +25,8 @@ def register(rootfs, parent, name, fingerprint, config):
         raise ValueError("rootfs and registration directories overlap")
     if not isinstance(config,str) or len(config)>16384 or "lxc.start.auto = 0\n" not in config or "lxc.net.0.flags = down\n" not in config:
         raise ValueError("offline configuration required")
-    if any(line.startswith(("lxc.rootfs.path", "lxc.include", "lxc.hook.", "lxc.mount.entry", "lxc.init.cmd")) for line in config.splitlines()):
+    permitted={"lxc.uts.name","lxc.idmap","lxc.cgroup2.memory.max","lxc.net.0.type","lxc.net.0.link","lxc.net.0.flags","lxc.start.auto"}
+    if any(line.count(" = ")!=1 or line.split(" = ",1)[0] not in permitted for line in config.splitlines()):
         raise ValueError("unsafe configuration directive")
     output=parent/name
     if output.exists() or output.is_symlink():raise ValueError("registration already exists")
