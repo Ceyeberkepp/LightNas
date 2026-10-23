@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { inspectVerifiedLxcArchive } from './migration-lxc-preflight.mjs';
 import { convertVerifiedDisk, conversionStatus } from './migration-convert.mjs';
 import { importVerifiedVm } from './migration-vm-import.mjs';
 import { startMigrationImport, migrationJob } from './migration-transfer.mjs';
@@ -1154,6 +1155,11 @@ async function api(req, res, url) {
   if (!context) return;
   const { username, account, isAdmin, permissions } = context;
 
+  if (url.pathname === '/api/migration/lxc/preflight' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
+    const input = await bodyJson(req);
+    return send(res, 200, await inspectVerifiedLxcArchive(input.jobId));
+  }
   if (url.pathname === '/api/migration/convert' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
     return send(res, 202, await convertVerifiedDisk(await bodyJson(req)));
