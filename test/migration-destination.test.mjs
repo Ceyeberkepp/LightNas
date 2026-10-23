@@ -17,3 +17,15 @@ test('shares and user identities require manual review even when mapped',async()
  const result=await checkMigrationDestinations({source:'truenas',items:[{id:'1',name:'SMB',type:'share'},{id:'2',name:'ACL',type:'identity'}],mappings:{'1':{target:'pool1'},'2':{target:'pool1'}}},providers);
  assert.equal(result.blocked,2);
 });
+
+test('system settings never report ready even when assigned a destination',async()=>{
+ const result=await checkMigrationDestinations({source:'truenas',items:[{id:'settings',name:'Global Settings',type:'setting'}],mappings:{settings:{target:'pool1'}}},providers);
+ assert.equal(result.ready,0);
+ assert.equal(result.blocked,1);
+ assert.match(result.results[0].issues.join(' '),/manual configuration translation/);
+});
+test('unmapped system settings also fail closed',async()=>{
+ const result=await checkMigrationDestinations({source:'truenas',items:[{id:'settings',name:'Global Settings',type:'setting'}]},providers);
+ assert.equal(result.blocked,1);
+ assert.equal(result.approvedForExecution,false);
+});
