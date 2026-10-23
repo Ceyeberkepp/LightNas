@@ -4,6 +4,8 @@ on:
     paths:
       - 'scripts/lxc-isolated-extract.py'
       - 'test/test_lxc_isolated_extract.py'
+      - 'test/test_lxc_stage_verify.py'
+      - 'scripts/lxc-verify-staged-rootfs.py'
       - '.github/workflows/lxc-extraction-tests.yml'
   push:
     branches: [main]
@@ -23,4 +25,6 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run isolated archive extraction tests
-        run: python3 -m unittest discover -s test -p 'test_lxc_isolated_extract.py' -v
+        run: |
+          python3 -m unittest discover -s test -p 'test_lxc_isolated_extract.py' -v
+          python3 -m unittest discover -s test -p 'test_lxc_stage_verify.py' -v
