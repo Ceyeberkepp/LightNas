@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { verifyOfflineVm } from './migration-verify.mjs';
 import { inspectVerifiedLxcArchive } from './migration-lxc-preflight.mjs';
 import { convertVerifiedDisk, conversionStatus } from './migration-convert.mjs';
 import { importVerifiedVm } from './migration-vm-import.mjs';
@@ -1169,6 +1170,10 @@ async function api(req, res, url) {
     const id=url.pathname.slice('/api/migration/conversions/'.length);
     if (!/^[a-f0-9-]{36}$/i.test(id)) return send(res,400,{error:'Invalid conversion identifier'});
     return send(res,200,conversionStatus(id));
+  }
+  if (url.pathname === '/api/migration/vm/verify' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
+    return send(res, 200, await verifyOfflineVm(await bodyJson(req)));
   }
   if (url.pathname === '/api/migration/vm/define' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
