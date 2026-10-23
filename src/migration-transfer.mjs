@@ -1,5 +1,6 @@
+import { verifiedResumableImport } from './migration-resumable.mjs';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, open, rename, lstat, unlink, stat } from 'node:fs/promises';
+import { mkdir, open, rename, lstat, unlink, stat, copyFile } from 'node:fs/promises';
 import { resolve, basename, join, sep } from 'node:path';
 import { constants } from 'node:fs';
 import { randomUUID, createHash } from 'node:crypto';
@@ -82,4 +83,34 @@ export function registerVerifiedConvertedDisk({ filename, size, sha256 }) {
   jobs.set(id, { id, source: filename, target: filename, state: 'verified', bytesCopied:size, totalBytes:size,
     digest:sha256, error:null, startedAt:new Date().toISOString(), endedAt:new Date().toISOString() });
   return id;
+}
+
+export async function promoteVerifiedResumableImport(id) {
+ const source=await verifiedResumableImport(id);
+ if(!allowedExt.test(source.name))throw Object.assign(new Error('Unsupported migration payload type'),{status:400});
+ await mkdir(targetRoot,{recursive:true,mode:0o700});
+ const jobId=randomUUID();
+ const targetName=jobId+'-'+basename(source.name);
+ const target=contained(targetRoot,targetName);
+ const part=target+'.partial';
+ try {
+  await copyFile(source.path,part,constants.COPYFILE_EXCL);
+  const info=await lstat(part);
+  if(!info.isFile()||info.size!==source.size)throw new Error('Staged file size mismatch');
+  const hash=createHash('sha256');
+  for await(const chunk of createReadStream(part))hash.update(chunk);
+  if(hash.digest('hex')!==source.sha256)throw new Error('Staged file checksum mismatch');
+  // Do not trust source receipts alone; validate the original once more before promotion.
+  await verifiedResumableImport(id);
+  await rename(part,target);
+  const now=new Date().toISOString();
+  const job={id:jobId,source:source.name,target:targetName,state:'verified',
+   bytesCopied:source.size,totalBytes:source.size,digest:source.sha256,
+   error:null,startedAt:now,endedAt:now};
+  jobs.set(jobId,job);
+  return publicJob(job);
+ } catch(error) {
+  await unlink(part).catch(()=>{});
+  throw error;
+ }
 }
