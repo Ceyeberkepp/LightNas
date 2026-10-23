@@ -1,6 +1,7 @@
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, open, rename, stat, unlink } from 'node:fs/promises';
+import { mkdir, open, rename, lstat, unlink } from 'node:fs/promises';
 import { resolve, basename, join, sep } from 'node:path';
+import { constants } from 'node:fs';
 import { randomUUID, createHash } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 
@@ -28,9 +29,9 @@ export async function startMigrationImport(input) {
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,179}$/.test(filename) || !allowedExt.test(filename)) throw Object.assign(new Error('unsupported import filename'), { status: 400 });
   if (jobs.size >= 1000) throw Object.assign(new Error('job history is full'), { status: 503 });
   const source = contained(sourceRoot, filename);
-  const info = await stat(source);
+  const info = await lstat(source);
   if (!info.isFile() || info.size <= 0) throw new Error('migration source is not a regular nonempty file');
-  const handle = await open(source, 'r');
+  const handle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const resolved = await handle.stat();
     if (!resolved.isFile() || resolved.ino !== info.ino || resolved.dev !== info.dev) throw new Error('source changed while validating');
