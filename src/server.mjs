@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {reviewVerifiedLxcRestore} from './migration-lxc-approval.mjs';
 import {planVerifiedLxcRestore} from './migration-lxc-restore-plan.mjs';
 import {recoverResumableImports,createResumableImport,resumableImportStatus,appendResumableChunk,finalizeResumableImport,cancelResumableImport} from './migration-resumable.mjs';
 import { checkShareMigration } from './migration-share-preflight.mjs';
@@ -1168,6 +1169,10 @@ async function api(req, res, url) {
   if (url.pathname === '/api/migration/destination-check' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
     return send(res, 200, await checkMigrationDestinations(await bodyJson(req)));
+  }
+  if (url.pathname === '/api/migration/lxc/restore-review' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    return send(res,200,await reviewVerifiedLxcRestore(await bodyJson(req)));
   }
   if (url.pathname === '/api/migration/lxc/restore-plan' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
