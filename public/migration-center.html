@@ -6,7 +6,12 @@
 <section class="panel"><h2>3. Transfer readiness and verification</h2><div class="bar"><div id="progress"></div></div><p id="phase">No migration running. Discovery and planning only.</p><div class="notice">Direct source transfer, restore, cutover, and rollback are not implemented yet. Verified local export staging is available. A green compatibility plan is not a successful migration.</div><label for="import-file">Pre-exported file in LightNAS incoming staging</label>
 <input id="import-file" placeholder="example-vm.qcow2" autocomplete="off">
 <p>Place approved exports in <code>/var/lib/lightnas/imports/incoming</code> using your existing secure transfer method. LightNAS copies and SHA-256 verifies them. Restoration/activation requires a separate verified import step.</p>
-<button id="stage">Stage and verify export</button><p id="job-result" role="status"></p><hr><h3>4. Define a verified VM in LightNAS</h3>
+<button id="stage">Stage and verify export</button><p id="job-result" role="status"></p><hr><h3>Convert VMware / virtual disks</h3>
+<p>Convert an already staged and verified VMDK, QCOW2 or raw disk into a standalone QCOW2 image. The verified conversion can then be defined as an offline VM.</p>
+<label>Source verified transfer job ID</label><input id="convert-job" placeholder="Verified staging job UUID">
+<label><input type="checkbox" id="convert-confirm" style="width:auto"> I approve conversion into LightNAS staging storage.</label>
+<button id="convert">Convert to QCOW2</button><p id="convert-status" role="status"></p>
+<hr><h3>4. Define a verified VM in LightNAS</h3>
 <p>Only verified QCOW2/raw disk images are supported. Imported VMs are created powered off; source machines remain unchanged.</p>
 <div class="grid"><div><label>Verified transfer job ID</label><input id="vm-job" placeholder="UUID from verified transfer"></div><div><label>New VM name</label><input id="vm-name" placeholder="MigratedVM"></div>
 <div><label>Writable VM storage pool</label><input id="vm-pool" placeholder="Pool ID"></div><div><label>Virtual network</label><input id="vm-network" placeholder="Network ID"></div>
@@ -31,5 +36,29 @@ $('vm-define').onclick=async()=>{
     $('vm-result').textContent='VM '+data.name+' defined OFFLINE. Check boot settings before starting.';
   }catch(e){$('vm-result').textContent=e.message;$('vm-result').className='error';}
   finally{$('vm-define').disabled=false;}
+};
+$('convert').onclick=async()=>{
+  $('convert-status').textContent='';
+  if(!$('convert-confirm').checked){$('convert-status').textContent='Approval required';return;}
+  $('convert').disabled=true;
+  try {
+    const job=await post('/api/migration/convert',{jobId:$('convert-job').value,confirm:'CONVERT_VERIFIED_DISK'});
+    let done=false;
+    for(let attempt=0;attempt<1440;attempt++){
+      const response=await fetch('/api/migration/conversions/'+encodeURIComponent(job.id),{credentials:'same-origin'});
+      if(!response.ok) throw Error('Conversion status request failed');
+      const state=await response.json();
+      $('convert-status').textContent='Conversion: '+state.state;
+      if(state.state==='failed')throw Error(state.error||'Conversion failed');
+      if(state.state==='completed'){
+        $('vm-job').value=state.importJobId;
+        $('convert-status').textContent='Converted and verified. Import job: '+state.importJobId;
+        done=true;break;
+      }
+      await new Promise(resolve=>setTimeout(resolve,1000));
+    }
+    if(!done)throw Error('Still processing; record conversion job '+job.id);
+  }catch(e){$('convert-status').textContent=e.message;$('convert-status').className='error';}
+  finally{$('convert').disabled=false;}
 };
 </script></body></html>

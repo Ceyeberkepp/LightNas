@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { convertVerifiedDisk, conversionStatus } from './migration-convert.mjs';
 import { importVerifiedVm } from './migration-vm-import.mjs';
 import { startMigrationImport, migrationJob } from './migration-transfer.mjs';
 import { inspectMigrationSource, previewMigrationManifest } from './migration-discovery.mjs';
@@ -1153,6 +1154,16 @@ async function api(req, res, url) {
   if (!context) return;
   const { username, account, isAdmin, permissions } = context;
 
+  if (url.pathname === '/api/migration/convert' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
+    return send(res, 202, await convertVerifiedDisk(await bodyJson(req)));
+  }
+  if (url.pathname.startsWith('/api/migration/conversions/') && req.method === 'GET') {
+    if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
+    const id=url.pathname.slice('/api/migration/conversions/'.length);
+    if (!/^[a-f0-9-]{36}$/i.test(id)) return send(res,400,{error:'Invalid conversion identifier'});
+    return send(res,200,conversionStatus(id));
+  }
   if (url.pathname === '/api/migration/vm/define' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
     return send(res, 201, await importVerifiedVm(await bodyJson(req)));
