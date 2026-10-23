@@ -1,0 +1,30 @@
+name: Migration source and dataset tests
+on:
+  pull_request:
+    paths:
+      - 'src/migration-redhat-local.mjs'
+      - 'test/migration-redhat-local.test.mjs'
+      - 'scripts/export-redhat-inventory.py'
+      - 'scripts/truenas-offline-dataset-copy.py'
+      - 'test/test_truenas_offline_copy.py'
+      - '.github/workflows/migration-source-tests.yml'
+permissions:
+  contents: read
+jobs:
+  source-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: node --test test/migration-redhat-local.test.mjs
+        if: ${{ hashFiles('test/migration-redhat-local.test.mjs') != '' }}
+      - run: python3 -m unittest discover -s test -p 'test_truenas_offline_copy.py' -v
+        if: ${{ hashFiles('test/test_truenas_offline_copy.py') != '' }}
+      - run: python3 -m py_compile scripts/export-redhat-inventory.py
+        if: ${{ hashFiles('scripts/export-redhat-inventory.py') != '' }}
