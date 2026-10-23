@@ -2,8 +2,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir, stat, rename, unlink } from 'node:fs/promises';
 import { resolve, join, sep } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { verifiedMigrationFile } from './migration-transfer.mjs';
+import { randomUUID, createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { verifiedMigrationFile, registerVerifiedConvertedDisk } from './migration-transfer.mjs';
 
 const exec = promisify(execFile);
 const root = resolve(process.env.LIGHTNAS_MIGRATION_STAGING_DIR || '/var/lib/lightnas/imports/verified');
@@ -40,6 +41,9 @@ export async function convertVerifiedDisk(input) {
       await run('qemu-img',['check','-f','qcow2',output],120000);
       const result=await stat(output);
       if (!result.isFile() || result.size===0) throw new Error('empty converted image');
+      const hash=createHash('sha256');
+      for await (const chunk of createReadStream(output)) hash.update(chunk);
+      task.importJobId=registerVerifiedConvertedDisk({filename:name,size:result.size,sha256:hash.digest('hex')});
       task.progressPercent=100;task.verified=true;task.state='completed';
     } catch(e) {
       task.error=e.message;task.state='failed';
