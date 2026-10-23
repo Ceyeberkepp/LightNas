@@ -145,8 +145,9 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_BLOCK_MS = 5 * 60 * 1000;
 
 function loginAttemptKey(req, username) {
-  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  const address = forwarded || req.socket?.remoteAddress || 'unknown';
+  // Never trust user-controlled X-Forwarded-For unless the TCP peer has
+  // been independently authenticated as a trusted reverse proxy.
+  const address = req.socket?.remoteAddress || 'unknown';
   return `${address}|${String(username || '').toLowerCase()}`;
 }
 
@@ -2888,9 +2889,34 @@ function bridgeWebSocketToProcess(ws, process) {
 }
 
 export function createServer(options = {}) {
+  // Per-peer API request budget. Avoid unbounded memory use under hostile load.
+  // This is a single-process safety guard; deployments with multiple workers
+  // must additionally rate-limit at their trusted ingress proxy.
+  const apiRateBuckets = new Map();
+  function apiRateAllowed(req) {
+    const now = Date.now();
+    const peer = String(req.socket?.remoteAddress || 'unknown');
+    if (apiRateBuckets.size > 10000) {
+      for (const [key, value] of apiRateBuckets) {
+        if (value.expiresAt <= now) apiRateBuckets.delete(key);
+      }
+      if (apiRateBuckets.size > 10000) return false;
+    }
+    const bucket = apiRateBuckets.get(peer);
+    if (!bucket || bucket.expiresAt <= now) {
+      apiRateBuckets.set(peer, { count: 1, expiresAt: now + 60000 });
+      return true;
+    }
+    bucket.count += 1;
+    return bucket.count <= 240;
+  }
   const server = (options.tls ? https.createServer.bind(https, options.tls) : http.createServer.bind(http))(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      if (url.pathname.startsWith('/api/') && !apiRateAllowed(req)) {
+        return send(res, 429, { error: 'API request rate limit exceeded. Retry shortly.' },
+          { 'Retry-After': '60' });
+      }
       const bearer = /^Bearer\s+/i.test(req.headers.authorization || '');
       const fetchSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
       const hostileOrigin = Boolean(req.headers.origin) && !sameOrigin(req);
