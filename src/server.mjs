@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { normalizeMigrationManifest } from './migration-manifest.mjs';
 import { verifyOfflineVm } from './migration-verify.mjs';
 import { inspectVerifiedLxcArchive } from './migration-lxc-preflight.mjs';
 import { convertVerifiedDisk, conversionStatus } from './migration-convert.mjs';
@@ -1196,6 +1197,10 @@ async function api(req, res, url) {
   if (url.pathname === '/api/migration/inspect' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
     return send(res, 200, await inspectMigrationSource(await bodyJson(req)));
+  }
+  if (url.pathname === '/api/migration/manifest' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
+    return send(res, 200, normalizeMigrationManifest(await bodyJson(req)));
   }
   if (url.pathname === '/api/migration/plan' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
