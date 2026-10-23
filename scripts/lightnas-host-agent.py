@@ -1133,6 +1133,74 @@ def configure_container_guest(config: Path, data: dict) -> None:
                 network_lines.append(f"Gateway={gateway}")
             for item in dns_values:
                 network_lines.append(f"DNS={item}")
+        # DHCP gateway/DNS are provided by networkd; a stale static resolver
+        # file prevents guests from using DNS offered with the DHCP lease.
+        if mode == "dhcp":
+            network_lines.extend(["UseRoutes=yes", "UseGateway=yes", "UseDNS=yes"])
+        resolv_conf = rootfs / "etc" / "resolv.conf"
+        resolved_binary = any((rootfs / path).exists() for path in (
+            "lib/systemd/systemd-resolved", "usr/lib/systemd/systemd-resolved"))
+        if resolved_binary:
+            subprocess.run(
+                ["systemctl", "--root", str(rootfs), "enable", "systemd-resolved.service"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+            )
+            if resolv_conf.exists() or resolv_conf.is_symlink():
+                resolv_conf.unlink()
+            resolv_conf.symlink_to("/run/systemd/resolve/resolv.conf")
+        elif mode == "manual" and dns_values:
+            # Static networking must configure both networkd and libc DNS.
+            if resolv_conf.exists() or resolv_conf.is_symlink():
+                resolv_conf.unlink()
+            resolv_conf.write_text(
+                "".join(f"nameserver {server}\\n" for server in dns_values),
+                encoding="utf-8",
+            )
+        elif mode == "dhcp":
+            # Minimal images may have networkd but lack systemd-resolved.
+            # Reflect the DHCP lease's DNS into libc resolv.conf, including
+            # after renewals. Do not invent gateway or resolver addresses.
+            sync = rootfs / "usr" / "local" / "sbin" / "lightnas-dhcp-resolv"
+            sync.parent.mkdir(parents=True, exist_ok=True)
+            sync.write_text(
+                '#!/bin/sh\n'
+                'set -eu\n'
+                'for lease in /run/systemd/netif/leases/*; do\n'
+                '  [ -f "$lease" ] || continue\n'
+                '  dns=$(sed -n "s/^DNS=//p" "$lease" | head -n 1)\n'
+                '  [ -n "$dns" ] || continue\n'
+                '  tmp=/etc/resolv.conf.lightnas-tmp\n'
+                '  : > "$tmp"\n'
+                '  for server in $dns; do\n'
+                '    case "$server" in *[!0-9a-fA-F:.]*|"") continue ;; esac\n'
+                '    printf "nameserver %s\\\n" "$server" >> "$tmp"\n'
+                '  done\n'
+                '  [ -s "$tmp" ] && mv "$tmp" /etc/resolv.conf || rm -f "$tmp"\n'
+                '  exit 0\n'
+                'done\n',
+                encoding="utf-8",
+            )
+            sync.chmod(0o755)
+            service_dir = rootfs / "etc" / "systemd" / "system"
+            service_dir.mkdir(parents=True, exist_ok=True)
+            (service_dir / "lightnas-dhcp-resolv.service").write_text(
+                "[Unit]\\nDescription=Synchronize DHCP-provided DNS for LightNAS guest\\n"
+                "After=systemd-networkd.service\\n"
+                "[Service]\\nType=oneshot\\n"
+                "ExecStart=/usr/local/sbin/lightnas-dhcp-resolv\\n",
+                encoding="utf-8",
+            )
+            (service_dir / "lightnas-dhcp-resolv.timer").write_text(
+                "[Unit]\\nDescription=Update LightNAS guest DNS after DHCP renewals\\n"
+                "[Timer]\\nOnBootSec=20s\\nOnUnitActiveSec=60s\\n"
+                "Unit=lightnas-dhcp-resolv.service\\n"
+                "[Install]\\nWantedBy=timers.target\\n",
+                encoding="utf-8",
+            )
+            subprocess.run(
+                ["systemctl", "--root", str(rootfs), "enable", "lightnas-dhcp-resolv.timer"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+            )
         (network_dir / "10-lightnas-eth0.network").write_text("\n".join(network_lines) + "\n", encoding="utf-8")
 
     metadata = {

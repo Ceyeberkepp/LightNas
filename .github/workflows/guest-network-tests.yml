@@ -1,0 +1,19 @@
+name: Container guest DNS and gateway
+on:
+  pull_request:
+    paths:
+      - 'scripts/lightnas-host-agent.py'
+      - 'test/test_guest_network_dns.py'
+      - '.github/workflows/guest-network-tests.yml'
+permissions:
+  contents: read
+jobs:
+  guest-network:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m py_compile scripts/lightnas-host-agent.py
+      - run: python3 -m unittest discover -s test -p 'test_guest_network_dns.py' -v
