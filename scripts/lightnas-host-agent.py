@@ -1133,6 +1133,33 @@ def configure_container_guest(config: Path, data: dict) -> None:
                 network_lines.append(f"Gateway={gateway}")
             for item in dns_values:
                 network_lines.append(f"DNS={item}")
+        # DHCP gateway/DNS are provided by networkd; a stale static resolver
+        # file prevents guests from using DNS offered with the DHCP lease.
+        network_lines.extend(["", "[DHCPv4]", "UseRoutes=yes", "UseGateway=yes", "UseDNS=yes"]) if mode == "manual" else network_lines.extend(["UseRoutes=yes", "UseGateway=yes", "UseDNS=yes"])
+        resolv_conf = rootfs / "etc" / "resolv.conf"
+        resolved_binary = any((rootfs / path).exists() for path in (
+            "lib/systemd/systemd-resolved", "usr/lib/systemd/systemd-resolved"))
+        if resolved_binary:
+            subprocess.run(
+                ["systemctl", "--root", str(rootfs), "enable", "systemd-resolved.service"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+            )
+            if resolv_conf.exists() or resolv_conf.is_symlink():
+                resolv_conf.unlink()
+            resolv_conf.symlink_to("/run/systemd/resolve/resolv.conf")
+        elif mode == "manual" and dns_values:
+            # Static networking must configure both networkd and libc DNS.
+            if resolv_conf.exists() or resolv_conf.is_symlink():
+                resolv_conf.unlink()
+            resolv_conf.write_text(
+                "".join(f"nameserver {server}\\n" for server in dns_values),
+                encoding="utf-8",
+            )
+        elif mode == "dhcp":
+            # No resolved binary: keep host upstream nameservers for initial
+            # connectivity, but do not treat them as the DHCP lease's DNS.
+            # A later guest-specific lease synchronizer can apply DHCP updates.
+            pass
         (network_dir / "10-lightnas-eth0.network").write_text("\n".join(network_lines) + "\n", encoding="utf-8")
 
     metadata = {
