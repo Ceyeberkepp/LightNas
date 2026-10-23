@@ -1,7 +1,7 @@
 // Offset-resumable local migration staging: data is never activated before final hash verification.
 import {open,mkdir,rename,rm,stat,readFile,writeFile,readdir} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
-import {dirname,resolve,sep} from 'node:path';
+import {resolve} from 'node:path';
 import {createReadStream} from 'node:fs';
 const ROOT=resolve(process.env.LIGHTNAS_MIGRATION_RESUME_DIR || '/var/lib/lightnas/imports/resumable');
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,7 +28,11 @@ export async function recoverResumableImports(){
       !Number.isSafeInteger(j.offset)||j.offset<0||j.offset>j.size||!['receiving','verifying','verified'].includes(j.state))continue;
    const path=j.state==='verified'?paths(id).done:paths(id).part;
    const info=await stat(path);
-   if(!info.isFile()||info.size!==j.offset)continue;
+   if(!info.isFile()||info.size<j.offset)continue;
+   if(j.state!=='verified'&&info.size>j.offset){
+     const fd=await open(path,'r+');try{await fd.truncate(j.offset);await fd.sync();}finally{await fd.close();}
+   }
+   if(j.state==='verified'&&info.size!==j.offset)continue;
    if(j.state==='verified'){
      const hash=createHash('sha256');for await(const piece of createReadStream(path))hash.update(piece);
      if(hash.digest('hex')!==j.sha256)continue;
