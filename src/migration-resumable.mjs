@@ -1,12 +1,47 @@
 // Offset-resumable local migration staging: data is never activated before final hash verification.
-import {open,mkdir,rename,rm,stat} from 'node:fs/promises';
+import {open,mkdir,rename,rm,stat,readFile,writeFile,readdir} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
-import {dirname,resolve,sep} from 'node:path';
+import {resolve} from 'node:path';
 import {createReadStream} from 'node:fs';
 const ROOT=resolve(process.env.LIGHTNAS_MIGRATION_RESUME_DIR || '/var/lib/lightnas/imports/resumable');
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DIGEST=/^[0-9a-f]{64}$/i;
 const jobs=new Map();
+const locks=new Set();
+function receiptPath(id){paths(id);return resolve(ROOT,id+'.json');}
+async function persist(job){
+ const record=JSON.stringify({id:job.id,name:job.name,size:job.size,sha256:job.sha256,offset:job.offset,state:job.state});
+ const temp=receiptPath(job.id)+'.tmp';
+ await writeFile(temp,record,{mode:0o600,flag:'w'});
+ await rename(temp,receiptPath(job.id));
+}
+export async function recoverResumableImports(){
+ await mkdir(ROOT,{recursive:true,mode:0o700});
+ const names=await readdir(ROOT);
+ const recovered=[];
+ for(const name of names){
+  if(!/^[0-9a-f-]{36}\\.json$/i.test(name))continue;
+  const id=name.slice(0,-5);if(!UUID.test(id))continue;
+  try {
+   const j=JSON.parse(await readFile(receiptPath(id),'utf8'));
+   if(j.id!==id||typeof j.name!=='string'||!Number.isSafeInteger(j.size)||j.size<=0||!DIGEST.test(j.sha256)||
+      !Number.isSafeInteger(j.offset)||j.offset<0||j.offset>j.size||!['receiving','verifying','verified'].includes(j.state))continue;
+   const path=j.state==='verified'?paths(id).done:paths(id).part;
+   const info=await stat(path);
+   if(!info.isFile()||info.size<j.offset)continue;
+   if(j.state!=='verified'&&info.size>j.offset){
+     const fd=await open(path,'r+');try{await fd.truncate(j.offset);await fd.sync();}finally{await fd.close();}
+   }
+   if(j.state==='verified'&&info.size!==j.offset)continue;
+   if(j.state==='verified'){
+     const hash=createHash('sha256');for await(const piece of createReadStream(path))hash.update(piece);
+     if(hash.digest('hex')!==j.sha256)continue;
+   }else j.state='receiving';
+   jobs.set(id,j);recovered.push(resumableImportStatus(id));
+  }catch{}
+ }
+ return recovered;
+}
 function fail(message,status=400){throw Object.assign(new Error(message),{status});}
 function paths(id){if(!UUID.test(id))fail('Invalid transfer ID');return {part:resolve(ROOT,id+'.part'),done:resolve(ROOT,id+'.verified')};}
 export function createResumableImport({name,size,sha256}){
@@ -24,28 +59,37 @@ export async function appendResumableChunk(id,offset,chunk){
  if(!Buffer.isBuffer(chunk)||!chunk.length||chunk.length>8*1024*1024||offset+chunk.length>j.size)fail('Invalid chunk');
  await mkdir(ROOT,{recursive:true,mode:0o700});
  const {part}=paths(id);
- const fd=await open(part,j.offset===0?'wx':'r+');
+ if(locks.has(id))fail('Transfer is busy',409);
+ locks.add(id);
+ let fd;
+ try { fd=await open(part,j.offset===0?'wx':'r+');
  try { const current=await fd.stat();if(!current.isFile()||current.size!==offset)fail('Staging size mismatch',409);
   let written=0;
   while(written<chunk.length){const n=await fd.write(chunk,written,chunk.length-written,offset+written);if(n.bytesWritten<=0)fail('Short write',503);written+=n.bytesWritten;}
   await fd.sync();
- }finally{await fd.close();}
- j.offset+=chunk.length;return resumableImportStatus(id);
+ }finally{await fd?.close();}
+ j.offset+=chunk.length;
+ await persist(j);
+ return resumableImportStatus(id);
+ } finally { locks.delete(id); }
 }
 export async function finalizeResumableImport(id){
  const j=jobs.get(id);if(!j)fail('Transfer not found',404);
  if(j.state!=='receiving'||j.offset!==j.size)fail('Transfer incomplete',409);
+ if(locks.has(id))fail('Transfer is busy',409);
+ locks.add(id);
  const {part,done}=paths(id);j.state='verifying';
  try {
   const st=await stat(part);if(!st.isFile()||st.size!==j.size)fail('Unexpected staging length',409);
   const hash=createHash('sha256');for await(const piece of createReadStream(part))hash.update(piece);
   if(hash.digest('hex')!==j.sha256)fail('Transfer checksum mismatch',409);
-  await rename(part,done);j.state='verified';
+  await rename(part,done);j.state='verified';await persist(j);
   return { ...resumableImportStatus(id),sha256:j.sha256,verified:true };
- }catch(e){j.state='failed';await rm(part,{force:true}).catch(()=>{});throw e;}
+ }catch(e){j.state='failed';await rm(part,{force:true}).catch(()=>{});await rm(receiptPath(id),{force:true}).catch(()=>{});throw e;}finally{locks.delete(id);}
 }
 export async function cancelResumableImport(id){
  const j=jobs.get(id);if(!j)fail('Transfer not found',404);
  if(j.state==='verified')fail('Verified transfer cannot be canceled',409);
- await rm(paths(id).part,{force:true});jobs.delete(id);return {id,canceled:true};
+ if(locks.has(id))fail('Transfer is busy',409);
+ await rm(paths(id).part,{force:true});await rm(receiptPath(id),{force:true});jobs.delete(id);return {id,canceled:true};
 }
