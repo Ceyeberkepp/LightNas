@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {recoverResumableImports,createResumableImport,resumableImportStatus,appendResumableChunk,finalizeResumableImport,cancelResumableImport} from './migration-resumable.mjs';
 import { checkShareMigration } from './migration-share-preflight.mjs';
 import { checkMigrationDestinations } from './migration-destination.mjs';
 import { normalizeMigrationManifest } from './migration-manifest.mjs';
@@ -1189,6 +1190,28 @@ async function api(req, res, url) {
   if (url.pathname === '/api/migration/vm/define' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
     return send(res, 201, await importVerifiedVm(await bodyJson(req)));
+  }
+  if (url.pathname === '/api/migration/resumable' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    return send(res,201,await createResumableImport(await bodyJson(req)));
+  }
+  const resumeMatch=url.pathname.match(/^\/api\/migration\/resumable\/([a-f0-9-]{36})(?:\/(chunk|finalize|cancel))?$/i);
+  if(resumeMatch) {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    const [,id,action]=resumeMatch;
+    if(!action && req.method==='GET')return send(res,200,resumableImportStatus(id));
+    if(action==='chunk' && req.method==='POST') {
+      const input=await bodyJson(req);
+      if(!Number.isSafeInteger(input.offset) || typeof input.data!=='string' ||
+         input.data.length>1024*1024 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input.data))
+        return send(res,400,{error:'Invalid base64 chunk or offset.'});
+      const chunk=Buffer.from(input.data,'base64');
+      if(chunk.toString('base64')!==input.data)return send(res,400,{error:'Noncanonical base64 chunk.'});
+      return send(res,200,await appendResumableChunk(id,input.offset,chunk));
+    }
+    if(action==='finalize' && req.method==='POST')return send(res,200,await finalizeResumableImport(id));
+    if(action==='cancel' && req.method==='POST')return send(res,200,await cancelResumableImport(id));
+    return send(res,405,{error:'Unsupported transfer method.'});
   }
   if (url.pathname === '/api/migration/import' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
@@ -3052,6 +3075,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const keyPath = process.env.LIGHTNAS_TLS_KEY_FILE;
   if (Boolean(certPath) !== Boolean(keyPath)) throw new Error('Both TLS certificate and private key must be configured.');
   const tls = certPath ? { cert: await readFile(certPath), key: await readFile(keyPath), minVersion: 'TLSv1.2' } : null;
+  await recoverResumableImports();
   createServer({ tls }).listen(port, host, () => {
     console.log(`LightNAS is running at ${tls ? 'https' : 'http'}://${host}:${port}`);
     // Prime the community App Store cache shortly after boot. Fresh installs
