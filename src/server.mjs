@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { checkShareMigration } from './migration-share-preflight.mjs';
 import { checkMigrationDestinations } from './migration-destination.mjs';
 import { normalizeMigrationManifest } from './migration-manifest.mjs';
 import { verifyOfflineVm } from './migration-verify.mjs';
@@ -1158,6 +1159,10 @@ async function api(req, res, url) {
   if (!context) return;
   const { username, account, isAdmin, permissions } = context;
 
+  if (url.pathname === '/api/migration/shares/preflight' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
+    return send(res, 200, checkShareMigration(await bodyJson(req)));
+  }
   if (url.pathname === '/api/migration/destination-check' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
     return send(res, 200, await checkMigrationDestinations(await bodyJson(req)));
