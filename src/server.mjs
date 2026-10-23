@@ -7,7 +7,7 @@ import { verifyOfflineVm } from './migration-verify.mjs';
 import { inspectVerifiedLxcArchive } from './migration-lxc-preflight.mjs';
 import { convertVerifiedDisk, conversionStatus } from './migration-convert.mjs';
 import { importVerifiedVm } from './migration-vm-import.mjs';
-import { startMigrationImport, migrationJob } from './migration-transfer.mjs';
+import { startMigrationImport, migrationJob, promoteVerifiedResumableImport } from './migration-transfer.mjs';
 import { inspectMigrationSource, previewMigrationManifest } from './migration-discovery.mjs';
 import { supportedMigrationSources } from './migration-planner.mjs';
 import https from 'node:https';
@@ -1212,6 +1212,13 @@ async function api(req, res, url) {
     if(action==='finalize' && req.method==='POST')return send(res,200,await finalizeResumableImport(id));
     if(action==='cancel' && req.method==='POST')return send(res,200,await cancelResumableImport(id));
     return send(res,405,{error:'Unsupported transfer method.'});
+  }
+  if (url.pathname === '/api/migration/resumable/promote' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    const input=await bodyJson(req);
+    if(typeof input?.id!=='string'||!/^[a-f0-9-]{36}$/i.test(input.id))
+      return send(res,400,{error:'Invalid transfer identifier.'});
+    return send(res,201,await promoteVerifiedResumableImport(input.id));
   }
   if (url.pathname === '/api/migration/import' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
