@@ -33,6 +33,10 @@ export async function convertVerifiedDisk(input) {
   tasks.set(task.id,task);
   void (async()=>{
     try {
+      task.state='validating-source';
+      const sourceHash = createHash('sha256');
+      for await (const chunk of createReadStream(file.path)) sourceHash.update(chunk);
+      if (sourceHash.digest('hex') !== file.sha256) throw new Error('Source disk changed after staging verification');
       task.state='converting';
       // qemu-img progress reporting is non-transactional. Do not report
       // successful completion until qemu-img check has finished.
