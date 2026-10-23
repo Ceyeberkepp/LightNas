@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {normalizeRedHatInventory,buildSourceExportManifest} from './migration-redhat-local.mjs';
 import {reviewVerifiedLxcRestore} from './migration-lxc-approval.mjs';
 import {preflightDatasetTransfer} from './migration-truenas-datasets.mjs';
 import {planVerifiedLxcRestore} from './migration-lxc-restore-plan.mjs';
@@ -1244,6 +1245,14 @@ async function api(req, res, url) {
     const id = url.pathname.slice('/api/migration/jobs/'.length);
     if (!/^[a-f0-9-]{36}$/i.test(id)) return send(res, 400, { error: 'Invalid job identifier.' });
     return send(res, 200, migrationJob(id));
+  }
+  if (url.pathname === '/api/migration/redhat/inventory' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    return send(res,200,normalizeRedHatInventory(await bodyJson(req)));
+  }
+  if (url.pathname === '/api/migration/redhat/export-manifest' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    return send(res,200,buildSourceExportManifest(await bodyJson(req)));
   }
   if (url.pathname === '/api/migration/sources' && req.method === 'GET') {
     if (!isAdmin) return send(res, 403, { error: 'Administrator required.' });
