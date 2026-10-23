@@ -26,7 +26,9 @@ export async function appendResumableChunk(id,offset,chunk){
  const {part}=paths(id);
  const fd=await open(part,j.offset===0?'wx':'r+');
  try { const current=await fd.stat();if(!current.isFile()||current.size!==offset)fail('Staging size mismatch',409);
-  await fd.writeFile(chunk);await fd.sync();
+  let written=0;
+  while(written<chunk.length){const n=await fd.write(chunk,written,chunk.length-written,offset+written);if(n.bytesWritten<=0)fail('Short write',503);written+=n.bytesWritten;}
+  await fd.sync();
  }finally{await fd.close();}
  j.offset+=chunk.length;return resumableImportStatus(id);
 }
