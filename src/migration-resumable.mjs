@@ -96,3 +96,17 @@ export async function cancelResumableImport(id){
  if(locks.has(id))fail('Transfer is busy',409);
  await rm(paths(id).part,{force:true});await rm(receiptPath(id),{force:true});jobs.delete(id);return {id,canceled:true};
 }
+
+export async function verifiedResumableImport(id) {
+ const j=jobs.get(id);if(!j || j.state!=='verified')fail('A verified transfer is required',409);
+ const path=paths(id).done;
+ const fd=await open(path,'r');
+ try {
+  const info=await fd.stat();
+  if(!info.isFile()||info.size!==j.size)fail('Verified transfer size has changed',409);
+  const hash=createHash('sha256');
+  for await(const piece of fd.createReadStream({autoClose:false}))hash.update(piece);
+  if(hash.digest('hex')!==j.sha256)fail('Verified transfer checksum has changed',409);
+  return {path,name:j.name,size:j.size,sha256:j.sha256};
+ } finally {await fd.close();}
+}
