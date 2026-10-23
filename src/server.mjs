@@ -1,5 +1,6 @@
 import http from 'node:http';
 import {reviewVerifiedLxcRestore} from './migration-lxc-approval.mjs';
+import {preflightDatasetTransfer} from './migration-truenas-datasets.mjs';
 import {planVerifiedLxcRestore} from './migration-lxc-restore-plan.mjs';
 import {recoverResumableImports,createResumableImport,resumableImportStatus,appendResumableChunk,finalizeResumableImport,cancelResumableImport} from './migration-resumable.mjs';
 import { checkShareMigration } from './migration-share-preflight.mjs';
@@ -1162,6 +1163,10 @@ async function api(req, res, url) {
   if (!context) return;
   const { username, account, isAdmin, permissions } = context;
 
+  if (url.pathname === '/api/migration/datasets/preflight' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    return send(res,200,await preflightDatasetTransfer(await bodyJson(req)));
+  }
   if (url.pathname === '/api/migration/shares/preflight' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
     return send(res, 200, checkShareMigration(await bodyJson(req)));
