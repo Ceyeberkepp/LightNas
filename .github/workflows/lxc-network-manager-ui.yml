@@ -1,0 +1,24 @@
+name: LXC live gateway DNS UI
+on:
+  pull_request:
+    paths:
+      - 'scripts/lightnas-host-agent.py'
+      - 'public/dialog-controls.js'
+      - 'test/test_live_guest_network_status.py'
+      - '.github/workflows/lxc-network-manager-ui.yml'
+permissions:
+  contents: read
+jobs:
+  check-live-network:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m py_compile scripts/lightnas-host-agent.py
+      - run: python3 -m unittest discover -s test -p 'test_live_guest_network_status.py' -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check public/dialog-controls.js

@@ -824,10 +824,10 @@ async function showContainerManager(id) {
             <div class="form-grid">
               <label>Bridge / network<select name="network">${networks.map(value => `<option value="${dialogEsc(value)}" ${value === currentNetwork ? 'selected' : ''}>${dialogEsc(value)}</option>`).join('')}</select></label>
               <label>IPv4 configuration<select name="ipv4Mode"><option value="dhcp" ${item.ipv4Mode !== 'manual' ? 'selected' : ''}>DHCP</option><option value="manual" ${item.ipv4Mode === 'manual' ? 'selected' : ''}>Static</option></select></label>
-              <label>Configured IPv4 address / prefix<input name="ipv4Address" value="${dialogEsc(item.ipv4Address || '')}" placeholder="192.168.1.50/24"></label>
-              <label>Configured gateway<input name="gateway" value="${dialogEsc(item.gateway || '')}" placeholder="192.168.1.1"></label>
-              <label>DNS servers<input name="dns" value="${dialogEsc(item.dns || '')}" placeholder="1.1.1.1, 8.8.8.8"><small>Comma-separated. Leave blank to use DHCP-provided DNS.</small></label>
-              <label>MAC address<input value="${dialogEsc(item.macAddress || 'Automatically assigned')}" readonly></label>
+              <label data-static-network-field>Configured IPv4 address / prefix<input name="ipv4Address" value="${dialogEsc(item.ipv4Address || '')}" placeholder="192.168.1.50/24"></label>
+              <label data-static-network-field>Configured gateway<input name="gateway" value="${dialogEsc(item.gateway || '')}" placeholder="192.168.1.1"></label>
+              <label data-static-network-field>DNS servers<input name="dns" value="${dialogEsc(item.dns || '')}" placeholder="1.1.1.1, 8.8.8.8"><small>Comma-separated. Leave blank to use DHCP-provided DNS.</small></label>
+              <label data-static-network-field>MAC address<input value="${dialogEsc(item.macAddress || 'Automatically assigned')}" readonly></label>
             </div>
             <div class="manager-summary live-network-summary">
               <div><span>Current live IPv4</span><b>${dialogEsc(item.liveIpv4Address || item.ipv4 || (String(item.status || '').toLowerCase() === 'running' ? 'Not detected' : 'Container stopped'))}</b></div>
@@ -935,11 +935,12 @@ async function showContainerManager(id) {
     const addressField = dialog.querySelector('[name="ipv4Address"]');
     const gatewayField = dialog.querySelector('[name="gateway"]');
     addressField.required = manual;
-    addressField.disabled = !manual;
+    dialog.querySelectorAll('[data-static-network-field]').forEach(label => {
+      label.hidden = !manual;
+      label.style.display = manual ? '' : 'none';
+      label.querySelectorAll('input, select').forEach(field => { field.disabled = !manual; });
+    });
     gatewayField.disabled = !manual;
-    // DNS is allowed as an override for either DHCP or static IPv4.
-    const dnsField = dialog.querySelector('[name="dns"]');
-    if (dnsField) dnsField.disabled = false;
   };
   mode.addEventListener('change', updateNetworkFields);
   updateNetworkFields();
