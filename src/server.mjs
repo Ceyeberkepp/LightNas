@@ -1,4 +1,6 @@
 import http from 'node:http';
+import { inspectMigrationSource, previewMigrationManifest } from './migration-discovery.mjs';
+import { supportedMigrationSources } from './migration-planner.mjs';
 import https from 'node:https';
 import {storageAgentRoute,forwardStorageAgent,classifyStorageMutation,storageAgentJson} from './storage-agent-client.mjs';
 import { randomUUID, createHash } from 'node:crypto';
@@ -1148,6 +1150,19 @@ async function api(req, res, url) {
   const context = requireSession(req, res);
   if (!context) return;
   const { username, account, isAdmin, permissions } = context;
+
+  if (url.pathname === '/api/migration/sources' && req.method === 'GET') {
+    if (!isAdmin) return send(res, 403, { error: 'Administrator required.' });
+    return send(res, 200, { sources: supportedMigrationSources() });
+  }
+  if (url.pathname === '/api/migration/inspect' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
+    return send(res, 200, await inspectMigrationSource(await bodyJson(req)));
+  }
+  if (url.pathname === '/api/migration/plan' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
+    return send(res, 200, previewMigrationManifest(await bodyJson(req)));
+  }
 
   const storageMutation=classifyStorageMutation(url.pathname,req.method);
   if(storageMutation){
