@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, open, rename, lstat, unlink } from 'node:fs/promises';
+import { mkdir, open, rename, lstat, unlink, stat } from 'node:fs/promises';
 import { resolve, basename, join, sep } from 'node:path';
 import { constants } from 'node:fs';
 import { randomUUID, createHash } from 'node:crypto';
@@ -55,6 +55,8 @@ export async function startMigrationImport(input) {
       for await (const chunk of createReadStream(temporary)) targetHash.update(chunk);
       job.digest = hash.digest('hex');
       if (targetHash.digest('hex') !== job.digest) throw new Error('SHA-256 verification failed');
+      const currentSource = await stat(source);
+      if (currentSource.size !== info.size || currentSource.mtimeMs !== info.mtimeMs || currentSource.ino !== info.ino || currentSource.dev !== info.dev) throw new Error('Source changed during migration copy');
       await rename(temporary, target);
       job.state = 'verified';
     } catch (error) {
