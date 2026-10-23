@@ -2618,6 +2618,10 @@ function firewallView() {
 }
 
 function integrationsView() {
+  // The migration wizard runs as a separate local page using authenticated,
+  // administrator-only APIs; it cannot initiate transfers without approval.
+  const migrationLink = '<p><a href="/migration-center.html" class="secondary">Open Migration Center →</a></p>';
+
   const apps = state.runtimes?.docker, containers = state.runtimes?.containers, vm = state.runtimes?.virtualization;
   const integrations = [
     {
@@ -2652,6 +2656,7 @@ function integrationsView() {
     }
   ];
   return `${pageHead('Integrations', 'Connected runtimes, services, and LightNAS providers.', '<button class="secondary refresh-icon-button" data-action="refresh-runtime" aria-label="Refresh" title="Refresh">↻</button>')}
+    ${migrationLink}
     <section class="integration-summary-grid">
       <article class="panel integration-summary"><span class="eyebrow">CONNECTED</span><strong>${integrations.filter(item => item.online).length}</strong><p>services currently ready</p></article>
       <article class="panel integration-summary"><span class="eyebrow">AVAILABLE</span><strong>${integrations.length}</strong><p>managed integration points</p></article>
