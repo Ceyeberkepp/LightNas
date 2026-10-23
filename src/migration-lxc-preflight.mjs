@@ -13,6 +13,13 @@ function safeEntry(name) {
   const parts = name.split('/');
   return !parts.some(part => part === '..');
 }
+export function inspectArchiveMemberTypes(listing) {
+  if(typeof listing!=='string') throw Object.assign(new Error('Invalid archive listing'),{status:400});
+  const lines=listing.split('\n').filter(Boolean);
+  if(lines.length>200000 || lines.some(line=>!['-','d'].includes(line[0])))
+    throw Object.assign(new Error('Archive contains links, special files, or exceeds member limit'),{status:409});
+  return lines.length;
+}
 export async function inspectVerifiedLxcArchive(jobId) {
   const source = verifiedMigrationFile(jobId);
   if (!permitted.test(source.name)) throw Object.assign(new Error('Select a verified Proxmox LXC tar archive'), { status: 409 });
@@ -34,10 +41,7 @@ export async function inspectVerifiedLxcArchive(jobId) {
   } catch {
     throw Object.assign(new Error('Cannot inspect archive member types'), { status: 409 });
   }
-  const memberLines=verbose.split('\n').filter(Boolean);
-  if(memberLines.length > 200000 || memberLines.some(line=>!['-','d'].includes(line[0]))) {
-    throw Object.assign(new Error('Archive contains links, special files, or exceeds member limit'), {status:409});
-  }
+  inspectArchiveMemberTypes(verbose);
   const entries = stdout.split('\n').filter(Boolean);
   if (entries.length > 200000 || entries.some(entry => !safeEntry(entry))) {
     throw Object.assign(new Error('Archive contains unsafe paths or exceeds inventory limit'), { status: 409 });
