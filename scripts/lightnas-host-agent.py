@@ -256,7 +256,7 @@ def container_settings(name: str) -> dict:
         text = ""
 
     def config_value(key: str) -> str:
-        match = re.search(rf"^{re.escape(key)}\\s*=\\s*(.+?)\\s*$", text, re.MULTILINE)
+        match = re.search(rf"^{re.escape(key)}\s*=\s*(.+?)\s*$", text, re.MULTILINE)
         return match.group(1).strip() if match else ""
 
     metadata = {}
@@ -283,13 +283,13 @@ def container_settings(name: str) -> dict:
         if network_file:
             try:
                 network_text = network_file.read_text(encoding="utf-8")
-                dhcp = bool(re.search(r"^DHCP\\s*=\\s*(?:yes|ipv4|true)\\s*$", network_text, re.MULTILINE | re.IGNORECASE))
+                dhcp = bool(re.search(r"^DHCP\s*=\s*(?:yes|ipv4|true)\s*$", network_text, re.MULTILINE | re.IGNORECASE))
                 mode = "dhcp" if dhcp else "manual"
-                match = re.search(r"^Address\\s*=\\s*(.+?)\\s*$", network_text, re.MULTILINE)
+                match = re.search(r"^Address\s*=\s*(.+?)\s*$", network_text, re.MULTILINE)
                 address = match.group(1).strip() if match else ""
-                match = re.search(r"^Gateway\\s*=\\s*(.+?)\\s*$", network_text, re.MULTILINE)
+                match = re.search(r"^Gateway\s*=\s*(.+?)\s*$", network_text, re.MULTILINE)
                 gateway = match.group(1).strip() if match else ""
-                dns = [item.strip() for item in re.findall(r"^DNS\\s*=\\s*(.+?)\\s*$", network_text, re.MULTILINE)]
+                dns = [item.strip() for item in re.findall(r"^DNS\s*=\s*(.+?)\s*$", network_text, re.MULTILINE)]
                 settings_source = "guest-config"
             except OSError:
                 pass
@@ -400,12 +400,12 @@ def container_settings(name: str) -> dict:
     extra_nics = []
     nic_indexes = sorted({
         int(match.group(1))
-        for match in re.finditer(r"^lxc\\.net\\.(\\d+)\\.", text, re.MULTILINE)
+        for match in re.finditer(r"^lxc\.net\.(\d+)\.", text, re.MULTILINE)
         if int(match.group(1)) > 0
     })
     for index in nic_indexes:
         def nic_value(field: str) -> str:
-            match = re.search(rf"^lxc\\.net\\.{index}\\.{re.escape(field)}\\s*=\\s*(.+?)\\s*$", text, re.MULTILINE)
+            match = re.search(rf"^lxc\.net\.{index}\.{re.escape(field)}\s*=\s*(.+?)\s*$", text, re.MULTILINE)
             return match.group(1).strip() if match else ""
         extra_nics.append({
             "index": index,
@@ -418,7 +418,7 @@ def container_settings(name: str) -> dict:
 
     mount_points = []
     device_paths = []
-    for match in re.finditer(r"^lxc\\.mount\\.entry\\s*=\\s*(.+?)\\s*$", text, re.MULTILINE):
+    for match in re.finditer(r"^lxc\.mount\.entry\s*=\s*(.+?)\s*$", text, re.MULTILINE):
         raw = match.group(1).strip()
         parts = raw.split()
         if len(parts) < 2:
