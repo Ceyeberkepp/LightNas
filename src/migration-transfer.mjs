@@ -65,3 +65,11 @@ export async function startMigrationImport(input) {
   })();
   return publicJob(job);
 }
+
+export function verifiedMigrationFile(jobId) {
+  const job = jobs.get(String(jobId));
+  if (!job || job.state !== 'verified' || !job.digest) {
+    throw Object.assign(new Error('A completed, checksum-verified staging job is required.'), { status: 409 });
+  }
+  return { path: contained(targetRoot, job.target), name: job.target, sha256: job.digest, size: job.totalBytes };
+}
