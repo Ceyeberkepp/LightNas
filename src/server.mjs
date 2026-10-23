@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { importVerifiedVm } from './migration-vm-import.mjs';
 import { startMigrationImport, migrationJob } from './migration-transfer.mjs';
 import { inspectMigrationSource, previewMigrationManifest } from './migration-discovery.mjs';
 import { supportedMigrationSources } from './migration-planner.mjs';
@@ -1152,6 +1153,10 @@ async function api(req, res, url) {
   if (!context) return;
   const { username, account, isAdmin, permissions } = context;
 
+  if (url.pathname === '/api/migration/vm/define' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
+    return send(res, 201, await importVerifiedVm(await bodyJson(req)));
+  }
   if (url.pathname === '/api/migration/import' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
     return send(res, 202, await startMigrationImport(await bodyJson(req)));
