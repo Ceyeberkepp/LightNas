@@ -6,7 +6,11 @@
 <section class="panel"><h2>3. Transfer readiness and verification</h2><div class="bar"><div id="progress"></div></div><p id="phase">No migration running. Discovery and planning only.</p><div class="notice">Direct source transfer, restore, cutover, and rollback are not implemented yet. Verified local export staging is available. A green compatibility plan is not a successful migration.</div><label for="import-file">Pre-exported file in LightNAS incoming staging</label>
 <input id="import-file" placeholder="example-vm.qcow2" autocomplete="off">
 <p>Place approved exports in <code>/var/lib/lightnas/imports/incoming</code> using your existing secure transfer method. LightNAS copies and SHA-256 verifies them. Restoration/activation requires a separate verified import step.</p>
-<button id="stage">Stage and verify export</button><p id="job-result" role="status"></p><hr><h3>Convert VMware / virtual disks</h3>
+<button id="stage">Stage and verify export</button><p id="job-result" role="status"></p><hr><h3>Proxmox LXC archive compatibility</h3>
+<p>Inspect a verified Proxmox container backup before any attempted restore. No files are extracted and no existing containers are modified.</p>
+<label for="lxc-job">Verified LXC backup job ID</label><input id="lxc-job" placeholder="Staged backup job UUID">
+<button id="lxc-preflight">Inspect LXC archive</button><pre id="lxc-result" style="white-space:pre-wrap" role="status"></pre>
+<hr><h3>Convert VMware / virtual disks</h3>
 <p>Convert an already staged and verified VMDK, QCOW2 or raw disk into a standalone QCOW2 image. The verified conversion can then be defined as an offline VM.</p>
 <label>Source verified transfer job ID</label><input id="convert-job" placeholder="Verified staging job UUID">
 <label><input type="checkbox" id="convert-confirm" style="width:auto"> I approve conversion into LightNAS staging storage.</label>
@@ -60,5 +64,12 @@ $('convert').onclick=async()=>{
     if(!done)throw Error('Still processing; record conversion job '+job.id);
   }catch(e){$('convert-status').textContent=e.message;$('convert-status').className='error';}
   finally{$('convert').disabled=false;}
+};
+$('lxc-preflight').onclick=async()=>{
+  $('lxc-result').textContent='Inspecting archive…';
+  try {
+    const result=await post('/api/migration/lxc/preflight',{jobId:$('lxc-job').value});
+    $('lxc-result').textContent=JSON.stringify(result,null,2);
+  } catch(e){$('lxc-result').textContent=e.message;}
 };
 </script></body></html>
