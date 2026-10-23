@@ -1163,21 +1163,21 @@ def configure_container_guest(config: Path, data: dict) -> None:
             sync = rootfs / "usr" / "local" / "sbin" / "lightnas-dhcp-resolv"
             sync.parent.mkdir(parents=True, exist_ok=True)
             sync.write_text(
-                '#!/bin/sh\\n'
-                'set -eu\\n'
-                'for lease in /run/systemd/netif/leases/*; do\\n'
-                '  [ -f "$lease" ] || continue\\n'
-                '  dns=$(sed -n "s/^DNS=//p" "$lease" | head -n 1)\\n'
-                '  [ -n "$dns" ] || continue\\n'
-                '  tmp=/etc/resolv.conf.lightnas-tmp\\n'
-                '  : > "$tmp"\\n'
-                '  for server in $dns; do\\n'
-                '    case "$server" in *[!0-9a-fA-F:.]*|"") continue ;; esac\\n'
-                '    printf "nameserver %s\\\\n" "$server" >> "$tmp"\\n'
-                '  done\\n'
-                '  [ -s "$tmp" ] && mv "$tmp" /etc/resolv.conf || rm -f "$tmp"\\n'
-                '  exit 0\\n'
-                'done\\n',
+                '#!/bin/sh\n'
+                'set -eu\n'
+                'for lease in /run/systemd/netif/leases/*; do\n'
+                '  [ -f "$lease" ] || continue\n'
+                '  dns=$(sed -n "s/^DNS=//p" "$lease" | head -n 1)\n'
+                '  [ -n "$dns" ] || continue\n'
+                '  tmp=/etc/resolv.conf.lightnas-tmp\n'
+                '  : > "$tmp"\n'
+                '  for server in $dns; do\n'
+                '    case "$server" in *[!0-9a-fA-F:.]*|"") continue ;; esac\n'
+                '    printf "nameserver %s\\\n" "$server" >> "$tmp"\n'
+                '  done\n'
+                '  [ -s "$tmp" ] && mv "$tmp" /etc/resolv.conf || rm -f "$tmp"\n'
+                '  exit 0\n'
+                'done\n',
                 encoding="utf-8",
             )
             sync.chmod(0o755)
