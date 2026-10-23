@@ -7,7 +7,7 @@ import { verifiedMigrationFile } from './migration-transfer.mjs';
 
 const exec = promisify(execFile);
 const permitted = /\.(tar|tar\.gz|tgz|tar\.xz|tar\.zst)$/i;
-const VOLUME = /^rootfs(?:\:|\s)/m;
+
 function safeEntry(name) {
   if (!name || name.startsWith('/') || name.includes('\\') || /[\x00-\x1f]/.test(name)) return false;
   const parts = name.split('/');
@@ -21,11 +21,22 @@ export async function inspectVerifiedLxcArchive(jobId) {
   const hash = createHash('sha256');
   for await (const block of createReadStream(source.path)) hash.update(block);
   if (hash.digest('hex') !== source.sha256) throw Object.assign(new Error('Archive checksum mismatch'), { status: 409 });
-  let stdout;
+  let stdout, verbose;
   try {
     ({ stdout } = await exec('tar', ['-taf', source.path], { timeout: 90000, maxBuffer: 8 * 1024 * 1024 }));
   } catch (error) {
     throw Object.assign(new Error('Cannot enumerate LXC archive: '+String(error.stderr || error.message).slice(0,200)), { status: 409 });
+  }
+  // Reject archive links and device nodes until a safe root-owned extractor exists.
+  // Tar's verbose listing starts with a member type (regular file '-', directory 'd').
+  try {
+    ({ stdout: verbose } = await exec('tar', ['-tvaf', source.path], { timeout: 90000, maxBuffer: 24 * 1024 * 1024 }));
+  } catch {
+    throw Object.assign(new Error('Cannot inspect archive member types'), { status: 409 });
+  }
+  const memberLines=verbose.split('\n').filter(Boolean);
+  if(memberLines.length > 200000 || memberLines.some(line=>!['-','d'].includes(line[0]))) {
+    throw Object.assign(new Error('Archive contains links, special files, or exceeds member limit'), {status:409});
   }
   const entries = stdout.split('\n').filter(Boolean);
   if (entries.length > 200000 || entries.some(entry => !safeEntry(entry))) {
