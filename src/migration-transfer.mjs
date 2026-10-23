@@ -73,3 +73,11 @@ export function verifiedMigrationFile(jobId) {
   }
   return { path: contained(targetRoot, job.target), name: job.target, sha256: job.digest, size: job.totalBytes };
 }
+
+export function registerVerifiedConvertedDisk({ filename, size, sha256 }) {
+  if (!/^[a-f0-9-]{36}\.qcow2$/.test(filename) || !Number.isSafeInteger(size) || size <= 0 || !/^[a-f0-9]{64}$/.test(sha256)) throw new Error('invalid converted disk receipt');
+  const id = randomUUID();
+  jobs.set(id, { id, source: filename, target: filename, state: 'verified', bytesCopied:size, totalBytes:size,
+    digest:sha256, error:null, startedAt:new Date().toISOString(), endedAt:new Date().toISOString() });
+  return id;
+}
