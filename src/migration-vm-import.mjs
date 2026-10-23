@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdir, copyFile, lstat, rm } from 'node:fs/promises';
+import { mkdir, copyFile, lstat, rm, open } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { verifiedMigrationFile } from './migration-transfer.mjs';
 import { runtimeInventory } from './runtimes-next.mjs';
@@ -55,11 +57,15 @@ export async function importVerifiedVm(input) {
     () => { throw Object.assign(new Error('VM name exists in libvirt'), { status: 409 }); },
     error => { if (!/failed:|not found|Domain not found/i.test(error.message)) throw error; }
   );
-  await mkdir(folder, { recursive: false });
+  await mkdir(folder, { recursive: true });
   try {
     await copyFile(staged.path, disk, 1); // COPYFILE_EXCL: never overwrite
     const copied = await lstat(disk);
     if (!copied.isFile() || copied.size !== staged.size) throw new Error('Copied disk failed size verification');
+    // Verify the destination image content, not only its byte length.
+    const destinationHash = createHash('sha256');
+    for await (const chunk of createReadStream(disk)) destinationHash.update(chunk);
+    if (destinationHash.digest('hex') !== staged.sha256) throw new Error('Imported disk checksum differs from staging copy');
     const detail = runtime.networkDetails?.find(item => item.name === network);
     const netArg = detail?.type === 'host-bridge' ? 'bridge=' + network : 'network=' + network;
     const diskFormat = metadata.format === 'qcow2' ? 'qcow2' : 'raw';
