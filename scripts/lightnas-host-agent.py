@@ -346,8 +346,8 @@ def container_settings(name: str) -> dict:
                 ["lxc-attach", "-n", name, "--", "ip", "-4", "route", "show", "default"],
                 timeout=5, check=False,
             )
-            gateway_match = re.search(r"\\bvia\\s+([0-9.]+)", live_route)
-            device_match = re.search(r"\\bdev\\s+([^\\s]+)", live_route)
+            gateway_match = re.search(r"\bvia\s+([0-9.]+)", live_route)
+            device_match = re.search(r"\bdev\s+([^\s]+)", live_route)
             live_gateway = gateway_match.group(1).strip() if gateway_match else ""
             live_device = device_match.group(1).strip() if device_match else ""
         except Exception:
@@ -359,7 +359,7 @@ def container_settings(name: str) -> dict:
                 address_args += ["dev", live_device]
             address_args += ["scope", "global"]
             live_ip = run(address_args, timeout=5, check=False)
-            match = re.search(r"\\binet\\s+([^\\s]+)", live_ip)
+            match = re.search(r"\binet\s+([^\s]+)", live_ip)
             live_address = match.group(1).strip() if match else ""
         except Exception:
             pass
@@ -384,9 +384,9 @@ def container_settings(name: str) -> dict:
             except Exception:
                 pass
         for resolver_text in resolver_texts:
-            candidates = re.findall(r"^nameserver\\s+([^\\s#]+)", resolver_text, re.MULTILINE)
-            candidates += re.findall(r"\\b(?:DNS Servers?|Current DNS Server):\\s*(.+)$", resolver_text, re.MULTILINE)
-            candidates += re.findall(r"^Link\\s+\\d+\\s+\\([^)]+\\):\\s*(.+)$", resolver_text, re.MULTILINE)
+            candidates = re.findall(r"^nameserver\s+([^\s#]+)", resolver_text, re.MULTILINE)
+            candidates += re.findall(r"\b(?:DNS Servers?|Current DNS Server):\s*(.+)$", resolver_text, re.MULTILINE)
+            candidates += re.findall(r"^Link\s+\d+\s+\([^)]+\):\s*(.+)$", resolver_text, re.MULTILINE)
             for candidate in candidates:
                 for item in str(candidate).split():
                     value = item.strip()
