@@ -1,3 +1,4 @@
+import WebSocket from 'ws';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { planMigration, supportedMigrationSources } from './migration-planner.mjs';
@@ -44,6 +45,44 @@ async function proxmoxPasswordSession(base, username, password) {
     return {Cookie:'PVEAuthCookie='+ticket};
   } finally {clearTimeout(timeout);}
 }
+// TrueNAS legacy middleware WebSocket authentication, supported on SCALE through 25.10.
+async function truenasPasswordInventory(base, username, password) {
+  if(!/^[A-Za-z0-9_.@-]{1,100}$/.test(username)||typeof password!=='string'||!password||password.length>1024)
+    throw new Error('TrueNAS username and password required');
+  const endpoint=new URL('/websocket',base);
+  endpoint.protocol='wss:';
+  return await new Promise((resolve,reject)=>{
+    const socket=new WebSocket(endpoint,{handshakeTimeout:10000,maxPayload:2*1024*1024});
+    let settled=false,connected=false,authorized=false;
+    const lists={};const ids={};let seq=0;
+    const timeout=setTimeout(()=>finish(new Error('TrueNAS discovery timed out')),25000);
+    function finish(error,result){if(settled)return;settled=true;clearTimeout(timeout);socket.close();error?reject(error):resolve(result);}
+    function method(name,params=[]){const id=String(++seq);ids[id]=name;socket.send(JSON.stringify({id,msg:'method',method:name,params}));}
+    socket.on('open',()=>socket.send(JSON.stringify({msg:'connect',version:'1',support:['1']})));
+    socket.on('error',()=>finish(new Error('Cannot connect securely to TrueNAS WebSocket')));
+    socket.on('close',()=>{if(!settled)finish(new Error('TrueNAS closed the discovery connection'));});
+    socket.on('message',bytes=>{
+      if(settled)return;
+      let reply;try{reply=JSON.parse(String(bytes));}catch{return finish(new Error('Invalid TrueNAS response'));}
+      if(reply.msg==='connected'&&!connected){connected=true;method('auth.login',[username,password]);return;}
+      if(reply.msg==='failed')return finish(new Error('TrueNAS WebSocket connection failed'));
+      if(reply.msg!=='result'||!Object.hasOwn(ids,String(reply.id)))return;
+      const name=ids[String(reply.id)];delete ids[String(reply.id)];
+      if(reply.error)return finish(new Error(name==='auth.login'?'TrueNAS login rejected':'TrueNAS inventory query failed'));
+      if(name==='auth.login'){
+        if(reply.result!==true)return finish(new Error('TrueNAS username or password was not accepted'));
+        authorized=true;
+        for(const query of ['pool.query','sharing.smb.query','vm.query'])method(query);
+        return;
+      }
+      if(!authorized)return finish(new Error('Unauthenticated TrueNAS inventory'));
+      if(!Array.isArray(reply.result))return finish(new Error('Invalid TrueNAS inventory result'));
+      lists[name]=reply.result;
+      if(['pool.query','sharing.smb.query','vm.query'].every(x=>Object.hasOwn(lists,x)))
+        finish(null,[...mapItems(lists['pool.query'],'storage','truenas-pool'),...mapItems(lists['sharing.smb.query'],'share','truenas-smb'),...mapItems(lists['vm.query'],'vm','truenas-vm')]);
+    });
+  });
+}
 function mapItems(items, type, sourcePrefix) {
   return (Array.isArray(items) ? items : []).map((x, i) => ({
     id: String(sourcePrefix + ':' + (x.vmid ?? x.id ?? x.name ?? i)).slice(0, 128),
@@ -59,7 +98,7 @@ export async function inspectMigrationSource(input) {
   const token = String(input?.token || '').trim();
   const username = String(input?.username || '').trim();
   const password = typeof input?.password === 'string' ? input.password : '';
-  if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (source !== 'proxmox' && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
+  if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (!['proxmox','truenas'].includes(source) && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
   if (host.includes('..') || host.includes('@') || host.includes('/') || host.includes('#')) throw new Error('invalid source host');
   await assertInternal(host);
   const port = source === 'proxmox' ? 8006 : source === 'truenas' ? 443 : 443;
@@ -87,7 +126,10 @@ export async function inspectMigrationSource(input) {
       ...mapItems((datastores || []).map(x => ({ id: x.datastore, name: x.name })), 'storage', 'vmware-datastore'),
       ...mapItems((networks || []).map(x => ({ id: x.network, name: x.name })), 'network', 'vmware-network')
     ];
+  } else if(source==='truenas' && username && password){
+    items=await truenasPasswordInventory(base,username,password);
   } else {
+    if(!token)throw new Error('TrueNAS username/password or API token required');
     const headers = { Authorization: 'Bearer ' + token };
     const [pools, shares, vms] = await Promise.all([
       jsonRequest(base, 'api/v2.0/pool', headers),
