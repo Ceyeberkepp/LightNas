@@ -109,7 +109,7 @@ export async function inspectMigrationSource(input) {
   const username = String(input?.username || '').trim();
   const password = typeof input?.password === 'string' ? input.password : '';
   const caCertificate = typeof input?.caCertificate === 'string' ? input.caCertificate.trim() : '';
-  if (caCertificate && (caCertificate.length > 16384 || !/^-----BEGIN CERTIFICATE-----\\s*[A-Za-z0-9+/=\\s]+-----END CERTIFICATE-----$/.test(caCertificate))) throw Object.assign(new Error('Provide a valid PEM CA certificate, not a private key.'), {status:400});
+  if (caCertificate && (caCertificate.length > 16384 || !/^-----BEGIN CERTIFICATE-----\s*[A-Za-z0-9+/=\s]+-----END CERTIFICATE-----$/.test(caCertificate))) throw Object.assign(new Error('Provide a valid PEM CA certificate, not a private key.'), {status:400});
   if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (!['proxmox','truenas'].includes(source) && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
   if (host.includes('..') || host.includes('@') || host.includes('/') || host.includes('#')) throw new Error('invalid source host');
   try { await assertInternal(host); }
