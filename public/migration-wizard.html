@@ -9,7 +9,7 @@
 <label>Server IP / hostname<input id="host" placeholder="192.168.1.20" autocomplete="off"></label></div>
 <div id="user-fields" class="grid"><label>Username<input id="username" placeholder="root@pam" autocomplete="username"></label><label>Password<input id="password" type="password" autocomplete="off"></label></div>
 <label id="token-row" class="hidden">API token / session ID<input id="token" type="password" autocomplete="off"></label>
-<p class="quiet" id="auth-help">Enter your Proxmox server login. LightNAS does not store the password. The server must be reachable over trusted HTTPS on your private network.</p>
+<details id="ca-options" class="hidden"><summary>Advanced: Trust a TrueNAS CA certificate</summary><p class="quiet">Paste the public PEM certificate from your trusted TrueNAS CA. No private keys. The certificate must match the server hostname or IP and is used only for this scan.</p><textarea id="ca-certificate" rows="5" style="width:100%;font:12px monospace" placeholder="-----BEGIN CERTIFICATE-----"></textarea></details><p class="quiet" id="auth-help">Enter your Proxmox server login. LightNAS does not store the password. The server must be reachable over trusted HTTPS on your private network.</p>
 <div class="row"><button class="secondary" id="auth-toggle" type="button">Use API token instead</button><button id="scan" type="button">Connect & scan</button></div><p id="connect-status" role="status"></p>
 </section>
 <section class="panel hidden" id="scan-panel"><h2>Detected workloads</h2><p>Select the items you want to review for migration. Nothing has been changed on the source server.</p>
