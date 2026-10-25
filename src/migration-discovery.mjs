@@ -26,6 +26,24 @@ async function jsonRequest(base, path, headers) {
     return JSON.parse(body);
   } finally { clearTimeout(timer); }
 }
+async function proxmoxPasswordSession(base, username, password) {
+  if (!/^[A-Za-z0-9_.@-]{1,100}$/.test(username) || !password || password.length > 1024) throw new Error('Valid Proxmox username and password required');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(new URL('api2/json/access/ticket', base), {
+      method:'POST', redirect:'error', signal:controller.signal,
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({username,password})
+    });
+    if (!response.ok) throw new Error('Proxmox login rejected ('+response.status+')');
+    const raw = await response.text();
+    if (raw.length > 10000) throw new Error('Login response too large');
+    const ticket = JSON.parse(raw)?.data?.ticket;
+    if (typeof ticket !== 'string' || !/^PVE:[A-Za-z0-9_-]+:.{1,2000}$/.test(ticket)) throw new Error('Proxmox did not return a valid login ticket');
+    return {Cookie:'PVEAuthCookie='+ticket};
+  } finally {clearTimeout(timeout);}
+}
 function mapItems(items, type, sourcePrefix) {
   return (Array.isArray(items) ? items : []).map((x, i) => ({
     id: String(sourcePrefix + ':' + (x.vmid ?? x.id ?? x.name ?? i)).slice(0, 128),
@@ -39,14 +57,17 @@ export async function inspectMigrationSource(input) {
   if (source === 'redhat') throw new Error('Red Hat connection needs a local, reviewed libvirt/Podman inventory export; remote SSH credentials are not accepted by this endpoint.');
   const host = String(input?.host || '').trim();
   const token = String(input?.token || '').trim();
-  if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || !token || token.length > 2048) throw new Error('source hostname and scoped token required');
+  const username = String(input?.username || '').trim();
+  const password = typeof input?.password === 'string' ? input.password : '';
+  if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (source !== 'proxmox' && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
   if (host.includes('..') || host.includes('@') || host.includes('/') || host.includes('#')) throw new Error('invalid source host');
   await assertInternal(host);
   const port = source === 'proxmox' ? 8006 : source === 'truenas' ? 443 : 443;
   const base = 'https://' + (isIP(host) === 6 ? '[' + host + ']' : host) + ':' + port + '/';
   let items = [];
   if (source === 'proxmox') {
-    const headers = { Authorization: 'PVEAPIToken=' + token };
+    const headers = username && password ? await proxmoxPasswordSession(base, username, password) : { Authorization: 'PVEAPIToken=' + token };
+    if(!token && !(username && password)) throw new Error('Proxmox username/password or API token required');
     const result = await jsonRequest(base, 'api2/json/cluster/resources', headers);
     const rows = result?.data || [];
     items = [
