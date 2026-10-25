@@ -46,13 +46,13 @@ async function proxmoxPasswordSession(base, username, password) {
   } finally {clearTimeout(timeout);}
 }
 // TrueNAS legacy middleware WebSocket authentication, supported on SCALE through 25.10.
-async function truenasPasswordInventory(base, username, password) {
+async function truenasPasswordInventory(base, username, password, caCertificate = '') {
   if(!/^[A-Za-z0-9_.@-]{1,100}$/.test(username)||typeof password!=='string'||!password||password.length>1024)
     throw Object.assign(new Error('Enter both your TrueNAS username and password.'),{status:400});
   const endpoint=new URL('/websocket',base);
   endpoint.protocol='wss:';
   return await new Promise((resolve,reject)=>{
-    const socket=new WebSocket(endpoint,{handshakeTimeout:10000,maxPayload:2*1024*1024});
+    const socket=new WebSocket(endpoint,{handshakeTimeout:10000,maxPayload:2*1024*1024, ...(caCertificate ? {ca:caCertificate} : {})});
     let settled=false,connected=false,authorized=false;
     const lists={};const ids={};let seq=0;
     const timeout=setTimeout(()=>finish(Object.assign(new Error('TrueNAS API did not respond within 25 seconds. Check address, API compatibility and firewall.'),{status:504})),25000);
@@ -108,6 +108,8 @@ export async function inspectMigrationSource(input) {
   const token = String(input?.token || '').trim();
   const username = String(input?.username || '').trim();
   const password = typeof input?.password === 'string' ? input.password : '';
+  const caCertificate = typeof input?.caCertificate === 'string' ? input.caCertificate.trim() : '';
+  if (caCertificate && (caCertificate.length > 16384 || !/^-----BEGIN CERTIFICATE-----\\s*[A-Za-z0-9+/=\\s]+-----END CERTIFICATE-----$/.test(caCertificate))) throw Object.assign(new Error('Provide a valid PEM CA certificate, not a private key.'), {status:400});
   if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (!['proxmox','truenas'].includes(source) && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
   if (host.includes('..') || host.includes('@') || host.includes('/') || host.includes('#')) throw new Error('invalid source host');
   try { await assertInternal(host); }
@@ -138,7 +140,7 @@ export async function inspectMigrationSource(input) {
       ...mapItems((networks || []).map(x => ({ id: x.network, name: x.name })), 'network', 'vmware-network')
     ];
   } else if(source==='truenas' && username && password){
-    items=await truenasPasswordInventory(base,username,password);
+    items=await truenasPasswordInventory(base,username,password,caCertificate);
   } else {
     if(!token)throw new Error('TrueNAS username/password or API token required');
     const headers = { Authorization: 'Bearer ' + token };
