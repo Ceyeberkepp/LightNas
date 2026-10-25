@@ -1,0 +1,20 @@
+name: Migration wizard CSP smoke tests
+on:
+  pull_request:
+    paths:
+      - 'public/migration-wizard.html'
+      - 'public/migration-wizard.js'
+      - 'test/migration-wizard-csp.test.mjs'
+      - '.github/workflows/migration-wizard-csp.yml'
+permissions:
+  contents: read
+jobs:
+  wizard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check public/migration-wizard.js
+      - run: node --test test/migration-wizard-csp.test.mjs

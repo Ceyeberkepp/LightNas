@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const app=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
 const wizard=readFileSync(new URL('../public/migration-wizard.html',import.meta.url),'utf8');
+const wizardJs=readFileSync(new URL('../public/migration-wizard.js',import.meta.url),'utf8');
 const discovery=readFileSync(new URL('../src/migration-discovery.mjs',import.meta.url),'utf8');
 test('Migration Center belongs to Admin Center and opens a modal',()=>{
  assert.match(app,/\['migration', 'Migration Center'\]/);
@@ -12,8 +13,8 @@ test('Migration Center belongs to Admin Center and opens a modal',()=>{
 });
 test('guided wizard has connect scan review and clears credentials',()=>{
  for(const id of ['source','host','username','password','token','scan','results','review','plan'])assert.ok(wizard.includes('id="'+id+'"'),id);
- assert.match(wizard,/el\('password'\)\.value=''/);
- assert.match(wizard,/el\('token'\)\.value=''/);
+ assert.match(wizardJs,/el\('password'\)\.value=''/);
+ assert.match(wizardJs,/el\('token'\)\.value=''/);
  assert.match(wizard,/Advanced migration tools/);
 });
 test('password login is limited to Proxmox read-only source discovery',()=>{
