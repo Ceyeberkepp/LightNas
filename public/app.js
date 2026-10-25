@@ -2319,12 +2319,13 @@ const ADMIN_CENTER_SECTIONS = Object.freeze([
   ['settings', 'Settings & security'],
   ['analytics', 'Analytics'],
   ['capabilities', 'Capabilities'],
-  ['integrations', 'Integrations']
+  ['integrations', 'Integrations'],
+  ['migration', 'Migration Center']
 ]);
 
 function adminCenterSectionAllowed(id) {
   if (state.overview?.appliance?.role === 'administrator') return true;
-  const view = ({ users:'users', permissions:'permissions', smtp:'smtp', settings:'settings', analytics:'analytics', capabilities:'capabilities', integrations:'integrations' })[id];
+  const view = ({ users:'users', permissions:'permissions', smtp:'smtp', settings:'settings', analytics:'analytics', capabilities:'capabilities', integrations:'integrations', migration:'integrations' })[id];
   return id === 'general' || Boolean(view && canView(view));
 }
 
@@ -2416,6 +2417,7 @@ function adminView() {
   if (section === 'analytics') panel = adminEmbeddedView(analyticsView());
   if (section === 'capabilities') panel = adminEmbeddedView(capabilitiesView());
   if (section === 'integrations') panel = adminEmbeddedView(integrationsView());
+  if (section === 'migration') panel = '<section class="panel"><h2>Migration Center</h2><p>Transfer from Proxmox, VMware, TrueNAS or Red Hat using guided discovery and compatibility checks.</p><button class="primary" type="button" data-open-migration-wizard>Open transfer wizard</button></section>';
 
   return `${pageHead('Admin Center', 'Manage accounts, access, settings, security, and system services from one workspace.')}
     <div class="admin-center-workspace">
@@ -2620,7 +2622,7 @@ function firewallView() {
 function integrationsView() {
   // The migration wizard runs as a separate local page using authenticated,
   // administrator-only APIs; it cannot initiate transfers without approval.
-  const migrationLink = '<p><a href="/migration-center.html" class="secondary">Open Migration Center →</a></p>';
+  const migrationLink = '';
 
   const apps = state.runtimes?.docker, containers = state.runtimes?.containers, vm = state.runtimes?.virtualization;
   const integrations = [
@@ -2853,7 +2855,27 @@ function render(view) {
   if ((['home', 'hypervisor', 'apps', 'ai', 'vms', 'integrations'].includes(state.view) || (state.view === 'admin' && state.adminSection === 'integrations')) && (!state.runtimes?.docker || !state.runtimes?.virtualization || !state.runtimes?.catalog) && !state.runtimeError) loadRuntimes();
 }
 
+function openMigrationWizardWindow() {
+  const dialog=document.createElement('dialog');
+  dialog.setAttribute('aria-label','LightNAS transfer wizard');
+  dialog.style.cssText='width:min(1100px,96vw);height:min(850px,94vh);max-width:none;max-height:none;border:1px solid #cbd1d8;border-radius:14px;padding:0;overflow:hidden;background:#fff';
+  const header=document.createElement('div');
+  header.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-bottom:1px solid #e0e4e8';
+  const title=document.createElement('strong');
+  title.textContent='Migration Center · Transfer wizard';
+  const close=document.createElement('button');
+  close.type='button';close.className='secondary';close.textContent='Close';close.onclick=()=>dialog.close();
+  header.append(title,close);
+  const frame=document.createElement('iframe');
+  frame.src='/migration-wizard.html';frame.title='LightNAS migration transfer wizard';
+  frame.style.cssText='width:100%;height:calc(100% - 58px);border:0';
+  dialog.append(header,frame);
+  dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+  document.body.append(dialog);
+  dialog.showModal();
+}
 function bindViewActions() {
+  document.querySelectorAll('#content [data-open-migration-wizard]').forEach(button => button.addEventListener('click', openMigrationWizardWindow));
   document.querySelectorAll('#content [data-admin-section]').forEach(button => button.addEventListener('click', () => {
     const next = button.dataset.adminSection;
     if (!ADMIN_CENTER_SECTIONS.some(([id]) => id === next) || !adminCenterSectionAllowed(next)) return;
