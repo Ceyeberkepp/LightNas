@@ -13,7 +13,7 @@ function internal(address) {
 async function assertInternal(host) {
   if (host === 'localhost' || host.endsWith('.localhost')) throw new Error('loopback destinations are forbidden');
   const ips = isIP(host) ? [{ address: host }] : await lookup(host, { all: true, verbatim: true });
-  if (!ips.length || ips.some(ip => !internal(ip.address))) throw new Error('source must resolve only to private LAN addresses');
+  if (!ips.length || ips.some(ip => !internal(ip.address))) throw Object.assign(new Error('Source server must resolve only to private LAN addresses.'),{status:400});
 }
 async function jsonRequest(base, path, headers) {
   const controller = new AbortController();
@@ -48,29 +48,39 @@ async function proxmoxPasswordSession(base, username, password) {
 // TrueNAS legacy middleware WebSocket authentication, supported on SCALE through 25.10.
 async function truenasPasswordInventory(base, username, password) {
   if(!/^[A-Za-z0-9_.@-]{1,100}$/.test(username)||typeof password!=='string'||!password||password.length>1024)
-    throw new Error('TrueNAS username and password required');
+    throw Object.assign(new Error('Enter both your TrueNAS username and password.'),{status:400});
   const endpoint=new URL('/websocket',base);
   endpoint.protocol='wss:';
   return await new Promise((resolve,reject)=>{
     const socket=new WebSocket(endpoint,{handshakeTimeout:10000,maxPayload:2*1024*1024});
     let settled=false,connected=false,authorized=false;
     const lists={};const ids={};let seq=0;
-    const timeout=setTimeout(()=>finish(new Error('TrueNAS discovery timed out')),25000);
+    const timeout=setTimeout(()=>finish(Object.assign(new Error('TrueNAS API did not respond within 25 seconds. Check address, API compatibility and firewall.'),{status:504})),25000);
     function finish(error,result){if(settled)return;settled=true;clearTimeout(timeout);socket.close();error?reject(error):resolve(result);}
     function method(name,params=[]){const id=String(++seq);ids[id]=name;socket.send(JSON.stringify({id,msg:'method',method:name,params}));}
     socket.on('open',()=>socket.send(JSON.stringify({msg:'connect',version:'1',support:['1']})));
-    socket.on('error',()=>finish(new Error('Cannot connect securely to TrueNAS WebSocket')));
-    socket.on('close',()=>{if(!settled)finish(new Error('TrueNAS closed the discovery connection'));});
+    socket.on('error',err=>{
+      const code=String(err?.code||err?.cause?.code||'');
+      const status=Number(err?.statusCode||0);
+      const message=code==='ECONNREFUSED'?'TrueNAS refused the secure API connection. Check HTTPS port 443 and server address.'
+        :code==='ETIMEDOUT'||code==='ENETUNREACH'||code==='EHOSTUNREACH'?'TrueNAS is unreachable from LightNAS. Check routing and firewall.'
+        :['DEPTH_ZERO_SELF_SIGNED_CERT','SELF_SIGNED_CERT_IN_CHAIN','UNABLE_TO_VERIFY_LEAF_SIGNATURE','CERT_HAS_EXPIRED','ERR_TLS_CERT_ALTNAME_INVALID'].includes(code)
+          ?'TrueNAS HTTPS certificate is not trusted or does not match the server address. Configure a trusted certificate or CA on LightNAS.'
+          :status===404||status===400?'The TrueNAS legacy WebSocket endpoint is unavailable on this version. A version-compatible API connector is required.'
+          :'TrueNAS secure WebSocket failed. Check server certificate, API version and connectivity.';
+      finish(Object.assign(new Error(message),{status:409}));
+    });
+    socket.on('close',()=>{if(!settled)finish(Object.assign(new Error('TrueNAS closed the discovery connection before inventory completed.'),{status:409}));});
     socket.on('message',bytes=>{
       if(settled)return;
       let reply;try{reply=JSON.parse(String(bytes));}catch{return finish(new Error('Invalid TrueNAS response'));}
       if(reply.msg==='connected'&&!connected){connected=true;method('auth.login',[username,password]);return;}
-      if(reply.msg==='failed')return finish(new Error('TrueNAS WebSocket connection failed'));
+      if(reply.msg==='failed')return finish(Object.assign(new Error('TrueNAS rejected the legacy WebSocket protocol. This version may require JSON-RPC 2.0.'),{status:409}));
       if(reply.msg!=='result'||!Object.hasOwn(ids,String(reply.id)))return;
       const name=ids[String(reply.id)];delete ids[String(reply.id)];
-      if(reply.error)return finish(new Error(name==='auth.login'?'TrueNAS login rejected':'TrueNAS inventory query failed'));
+      if(reply.error)return finish(Object.assign(new Error(name==='auth.login'?'TrueNAS login rejected by the API.':'TrueNAS API denied an inventory query or returned an unsupported method.'),{status:name==='auth.login'?401:409}));
       if(name==='auth.login'){
-        if(reply.result!==true)return finish(new Error('TrueNAS username or password was not accepted'));
+        if(reply.result!==true)return finish(Object.assign(new Error('TrueNAS rejected the username or password. Check login and API permissions.'),{status:401}));
         authorized=true;
         for(const query of ['pool.query','sharing.smb.query','vm.query'])method(query);
         return;
@@ -100,7 +110,8 @@ export async function inspectMigrationSource(input) {
   const password = typeof input?.password === 'string' ? input.password : '';
   if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (!['proxmox','truenas'].includes(source) && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
   if (host.includes('..') || host.includes('@') || host.includes('/') || host.includes('#')) throw new Error('invalid source host');
-  await assertInternal(host);
+  try { await assertInternal(host); }
+  catch(error) { if(error.status)throw error; throw Object.assign(new Error('Cannot resolve the source host from LightNAS. Check its address and DNS.'),{status:400}); }
   const port = source === 'proxmox' ? 8006 : source === 'truenas' ? 443 : 443;
   const base = 'https://' + (isIP(host) === 6 ? '[' + host + ']' : host) + ':' + port + '/';
   let items = [];
