@@ -2945,7 +2945,7 @@ async function staticAsset(req, res, url) {
       'X-Content-Type-Options': 'nosniff',
       // Keep all normal pages non-embeddable, but allow the terminal document
       // to render inside the same-origin LightNAS management dialog.
-      'Content-Security-Policy': url.pathname === '/container-console.html' ? embeddedConsoleCsp : csp
+      'Content-Security-Policy': ['/container-console.html', '/migration-wizard.html'].includes(url.pathname) ? embeddedConsoleCsp : csp
     });
     res.end(content);
   } catch (error) {
