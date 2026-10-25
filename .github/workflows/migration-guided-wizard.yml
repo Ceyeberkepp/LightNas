@@ -1,0 +1,22 @@
+name: Migration guided wizard checks
+on:
+  pull_request:
+    paths:
+      - 'public/app.js'
+      - 'public/migration-wizard.html'
+      - 'src/migration-discovery.mjs'
+      - 'test/migration-guided-wizard.test.mjs'
+      - '.github/workflows/migration-guided-wizard.yml'
+permissions:
+  contents: read
+jobs:
+  wizard-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check public/app.js
+      - run: node --check src/migration-discovery.mjs
+      - run: node --test test/migration-guided-wizard.test.mjs
