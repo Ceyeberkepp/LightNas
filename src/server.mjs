@@ -1,3 +1,4 @@
+import {inspectMigrationCertificate} from './migration-certificate-inspect.mjs';
 import http from 'node:http';
 import {normalizeRedHatInventory,buildSourceExportManifest} from './migration-redhat-local.mjs';
 import {reviewVerifiedLxcRestore} from './migration-lxc-approval.mjs';
@@ -1257,6 +1258,10 @@ async function api(req, res, url) {
   if (url.pathname === '/api/migration/sources' && req.method === 'GET') {
     if (!isAdmin) return send(res, 403, { error: 'Administrator required.' });
     return send(res, 200, { sources: supportedMigrationSources() });
+  }
+  if (url.pathname === '/api/migration/certificate/inspect' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    return send(res,200,await inspectMigrationCertificate(await bodyJson(req)));
   }
   if (url.pathname === '/api/migration/inspect' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
