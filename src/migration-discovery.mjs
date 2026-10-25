@@ -13,7 +13,7 @@ function internal(address) {
 async function assertInternal(host) {
   if (host === 'localhost' || host.endsWith('.localhost')) throw new Error('loopback destinations are forbidden');
   const ips = isIP(host) ? [{ address: host }] : await lookup(host, { all: true, verbatim: true });
-  if (!ips.length || ips.some(ip => !internal(ip.address))) throw new Error('source must resolve only to private LAN addresses');
+  if (!ips.length || ips.some(ip => !internal(ip.address))) throw Object.assign(new Error('Source server must resolve only to private LAN addresses.'),{status:400});
 }
 async function jsonRequest(base, path, headers) {
   const controller = new AbortController();
@@ -48,7 +48,7 @@ async function proxmoxPasswordSession(base, username, password) {
 // TrueNAS legacy middleware WebSocket authentication, supported on SCALE through 25.10.
 async function truenasPasswordInventory(base, username, password) {
   if(!/^[A-Za-z0-9_.@-]{1,100}$/.test(username)||typeof password!=='string'||!password||password.length>1024)
-    throw new Error('TrueNAS username and password required');
+    throw Object.assign(new Error('Enter both your TrueNAS username and password.'),{status:400});
   const endpoint=new URL('/websocket',base);
   endpoint.protocol='wss:';
   return await new Promise((resolve,reject)=>{
@@ -110,7 +110,8 @@ export async function inspectMigrationSource(input) {
   const password = typeof input?.password === 'string' ? input.password : '';
   if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (!['proxmox','truenas'].includes(source) && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
   if (host.includes('..') || host.includes('@') || host.includes('/') || host.includes('#')) throw new Error('invalid source host');
-  await assertInternal(host);
+  try { await assertInternal(host); }
+  catch(error) { if(error.status)throw error; throw Object.assign(new Error('Cannot resolve the source host from LightNAS. Check its address and DNS.'),{status:400}); }
   const port = source === 'proxmox' ? 8006 : source === 'truenas' ? 443 : 443;
   const base = 'https://' + (isIP(host) === 6 ? '[' + host + ']' : host) + ':' + port + '/';
   let items = [];
