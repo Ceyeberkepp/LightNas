@@ -45,6 +45,58 @@ async function proxmoxPasswordSession(base, username, password) {
     return {Cookie:'PVEAuthCookie='+ticket};
   } finally {clearTimeout(timeout);}
 }
+// Modern TrueNAS SCALE (25.04+) JSON-RPC 2.0; password is sent only after TLS pin check.
+async function truenasJsonRpcInventory(base, username, password, caCertificate='', trustedFingerprint='') {
+ if(!/^[A-Za-z0-9_.@-]{1,100}$/.test(username)||!password||password.length>1024)
+   throw Object.assign(new Error('TrueNAS username and password required'),{status:400});
+ const endpoint=new URL('/api/current',base);endpoint.protocol='wss:';
+ return await new Promise((resolve,reject)=>{
+  let done=false,authed=false,pinned=!trustedFingerprint,seq=0;
+  const pending=new Map(), lists={};
+  const socket=new WebSocket(endpoint,{handshakeTimeout:10000,maxPayload:2*1024*1024,
+   ...(caCertificate?{ca:caCertificate}:{}),...(trustedFingerprint?{rejectUnauthorized:false}:{})});
+  const timer=setTimeout(()=>finish(Object.assign(new Error('TrueNAS modern API timed out'),{status:504})),25000);
+  function finish(error,result){if(done)return;done=true;clearTimeout(timer);socket.terminate();error?reject(error):resolve(result);}
+  function call(method,params=[]){const id=String(++seq);pending.set(id,method);socket.send(JSON.stringify({jsonrpc:'2.0',id,method,params}));}
+  socket.on('upgrade',response=>{
+   if(!trustedFingerprint)return;
+   const peer=response.socket?.getPeerCertificate?.();
+   if(String(peer?.fingerprint256||'').toUpperCase()!==trustedFingerprint.toUpperCase()||
+      Date.parse(peer?.valid_to||'')<=Date.now())
+     return finish(Object.assign(new Error('Source TLS certificate differs from approved fingerprint'),{status:409}));
+   pinned=true;
+  });
+  socket.on('open',()=>{
+   if(!pinned)return finish(Object.assign(new Error('Certificate fingerprint could not be verified'),{status:409}));
+   call('auth.login_ex',[{mechanism:'PASSWORD_PLAIN',username,password}]);
+  });
+  socket.on('error',e=>{
+   const err=Object.assign(new Error('Modern TrueNAS API connection failed'),{status:409});
+   if(['UNABLE_TO_VERIFY_LEAF_SIGNATURE','DEPTH_ZERO_SELF_SIGNED_CERT','ERR_TLS_CERT_ALTNAME_INVALID'].includes(e?.code))
+     err.message='TrueNAS certificate trust or hostname validation failed';
+   finish(err);
+  });
+  socket.on('close',()=>finish(Object.assign(new Error('TrueNAS modern API disconnected'),{status:409})));
+  socket.on('message',bytes=>{
+   if(done)return;
+   let response;try{response=JSON.parse(String(bytes));}catch{return finish(Object.assign(new Error('Invalid TrueNAS JSON-RPC response'),{status:409}));}
+   if(response.jsonrpc!=='2.0'||!pending.has(String(response.id)))return;
+   const method=pending.get(String(response.id));pending.delete(String(response.id));
+   if(response.error)return finish(Object.assign(new Error(method==='auth.login_ex'?'TrueNAS API authentication method failed':'TrueNAS API inventory permission or method failed'),{status:method==='auth.login_ex'?401:409}));
+   if(method==='auth.login_ex'){
+    const status=response.result?.response_type;
+    if(status!=='SUCCESS')return finish(Object.assign(new Error(status==='OTP_REQUIRED'?'TrueNAS account requires two-factor authentication; API OTP step is not implemented.':status==='AUTH_ERR'?'TrueNAS rejected the username or password.':'TrueNAS authentication not completed: '+String(status||'unknown')),{status:401}));
+    authed=true;
+    for(const name of ['pool.query','sharing.smb.query','vm.query'])call(name);
+    return;
+   }
+   if(!authed||!Array.isArray(response.result))return finish(Object.assign(new Error('Invalid TrueNAS inventory'),{status:409}));
+   lists[method]=response.result;
+   if(['pool.query','sharing.smb.query','vm.query'].every(x=>Object.hasOwn(lists,x)))
+    finish(null,[...mapItems(lists['pool.query'],'storage','truenas-pool'),...mapItems(lists['sharing.smb.query'],'share','truenas-smb'),...mapItems(lists['vm.query'],'vm','truenas-vm')]);
+  });
+ });
+}
 // TrueNAS legacy middleware WebSocket authentication, supported on SCALE through 25.10.
 async function truenasPasswordInventory(base, username, password, caCertificate = '', trustedFingerprint = '') {
   if(!/^[A-Za-z0-9_.@-]{1,100}$/.test(username)||typeof password!=='string'||!password||password.length>1024)
@@ -156,7 +208,7 @@ export async function inspectMigrationSource(input) {
       ...mapItems((networks || []).map(x => ({ id: x.network, name: x.name })), 'network', 'vmware-network')
     ];
   } else if(source==='truenas' && username && password){
-    items=await truenasPasswordInventory(base,username,password,caCertificate,trustedFingerprint);
+    items=await truenasJsonRpcInventory(base,username,password,caCertificate,trustedFingerprint);
   } else {
     if(!token)throw new Error('TrueNAS username/password or API token required');
     const headers = { Authorization: 'Bearer ' + token };
