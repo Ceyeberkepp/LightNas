@@ -15,7 +15,7 @@ el('inspect-certificate').onclick=async()=>{
  }catch(error){status.textContent=error.message;}
 };
 el('source').addEventListener('change',()=>{tokenMode=false;auth()});el('auth-toggle').onclick=()=>{tokenMode=!tokenMode;auth()};
-async function post(path,data){const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-LightNAS-Request':'1'},body:JSON.stringify(data)});const result=await response.json();if(!response.ok)throw Error(result.error||'Request failed');return result;}
+async function post(path,data){const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-LightNAS-Request':'1'},body:JSON.stringify(data)});const result=await response.json();if(!response.ok){const error=new Error(result.error||'Request failed');error.status=response.status;throw error;}return result;}
 el('scan').onclick=async()=>{el('scan').disabled=true;el('connect-status').textContent='Connecting and scanning (read-only)…';try{const data={source:el('source').value,host:el('host').value.trim()};if(['proxmox','truenas'].includes(data.source)&&!tokenMode){data.username=el('username').value.trim();data.password=el('password').value;}else data.token=el('token').value;if(data.source==='truenas'&&el('ca-certificate').value.trim())data.caCertificate=el('ca-certificate').value.trim();const certificate=await post('/api/migration/certificate/inspect',{
  host:data.host,port:data.source==='proxmox'?8006:443
 });
@@ -36,6 +36,17 @@ if(!certificate.trustedBySystem&&!data.caCertificate){
  data.trustedFingerprint=certificate.sha256Fingerprint;
 }
 el('connect-status').textContent='Certificate checked; scanning source…';
-const result=await post('/api/migration/inspect',data);inventory=result.items||[];if(!inventory.length)throw Error('Connected, but no migration objects were returned');el('results').innerHTML='<table><thead><tr><th>Select</th><th>Workload</th><th>Type</th></tr></thead><tbody>'+inventory.map((x,i)=>'<tr><td><input aria-label="Select '+esc(x.name)+'" type="checkbox" data-workload="'+i+'" checked></td><td>'+esc(x.name)+'</td><td>'+esc(x.type)+'</td></tr>').join('')+'</tbody></table>';el('connect-status').textContent=inventory.length+' objects found';show(2);}catch(e){el('connect-status').textContent=e.message;el('connect-status').className='danger'}finally{el('password').value='';el('token').value='';el('scan').disabled=false;}};
+let result;
+try {result=await post('/api/migration/inspect',data);}
+catch(error){
+ if(data.source!=='truenas'||error.status!==428)throw error;
+ const code=window.prompt('TrueNAS requires two-factor authentication. Enter the current 6–10 digit code from your authenticator:');
+ if(code===null)throw Error('Two-factor authentication cancelled. No migration started.');
+ if(!/^[0-9]{6,10}$/.test(code.trim()))throw Error('Enter a valid 6–10 digit authenticator code.');
+ data.otpToken=code.trim();
+ try {result=await post('/api/migration/inspect',data);}
+ finally {delete data.otpToken;}
+}
+inventory=result.items||[];if(!inventory.length)throw Error('Connected, but no migration objects were returned');el('results').innerHTML='<table><thead><tr><th>Select</th><th>Workload</th><th>Type</th></tr></thead><tbody>'+inventory.map((x,i)=>'<tr><td><input aria-label="Select '+esc(x.name)+'" type="checkbox" data-workload="'+i+'" checked></td><td>'+esc(x.name)+'</td><td>'+esc(x.type)+'</td></tr>').join('')+'</tbody></table>';el('connect-status').textContent=inventory.length+' objects found';show(2);}catch(e){el('connect-status').textContent=e.message;el('connect-status').className='danger'}finally{el('password').value='';el('token').value='';el('scan').disabled=false;}};
 el('review').onclick=async()=>{const chosen=[...document.querySelectorAll('[data-workload]:checked')].map(x=>inventory[Number(x.dataset.workload)]);if(!chosen.length){el('scan-status').textContent='Select at least one item';return}el('scan-status').textContent='Preparing destination compatibility plan…';try{const result=await post('/api/migration/plan',{source:el('source').value,items:chosen});el('summary').textContent=chosen.length+' selected · '+(result.blockers?.length||0)+' compatibility blockers';el('plan').innerHTML='<table><thead><tr><th>Object</th><th>Type</th><th>Status</th></tr></thead><tbody>'+(result.steps||[]).map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+esc(x.type)+'</td><td>'+esc(x.status)+'</td></tr>').join('')+'</tbody></table>';show(3);}catch(e){el('scan-status').textContent=e.message;}};
 el('back1').onclick=()=>show(1);el('back2').onclick=()=>show(2);el('advanced').onclick=()=>{location.href='/migration-center.html'};auth();
