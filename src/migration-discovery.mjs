@@ -28,7 +28,7 @@ async function jsonRequest(base, path, headers) {
     return JSON.parse(body);
   } finally { clearTimeout(timer); }
 }
-async function proxmoxPasswordSession(base, username, password) {
+async function proxmoxPasswordSession(base, username, password, secondFactor='') {
   if (!/^[A-Za-z0-9_.@-]{1,100}$/.test(username) || !password || password.length > 1024) throw new Error('Valid Proxmox username and password required');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
@@ -41,7 +41,22 @@ async function proxmoxPasswordSession(base, username, password) {
     if (!response.ok) throw new Error('Proxmox login rejected ('+response.status+')');
     const raw = await response.text();
     if (raw.length > 10000) throw new Error('Login response too large');
-    const ticket = JSON.parse(raw)?.data?.ticket;
+    const first = JSON.parse(raw)?.data || {};
+    let ticket = first.ticket;
+    if(first.NeedTFA || (typeof ticket==='string'&&ticket.includes('!tfa!'))){
+      const available=typeof first.NeedTFA==='string'?first.NeedTFA:'';
+      if(!secondFactor)throw Object.assign(new Error('Proxmox needs your second factor. For YubiKey OTP, touch the key in the code field. FIDO2/WebAuthn touch requires a different browser authentication flow.'),{status:428});
+      if(!/^[A-Za-z0-9]{6,80}$/.test(secondFactor))throw Object.assign(new Error('Invalid Proxmox security-key or TOTP code'),{status:400});
+      const authType=secondFactor.length>=32?'yubico':'totp';
+      const finish=await fetch(new URL('api2/json/access/ticket',base),{
+       method:'POST',redirect:'error',signal:controller.signal,
+       headers:{'Content-Type':'application/x-www-form-urlencoded'},
+       body:new URLSearchParams({username,'tfa-challenge':ticket,password:authType+':'+secondFactor})
+      });
+      if(!finish.ok)throw Object.assign(new Error('Proxmox rejected the two-factor response'),{status:401});
+      const answer=await finish.text();if(answer.length>10000)throw new Error('2FA reply too large');
+      ticket=JSON.parse(answer)?.data?.ticket;
+    }
     if (typeof ticket !== 'string' || !/^PVE:[A-Za-z0-9_-]+:.{1,2000}$/.test(ticket)) throw new Error('Proxmox did not return a valid login ticket');
     return {Cookie:'PVEAuthCookie='+ticket};
   } finally {clearTimeout(timeout);}
@@ -208,7 +223,7 @@ export async function inspectMigrationSource(input) {
   const base = 'https://' + (isIP(host) === 6 ? '[' + host + ']' : host) + ':' + port + '/';
   let items = [];
   if (source === 'proxmox') {
-    const headers = username && password ? await proxmoxPasswordSession(base, username, password) : { Authorization: 'PVEAPIToken=' + token };
+    const headers = username && password ? await proxmoxPasswordSession(base, username, password, proxmoxSecondFactor) : { Authorization: 'PVEAPIToken=' + token };
     if(!token && !(username && password)) throw new Error('Proxmox username/password or API token required');
     const result = await jsonRequest(base, 'api2/json/cluster/resources', headers);
     const rows = result?.data || [];
