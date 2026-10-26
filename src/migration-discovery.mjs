@@ -283,8 +283,13 @@ export async function inspectMigrationSource(input) {
     ];
   }
   if (items.length > 2000) throw new Error('inventory exceeds first-pass limit; narrow the migration scope');
+  const counts = Object.fromEntries(['vm','container','app','storage','share','network'].map(type=>[type,items.filter(item=>item.type===type).length]));
+  const coverage = source==='proxmox' ? {vm:'scanned',container:'scanned',app:'not-provided-by-api'}
+    : source==='vmware' ? {vm:'scanned',container:'not-native-to-vcenter',app:'not-native-to-vcenter'}
+    : {vm:'scanned',container:username&&password?'scanned-if-supported':'not-scanned-by-token-connector',
+       app:username&&password?'scanned-if-supported':'not-scanned-by-token-connector'};
   // A discovery response is an inventory, not confirmation of migration support.
-  return { source, items, discoveryOnly: true, credentialsStored: false, capabilities: supportedMigrationSources().find(x => x.id === source) };
+  return { source, items, counts, coverage, discoveryOnly: true, credentialsStored: false, capabilities: supportedMigrationSources().find(x => x.id === source) };
 }
 export function previewMigrationManifest(input) {
   return planMigration(input);
