@@ -13,7 +13,7 @@
 <div class="row"><button class="secondary" id="auth-toggle" type="button">Use API token instead</button><button id="scan" type="button">Connect & scan</button></div><p id="connect-status" role="status"></p>
 </section>
 <section class="panel hidden" id="scan-panel"><h2>Detected workloads</h2><p>Select the items you want to review for migration. Nothing has been changed on the source server.</p>
-<div id="results"></div><div class="row"><button class="secondary" id="back1">Back</button><button id="review">Review selected items</button></div><p id="scan-status" role="status"></p></section>
+<label style="display:flex;align-items:center;gap:10px;font-weight:500;margin:12px 0"><input type="checkbox" id="transfer-network-settings" style="width:auto;margin:0"> Include discovered network settings in migration planning (optional)</label><p class="quiet">Network interfaces are scanned automatically. Leave unchecked to keep the destination network unchanged. VLAN trunks, IPs, DNS and routes require destination verification.</p><div id="results"></div><div class="row"><button class="secondary" id="back1">Back</button><button id="review">Review selected items</button></div><p id="scan-status" role="status"></p></section>
 <section class="panel hidden" id="review-panel"><h2>Transfer readiness</h2><p id="summary"></p><div id="plan"></div>
 <p class="quiet">The scan prepares a compatibility plan. Transfers requiring export, destination mapping, permission review or downtime cannot be started automatically until those checks pass. Your source remains unchanged.</p>
 <div class="row"><button class="secondary" id="back2">Back</button><button id="advanced">Advanced migration tools</button></div>

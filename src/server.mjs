@@ -1,3 +1,4 @@
+import {previewNetworkMigration} from './migration-network-preflight.mjs';
 import {evaluateMigrationAcceptance} from './migration-acceptance.mjs';
 import {inspectMigrationCertificate} from './migration-certificate-inspect.mjs';
 import http from 'node:http';
@@ -1275,6 +1276,10 @@ async function api(req, res, url) {
   if (url.pathname === '/api/migration/acceptance/review' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
     return send(res,200,evaluateMigrationAcceptance(await bodyJson(req)));
+  }
+  if (url.pathname === '/api/migration/network/preflight' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    return send(res,200,previewNetworkMigration(await bodyJson(req)));
   }
   if (url.pathname === '/api/migration/plan' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
