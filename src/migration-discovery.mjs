@@ -71,7 +71,7 @@ async function truenasJsonRpcInventory(base, username, password, caCertificate='
   let done=false,authed=false,pinned=!trustedFingerprint;
   const pending=new Map(), lists={};
   const required=['pool.query','sharing.smb.query','vm.query'];
-  const optional=['app.query','virt.instance.query'];
+  const optional=['app.query','virt.instance.query','interface.query'];
   const socket=new WebSocket(endpoint,{handshakeTimeout:10000,maxPayload:2*1024*1024,
    ...(caCertificate?{ca:caCertificate}:{}),...(trustedFingerprint?{rejectUnauthorized:false}:{})});
   const timer=setTimeout(()=>finish(Object.assign(new Error('TrueNAS modern API timed out'),{status:504})),25000);
@@ -83,7 +83,8 @@ async function truenasJsonRpcInventory(base, username, password, caCertificate='
     ...mapItems(lists['sharing.smb.query'],'share','truenas-smb'),
     ...mapItems(lists['vm.query'],'vm','truenas-vm'),
     ...mapItems(lists['app.query'],'app','truenas-app'),
-    ...mapItems(lists['virt.instance.query'],'container','truenas-instance')]);
+    ...mapItems(lists['virt.instance.query'],'container','truenas-instance'),
+    ...mapItems(lists['interface.query'],'network','truenas-interface')]);
   }
   socket.on('upgrade',response=>{
    if(!trustedFingerprint)return;
@@ -250,7 +251,8 @@ export async function inspectMigrationSource(input) {
     items = [
       ...mapItems(rows.filter(x => x.type === 'qemu'), 'vm', 'qemu'),
       ...mapItems(rows.filter(x => x.type === 'lxc'), 'container', 'lxc'),
-      ...mapItems(rows.filter(x => x.type === 'storage'), 'storage', 'storage')
+      ...mapItems(rows.filter(x => x.type === 'storage'), 'storage', 'storage'),
+      ...mapItems(rows.filter(x => x.type === 'network'), 'network', 'proxmox-network')
     ];
   } else if (source === 'vmware') {
     const session = username && password ? await vmwarePasswordSession(base,username,password) : token;
