@@ -28,7 +28,7 @@ export const MIGRATION_SOURCES = Object.freeze({
   }
 });
 
-const TYPES = new Set(['vm', 'container', 'storage', 'network', 'share', 'setting', 'identity']);
+const TYPES = new Set(['vm', 'container', 'storage', 'network', 'share', 'setting', 'identity', 'app']);
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_. -]{0,119}$/;
 function plainText(value, max = 180) {
   const text = String(value ?? '').trim();
@@ -57,10 +57,11 @@ export function planMigration({ source, items, mappings = {} }) {
     if (destination && (typeof destination !== 'object' || Array.isArray(destination))) throw new Error('invalid destination mapping');
     const mapped = destination && destination.target ? plainText(destination.target) : '';
     const requiresMapping = ['vm', 'container', 'storage', 'network', 'share', 'identity'].includes(type);
+    const needsAdapter = type === 'app';
     return {
       order: index + 1, id, name, type,
       target: mapped || null,
-      status: !requiresMapping || mapped ? 'ready-for-review' : 'needs-mapping',
+      status: needsAdapter ? 'needs-app-migration-adapter' : (!requiresMapping || mapped ? 'ready-for-review' : 'needs-mapping'),
       actions: ['read-only discovery', 'map destination', 'estimate capacity/downtime', 'back up source', 'test restore', 'approval', 'copy', 'verify', 'optional cutover'],
       destructive: false,
       automaticCutover: false
@@ -73,7 +74,7 @@ export function planMigration({ source, items, mappings = {} }) {
     transmitsTelemetry: false, trackingPixels: false,
     requiresAdminApproval: true,
     steps,
-    blockers: steps.filter(step => step.status === 'needs-mapping').map(step => step.id),
+    blockers: steps.filter(step => step.status !== 'ready-for-review').map(step => step.id),
     migrationStarted: false
   };
 }
