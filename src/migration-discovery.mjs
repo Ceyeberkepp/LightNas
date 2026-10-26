@@ -70,11 +70,21 @@ async function truenasJsonRpcInventory(base, username, password, caCertificate='
  return await new Promise((resolve,reject)=>{
   let done=false,authed=false,pinned=!trustedFingerprint;
   const pending=new Map(), lists={};
+  const required=['pool.query','sharing.smb.query','vm.query'];
+  const optional=['app.query','virt.instance.query'];
   const socket=new WebSocket(endpoint,{handshakeTimeout:10000,maxPayload:2*1024*1024,
    ...(caCertificate?{ca:caCertificate}:{}),...(trustedFingerprint?{rejectUnauthorized:false}:{})});
   const timer=setTimeout(()=>finish(Object.assign(new Error('TrueNAS modern API timed out'),{status:504})),25000);
   function finish(error,result){if(done)return;done=true;clearTimeout(timer);socket.terminate();error?reject(error):resolve(result);}
   function call(method,params=[]){const id=randomUUID();pending.set(id,method);socket.send(JSON.stringify({jsonrpc:'2.0',id,method,params}));}
+  function maybeFinish(){
+   if(![...required,...optional].every(x=>Object.hasOwn(lists,x)))return;
+   finish(null,[...mapItems(lists['pool.query'],'storage','truenas-pool'),
+    ...mapItems(lists['sharing.smb.query'],'share','truenas-smb'),
+    ...mapItems(lists['vm.query'],'vm','truenas-vm'),
+    ...mapItems(lists['app.query'],'app','truenas-app'),
+    ...mapItems(lists['virt.instance.query'],'container','truenas-instance')]);
+  }
   socket.on('upgrade',response=>{
    if(!trustedFingerprint)return;
    const peer=response.socket?.getPeerCertificate?.();
@@ -99,7 +109,10 @@ async function truenasJsonRpcInventory(base, username, password, caCertificate='
    let response;try{response=JSON.parse(String(bytes));}catch{return finish(Object.assign(new Error('Invalid TrueNAS JSON-RPC response'),{status:409}));}
    if(response.jsonrpc!=='2.0'||!pending.has(String(response.id)))return;
    const method=pending.get(String(response.id));pending.delete(String(response.id));
-   if(response.error)return finish(Object.assign(new Error(method==='auth.login_ex'?'TrueNAS API authentication method failed':'TrueNAS API inventory permission or method failed'),{status:method==='auth.login_ex'?401:409}));
+   if(response.error){
+    if(optional.includes(method)){lists[method]=[];maybeFinish();return;}
+    return finish(Object.assign(new Error(method==='auth.login_ex'?'TrueNAS API authentication method failed':'TrueNAS API inventory permission or method failed'),{status:method==='auth.login_ex'?401:409}));
+   }
    if(method==='auth.login_ex'||method==='auth.login_ex_continue'){
     const status=response.result?.response_type;
     if(status==='OTP_REQUIRED' && method==='auth.login_ex' && otpToken){
@@ -107,13 +120,14 @@ async function truenasJsonRpcInventory(base, username, password, caCertificate='
     }
     if(status!=='SUCCESS')return finish(Object.assign(new Error(status==='OTP_REQUIRED'?'TrueNAS requires a current two-factor authentication code.':status==='AUTH_ERR'?'TrueNAS rejected the login or one-time code.':'TrueNAS authentication not completed: '+String(status||'unknown')),{status:status==='OTP_REQUIRED'?428:401}));
     authed=true;
-    for(const name of ['pool.query','sharing.smb.query','vm.query'])call(name);
+    for(const name of [...required,...optional])call(name);
     return;
    }
-   if(!authed||!Array.isArray(response.result))return finish(Object.assign(new Error('Invalid TrueNAS inventory'),{status:409}));
-   lists[method]=response.result;
-   if(['pool.query','sharing.smb.query','vm.query'].every(x=>Object.hasOwn(lists,x)))
-    finish(null,[...mapItems(lists['pool.query'],'storage','truenas-pool'),...mapItems(lists['sharing.smb.query'],'share','truenas-smb'),...mapItems(lists['vm.query'],'vm','truenas-vm')]);
+   if(!authed||!Array.isArray(response.result)){
+    if(optional.includes(method)){lists[method]=[];maybeFinish();return;}
+    return finish(Object.assign(new Error('Invalid TrueNAS inventory'),{status:409}));
+   }
+   lists[method]=response.result;maybeFinish();
   });
  });
 }
