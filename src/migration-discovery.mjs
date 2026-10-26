@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import WebSocket from 'ws';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
@@ -51,13 +52,13 @@ async function truenasJsonRpcInventory(base, username, password, caCertificate='
    throw Object.assign(new Error('TrueNAS username and password required'),{status:400});
  const endpoint=new URL('/api/current',base);endpoint.protocol='wss:';
  return await new Promise((resolve,reject)=>{
-  let done=false,authed=false,pinned=!trustedFingerprint,seq=0;
+  let done=false,authed=false,pinned=!trustedFingerprint;
   const pending=new Map(), lists={};
   const socket=new WebSocket(endpoint,{handshakeTimeout:10000,maxPayload:2*1024*1024,
    ...(caCertificate?{ca:caCertificate}:{}),...(trustedFingerprint?{rejectUnauthorized:false}:{})});
   const timer=setTimeout(()=>finish(Object.assign(new Error('TrueNAS modern API timed out'),{status:504})),25000);
   function finish(error,result){if(done)return;done=true;clearTimeout(timer);socket.terminate();error?reject(error):resolve(result);}
-  function call(method,params=[]){const id=String(++seq);pending.set(id,method);socket.send(JSON.stringify({jsonrpc:'2.0',id,method,params}));}
+  function call(method,params=[]){const id=randomUUID();pending.set(id,method);socket.send(JSON.stringify({jsonrpc:'2.0',id,method,params}));}
   socket.on('upgrade',response=>{
    if(!trustedFingerprint)return;
    const peer=response.socket?.getPeerCertificate?.();
