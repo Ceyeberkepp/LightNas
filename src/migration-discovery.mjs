@@ -62,7 +62,8 @@ async function proxmoxPasswordSession(base, username, password, secondFactor='')
   } finally {clearTimeout(timeout);}
 }
 // Modern TrueNAS SCALE (25.04+) JSON-RPC 2.0; password is sent only after TLS pin check.
-async function truenasJsonRpcInventory(base, username, password, caCertificate='', trustedFingerprint='') {
+async function truenasJsonRpcInventory(base, username, password, caCertificate='', trustedFingerprint='', otpToken='') {
+ if(otpToken && !/^[0-9]{6,10}$/.test(otpToken)) throw Object.assign(new Error('Enter a valid one-time authentication code'),{status:400});
  if(!/^[A-Za-z0-9_.@-]{1,100}$/.test(username)||!password||password.length>1024)
    throw Object.assign(new Error('TrueNAS username and password required'),{status:400});
  const endpoint=new URL('/api/current',base);endpoint.protocol='wss:';
@@ -99,9 +100,12 @@ async function truenasJsonRpcInventory(base, username, password, caCertificate='
    if(response.jsonrpc!=='2.0'||!pending.has(String(response.id)))return;
    const method=pending.get(String(response.id));pending.delete(String(response.id));
    if(response.error)return finish(Object.assign(new Error(method==='auth.login_ex'?'TrueNAS API authentication method failed':'TrueNAS API inventory permission or method failed'),{status:method==='auth.login_ex'?401:409}));
-   if(method==='auth.login_ex'){
+   if(method==='auth.login_ex'||method==='auth.login_ex_continue'){
     const status=response.result?.response_type;
-    if(status!=='SUCCESS')return finish(Object.assign(new Error(status==='OTP_REQUIRED'?'TrueNAS account requires two-factor authentication; API OTP step is not implemented.':status==='AUTH_ERR'?'TrueNAS rejected the username or password.':'TrueNAS authentication not completed: '+String(status||'unknown')),{status:401}));
+    if(status==='OTP_REQUIRED' && method==='auth.login_ex' && otpToken){
+      call('auth.login_ex_continue',[{mechanism:'OTP_TOKEN',otp_token:otpToken}]);return;
+    }
+    if(status!=='SUCCESS')return finish(Object.assign(new Error(status==='OTP_REQUIRED'?'TrueNAS requires a current two-factor authentication code.':status==='AUTH_ERR'?'TrueNAS rejected the login or one-time code.':'TrueNAS authentication not completed: '+String(status||'unknown')),{status:status==='OTP_REQUIRED'?428:401}));
     authed=true;
     for(const name of ['pool.query','sharing.smb.query','vm.query'])call(name);
     return;
@@ -214,6 +218,7 @@ export async function inspectMigrationSource(input) {
   const password = typeof input?.password === 'string' ? input.password : '';
   const caCertificate = typeof input?.caCertificate === 'string' ? input.caCertificate.trim() : '';
   const trustedFingerprint = typeof input?.trustedFingerprint === 'string' ? input.trustedFingerprint.trim() : '';
+  const otpToken = typeof input?.otpToken === 'string' ? input.otpToken.trim() : '';
   if (caCertificate && (caCertificate.length > 16384 || !/^-----BEGIN CERTIFICATE-----\s*[A-Za-z0-9+/=\s]+-----END CERTIFICATE-----$/.test(caCertificate))) throw Object.assign(new Error('Provide a valid PEM CA certificate, not a private key.'), {status:400});
   if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (!['proxmox','truenas','vmware'].includes(source) && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
   if (host.includes('..') || host.includes('@') || host.includes('/') || host.includes('#')) throw new Error('invalid source host');
@@ -247,7 +252,7 @@ export async function inspectMigrationSource(input) {
       ...mapItems((networks || []).map(x => ({ id: x.network, name: x.name })), 'network', 'vmware-network')
     ];
   } else if(source==='truenas' && username && password){
-    items=await truenasJsonRpcInventory(base,username,password,caCertificate,trustedFingerprint);
+    items=await truenasJsonRpcInventory(base,username,password,caCertificate,trustedFingerprint,otpToken);
   } else {
     if(!token)throw new Error('TrueNAS username/password or API token required');
     const headers = { Authorization: 'Bearer ' + token };
