@@ -4,6 +4,7 @@ const validVlan=n=>Number.isInteger(n)&&n>=1&&n<=4094;
 function bad(s){throw Object.assign(new Error(s),{status:400});}
 export function previewNetworkMigration(input){
  if(!input||typeof input!=='object'||Array.isArray(input)||!Array.isArray(input.networks)||input.networks.length>256)bad('Invalid network inventory');
+ const selected=input.transferNetworkSettings===true;
  const existing=new Set(),results=[];
  for(const net of input.networks){
   if(!net||typeof net!=='object'||Array.isArray(net)||!IFACE.test(net.name||'')||existing.has(net.name))bad('Invalid or duplicate interface');
@@ -19,8 +20,8 @@ export function previewNetworkMigration(input){
   if(net.management===true)issues.push('Management interface cutover requires console access and rollback timer');
   issues.push('Live destination and switch configuration must be verified before activation');
   results.push({name:net.name,mode:net.mode,allowedVlans:tags,targetInterface:target?.interface||null,
-   issues,readyForExecution:false});
+   issues,readyForExecution:false,selectedForTransfer:selected});
  }
- return {phase:'network-migration-preflight',readOnly:true,networkChangesApplied:false,
+ return {phase:'network-migration-preflight',discovered:true,selectedForTransfer:selected,readOnly:true,networkChangesApplied:false,
   cutoverAuthorized:false,results};
 }
