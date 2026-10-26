@@ -23,7 +23,17 @@ el('certificate-result').textContent='Detected certificate: '+(certificate.subje
  ' · SHA-256 '+certificate.sha256Fingerprint+' · SAN: '+(certificate.subjectAlternativeName||'none')+
  ' · System trust: '+(certificate.trustedBySystem?'verified':'untrusted');
 if(!certificate.trustedBySystem&&!data.caCertificate){
- throw Error('Certificate detected automatically, but its identity is not trusted. No password was sent. Configure an HTTPS certificate valid for this server address or supply its verified issuing CA.');
+ if(data.source!=='truenas')throw Error('This source certificate is not trusted. Configure its issuing CA before submitting credentials.');
+ const accepted=window.confirm(
+  'One-time certificate approval for TrueNAS '+data.host+'\\n\\n'+
+  'SHA-256 fingerprint: '+certificate.sha256Fingerprint+'\\n'+
+  'Certificate name: '+(certificate.subject||'none')+'\\n'+
+  'SAN: '+(certificate.subjectAlternativeName||'none')+'\\n\\n'+
+  'Compare this fingerprint with the certificate shown directly on TrueNAS over a trusted channel. '+
+  'Only approve if it matches. Approval applies to this scan only and is not saved.'
+ );
+ if(!accepted)throw Error('Connection cancelled. No password was sent.');
+ data.trustedFingerprint=certificate.sha256Fingerprint;
 }
 el('connect-status').textContent='Certificate checked; scanning source…';
 const result=await post('/api/migration/inspect',data);inventory=result.items||[];if(!inventory.length)throw Error('Connected, but no migration objects were returned');el('results').innerHTML='<table><thead><tr><th>Select</th><th>Workload</th><th>Type</th></tr></thead><tbody>'+inventory.map((x,i)=>'<tr><td><input aria-label="Select '+esc(x.name)+'" type="checkbox" data-workload="'+i+'" checked></td><td>'+esc(x.name)+'</td><td>'+esc(x.type)+'</td></tr>').join('')+'</tbody></table>';el('connect-status').textContent=inventory.length+' objects found';show(2);}catch(e){el('connect-status').textContent=e.message;el('connect-status').className='danger'}finally{el('password').value='';el('token').value='';el('scan').disabled=false;}};

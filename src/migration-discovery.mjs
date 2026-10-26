@@ -46,19 +46,34 @@ async function proxmoxPasswordSession(base, username, password) {
   } finally {clearTimeout(timeout);}
 }
 // TrueNAS legacy middleware WebSocket authentication, supported on SCALE through 25.10.
-async function truenasPasswordInventory(base, username, password, caCertificate = '') {
+async function truenasPasswordInventory(base, username, password, caCertificate = '', trustedFingerprint = '') {
   if(!/^[A-Za-z0-9_.@-]{1,100}$/.test(username)||typeof password!=='string'||!password||password.length>1024)
     throw Object.assign(new Error('Enter both your TrueNAS username and password.'),{status:400});
+  if (trustedFingerprint && !/^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/i.test(trustedFingerprint)) throw Object.assign(new Error('Invalid one-time server fingerprint'),{status:400});
   const endpoint=new URL('/websocket',base);
   endpoint.protocol='wss:';
   return await new Promise((resolve,reject)=>{
-    const socket=new WebSocket(endpoint,{handshakeTimeout:10000,maxPayload:2*1024*1024, ...(caCertificate ? {ca:caCertificate} : {})});
-    let settled=false,connected=false,authorized=false;
+    const socket=new WebSocket(endpoint,{handshakeTimeout:10000,maxPayload:2*1024*1024,
+      ...(caCertificate ? {ca:caCertificate} : {}),
+      ...(trustedFingerprint ? {rejectUnauthorized:false} : {})});
+    let settled=false,connected=false,authorized=false,peerPinned=!trustedFingerprint;
     const lists={};const ids={};let seq=0;
     const timeout=setTimeout(()=>finish(Object.assign(new Error('TrueNAS API did not respond within 25 seconds. Check address, API compatibility and firewall.'),{status:504})),25000);
     function finish(error,result){if(settled)return;settled=true;clearTimeout(timeout);socket.close();error?reject(error):resolve(result);}
     function method(name,params=[]){const id=String(++seq);ids[id]=name;socket.send(JSON.stringify({id,msg:'method',method:name,params}));}
-    socket.on('open',()=>socket.send(JSON.stringify({msg:'connect',version:'1',support:['1']})));
+    socket.on('upgrade',response=>{
+      if(!trustedFingerprint)return;
+      const cert=response.socket?.getPeerCertificate?.();
+      const actual=String(cert?.fingerprint256||'').toUpperCase();
+      const expires=Date.parse(cert?.valid_to||'');
+      if(actual!==trustedFingerprint.toUpperCase()||!Number.isFinite(expires)||expires<=Date.now())
+        return finish(Object.assign(new Error('Source certificate changed or expired. Trust approval is no longer valid.'),{status:409}));
+      peerPinned=true;
+    });
+    socket.on('open',()=>{
+      if(!peerPinned)return finish(Object.assign(new Error('Source certificate identity was not verified'),{status:409}));
+      socket.send(JSON.stringify({msg:'connect',version:'1',support:['1']}));
+    });
     socket.on('error',err=>{
       const code=String(err?.code||err?.cause?.code||'');
       const status=Number(err?.statusCode||0);
@@ -109,6 +124,7 @@ export async function inspectMigrationSource(input) {
   const username = String(input?.username || '').trim();
   const password = typeof input?.password === 'string' ? input.password : '';
   const caCertificate = typeof input?.caCertificate === 'string' ? input.caCertificate.trim() : '';
+  const trustedFingerprint = typeof input?.trustedFingerprint === 'string' ? input.trustedFingerprint.trim() : '';
   if (caCertificate && (caCertificate.length > 16384 || !/^-----BEGIN CERTIFICATE-----\s*[A-Za-z0-9+/=\s]+-----END CERTIFICATE-----$/.test(caCertificate))) throw Object.assign(new Error('Provide a valid PEM CA certificate, not a private key.'), {status:400});
   if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (!['proxmox','truenas'].includes(source) && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
   if (host.includes('..') || host.includes('@') || host.includes('/') || host.includes('#')) throw new Error('invalid source host');
@@ -140,7 +156,7 @@ export async function inspectMigrationSource(input) {
       ...mapItems((networks || []).map(x => ({ id: x.network, name: x.name })), 'network', 'vmware-network')
     ];
   } else if(source==='truenas' && username && password){
-    items=await truenasPasswordInventory(base,username,password,caCertificate);
+    items=await truenasPasswordInventory(base,username,password,caCertificate,trustedFingerprint);
   } else {
     if(!token)throw new Error('TrueNAS username/password or API token required');
     const headers = { Authorization: 'Bearer ' + token };

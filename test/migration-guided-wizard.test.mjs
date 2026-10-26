@@ -17,10 +17,13 @@ test('guided wizard has connect scan review and clears credentials',()=>{
  assert.match(wizardJs,/el\('token'\)\.value=''/);
  assert.match(wizard,/Advanced migration tools/);
 });
-test('password login is limited to Proxmox read-only source discovery',()=>{
+test('Proxmox login and per-server TrueNAS fingerprint approval are scoped',()=>{
  assert.match(discovery,/proxmoxPasswordSession/);
  assert.match(discovery,/access\/ticket/);
  assert.match(discovery,/redirect:'error'/);
  assert.match(discovery,/source === 'proxmox'/);
- assert.doesNotMatch(discovery,/rejectUnauthorized:\s*false/);
+ assert.match(discovery,/trustedFingerprint \? \{rejectUnauthorized:false\} : \{\}/);
+ assert.match(discovery,/actual!==trustedFingerprint\.toUpperCase\(\)/);
+ assert.match(discovery,/peerPinned=true/);
+ assert.match(discovery,/if\(!peerPinned\)return finish/);
 });
