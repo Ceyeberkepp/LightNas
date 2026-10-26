@@ -14,7 +14,7 @@
 </section>
 <section class="panel hidden" id="scan-panel"><h2>Detected workloads</h2><p>Select the items you want to review for migration. Nothing has been changed on the source server.</p>
 <label style="display:flex;align-items:center;gap:10px;font-weight:500;margin:12px 0"><input type="checkbox" id="transfer-network-settings" style="width:auto;margin:0"> Include discovered network settings in migration planning (optional)</label><p class="quiet">Network interfaces are scanned automatically. Leave unchecked to keep the destination network unchanged. VLAN trunks, IPs, DNS and routes require destination verification.</p><div id="results"></div><div class="row"><button class="secondary" id="back1">Back</button><button id="review">Review selected items</button></div><p id="scan-status" role="status"></p></section>
-<section class="panel hidden" id="review-panel"><h2>Transfer readiness</h2><p id="summary"></p><div id="plan"></div>
+<section class="panel hidden" id="review-panel"><h2>Transfer readiness</h2><p id="summary"></p><div id="plan"></div><p class="quiet">Enter the destination pool, share, container storage or network for each item. Mapping only records a proposed destination; it does not copy data or authorize cutover.</p><div class="row"><span id="review-status" role="status"></span><button type="button" id="check-mappings">Check destination mappings</button></div>
 <p class="quiet">The scan prepares a compatibility plan. Transfers requiring export, destination mapping, permission review or downtime cannot be started automatically until those checks pass. Your source remains unchanged.</p>
 <div class="row"><button class="secondary" id="back2">Back</button><button id="advanced">Advanced migration tools</button></div>
 </section>
