@@ -233,6 +233,7 @@ export async function inspectMigrationSource(input) {
   const caCertificate = typeof input?.caCertificate === 'string' ? input.caCertificate.trim() : '';
   const trustedFingerprint = typeof input?.trustedFingerprint === 'string' ? input.trustedFingerprint.trim() : '';
   const otpToken = typeof input?.otpToken === 'string' ? input.otpToken.trim() : '';
+  const proxmoxSecondFactor = typeof input?.proxmoxSecondFactor === 'string' ? input.proxmoxSecondFactor.trim() : '';
   if (caCertificate && (caCertificate.length > 16384 || !/^-----BEGIN CERTIFICATE-----\s*[A-Za-z0-9+/=\s]+-----END CERTIFICATE-----$/.test(caCertificate))) throw Object.assign(new Error('Provide a valid PEM CA certificate, not a private key.'), {status:400});
   if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (!['proxmox','truenas','vmware'].includes(source) && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
   if (host.includes('..') || host.includes('@') || host.includes('/') || host.includes('#')) throw new Error('invalid source host');
@@ -261,7 +262,7 @@ export async function inspectMigrationSource(input) {
       jsonRequest(base, 'api/vcenter/network', headers)
     ]);
     items = [
-      ...mapItems((vms || []).map(x => ({ id: x.vm, name: x.name })), 'vm', 'vmware-vm'),
+      ...mapItems((vms || []).map(x => ({ id: x.vm, name: x.name, power_state: x.power_state })), 'vm', 'vmware-vm'),
       ...mapItems((datastores || []).map(x => ({ id: x.datastore, name: x.name })), 'storage', 'vmware-datastore'),
       ...mapItems((networks || []).map(x => ({ id: x.network, name: x.name })), 'network', 'vmware-network')
     ];
@@ -282,8 +283,13 @@ export async function inspectMigrationSource(input) {
     ];
   }
   if (items.length > 2000) throw new Error('inventory exceeds first-pass limit; narrow the migration scope');
+  const counts = Object.fromEntries(['vm','container','app','storage','share','network'].map(type=>[type,items.filter(item=>item.type===type).length]));
+  const coverage = source==='proxmox' ? {vm:'scanned',container:'scanned',app:'not-provided-by-api'}
+    : source==='vmware' ? {vm:'scanned',container:'not-native-to-vcenter',app:'not-native-to-vcenter'}
+    : {vm:'scanned',container:username&&password?'scanned-if-supported':'not-scanned-by-token-connector',
+       app:username&&password?'scanned-if-supported':'not-scanned-by-token-connector'};
   // A discovery response is an inventory, not confirmation of migration support.
-  return { source, items, discoveryOnly: true, credentialsStored: false, capabilities: supportedMigrationSources().find(x => x.id === source) };
+  return { source, items, counts, coverage, discoveryOnly: true, credentialsStored: false, capabilities: supportedMigrationSources().find(x => x.id === source) };
 }
 export function previewMigrationManifest(input) {
   return planMigration(input);
