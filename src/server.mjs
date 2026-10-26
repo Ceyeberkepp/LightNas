@@ -1,3 +1,4 @@
+import {reviewGuestDependencies} from './migration-guest-dependencies.mjs';
 import {previewNetworkMigration} from './migration-network-preflight.mjs';
 import {evaluateMigrationAcceptance} from './migration-acceptance.mjs';
 import {inspectMigrationCertificate} from './migration-certificate-inspect.mjs';
@@ -1272,6 +1273,10 @@ async function api(req, res, url) {
   if (url.pathname === '/api/migration/manifest' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
     return send(res, 200, normalizeMigrationManifest(await bodyJson(req)));
+  }
+  if (url.pathname === '/api/migration/guest/dependencies' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    return send(res,200,reviewGuestDependencies(await bodyJson(req)));
   }
   if (url.pathname === '/api/migration/acceptance/review' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
