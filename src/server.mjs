@@ -1,3 +1,4 @@
+import {evaluateMigrationAcceptance} from './migration-acceptance.mjs';
 import {inspectMigrationCertificate} from './migration-certificate-inspect.mjs';
 import http from 'node:http';
 import {normalizeRedHatInventory,buildSourceExportManifest} from './migration-redhat-local.mjs';
@@ -1270,6 +1271,10 @@ async function api(req, res, url) {
   if (url.pathname === '/api/migration/manifest' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
     return send(res, 200, normalizeMigrationManifest(await bodyJson(req)));
+  }
+  if (url.pathname === '/api/migration/acceptance/review' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    return send(res,200,evaluateMigrationAcceptance(await bodyJson(req)));
   }
   if (url.pathname === '/api/migration/plan' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
