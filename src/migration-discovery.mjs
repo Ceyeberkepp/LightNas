@@ -98,6 +98,27 @@ async function truenasJsonRpcInventory(base, username, password, caCertificate='
   });
  });
 }
+async function vmwarePasswordSession(base,username,password) {
+ if(!username||username.length>128||!password||password.length>1024)
+  throw Object.assign(new Error('vCenter username and password required'),{status:400});
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+ try {
+  const credentials=Buffer.from(username+':'+password).toString('base64');
+  const response=await fetch(new URL('api/session',base),{
+   method:'POST',headers:{Authorization:'Basic '+credentials},
+   redirect:'error',signal:controller.signal
+  });
+  if(response.status===401||response.status===403)
+   throw Object.assign(new Error('vCenter rejected the username or password'),{status:401});
+  if(!response.ok)throw Object.assign(new Error('vCenter session API unavailable ('+response.status+')'),{status:409});
+  const body=await response.text();
+  if(body.length>4096)throw Object.assign(new Error('Invalid vCenter session reply'),{status:409});
+  const session=JSON.parse(body);
+  if(typeof session!=='string'||!session||session.length>2048)
+   throw Object.assign(new Error('Invalid vCenter session ID'),{status:409});
+  return session;
+ }finally{clearTimeout(timer);}
+}
 // TrueNAS legacy middleware WebSocket authentication, supported on SCALE through 25.10.
 async function truenasPasswordInventory(base, username, password, caCertificate = '', trustedFingerprint = '') {
   if(!/^[A-Za-z0-9_.@-]{1,100}$/.test(username)||typeof password!=='string'||!password||password.length>1024)
@@ -179,7 +200,7 @@ export async function inspectMigrationSource(input) {
   const caCertificate = typeof input?.caCertificate === 'string' ? input.caCertificate.trim() : '';
   const trustedFingerprint = typeof input?.trustedFingerprint === 'string' ? input.trustedFingerprint.trim() : '';
   if (caCertificate && (caCertificate.length > 16384 || !/^-----BEGIN CERTIFICATE-----\s*[A-Za-z0-9+/=\s]+-----END CERTIFICATE-----$/.test(caCertificate))) throw Object.assign(new Error('Provide a valid PEM CA certificate, not a private key.'), {status:400});
-  if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (!['proxmox','truenas'].includes(source) && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
+  if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (!['proxmox','truenas','vmware'].includes(source) && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
   if (host.includes('..') || host.includes('@') || host.includes('/') || host.includes('#')) throw new Error('invalid source host');
   try { await assertInternal(host); }
   catch(error) { if(error.status)throw error; throw Object.assign(new Error('Cannot resolve the source host from LightNAS. Check its address and DNS.'),{status:400}); }
@@ -197,7 +218,9 @@ export async function inspectMigrationSource(input) {
       ...mapItems(rows.filter(x => x.type === 'storage'), 'storage', 'storage')
     ];
   } else if (source === 'vmware') {
-    const headers = { 'vmware-api-session-id': token };
+    const session = username && password ? await vmwarePasswordSession(base,username,password) : token;
+    if(!session)throw Object.assign(new Error('vCenter credentials or session ID required'),{status:400});
+    const headers = { 'vmware-api-session-id': session };
     const [vms, datastores, networks] = await Promise.all([
       jsonRequest(base, 'api/vcenter/vm', headers),
       jsonRequest(base, 'api/vcenter/datastore', headers),
