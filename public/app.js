@@ -1958,7 +1958,7 @@ function updateMobileUploadTask(patch={}){
 async function uploadFilesWithProgress(fileList, folderMode = false) {
   const files = [...fileList];
   if (!files.length) return;
-  updateMobileUploadTask({active:true,percent:0,title:folderMode?'Uploading folder':'Uploading files',text:files.length+' selected'};
+  updateMobileUploadTask({active:true,percent:0,title:folderMode?'Uploading folder':'Uploading files',text:files.length+' selected'});
   const targets = files.map(file => {
     const relative = folderMode ? (file.webkitRelativePath || file.name) : file.name;
     const clean = relative.split('/').filter(part => part && part !== '.' && part !== '..').join('/');
