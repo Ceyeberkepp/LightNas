@@ -6,6 +6,10 @@ export function reviewGuestDependencies(input){
  if(!input||typeof input!=='object'||!['vm','container','app'].includes(input.type)||
   !Array.isArray(input.dependencies)||input.dependencies.length>2000)bad('Invalid guest dependency manifest');
  if(input.inventoryComplete!==true)bad('Full source inventory required to review a guest');
+ const required=['storage','database','configuration','identity','permissions','secrets','network','services'];
+ const coverage=input.coverage;
+ if(!coverage||typeof coverage!=='object'||Array.isArray(coverage))bad('Full dependency coverage is required');
+ const unknown=required.filter(k=>coverage[k]!=='verified'&&coverage[k]!=='not-applicable');
  const ids=new Set();
  const dependencies=input.dependencies.map(x=>{
   if(!x||typeof x!=='object'||!KIND.has(x.kind)||!NAME.test(x.id||'')||ids.has(x.id))bad('Invalid or duplicate guest dependency');
@@ -20,7 +24,7 @@ export function reviewGuestDependencies(input){
       x.kind==='database'&&x.applicationConsistentBackup!==true?'Consistent database backup and restore required':
       x.kind==='secret'&&x.secureReprovisionVerified!==true?'Secret must be securely reprovisioned':null};
  });
- const blockers=dependencies.filter(x=>x.status==='blocked').map(x=>x.id);
+ const blockers=[...dependencies.filter(x=>x.status==='blocked').map(x=>x.id),...unknown.map(k=>'coverage:'+k)];
  return {phase:'guest-dependency-review',type:input.type,dependencies,blockers,
    coverage,allDependenciesVerified:blockers.length===0,transferStarted:false,
    guestActivationAuthorized:false,sourceDeletionAuthorized:false,
