@@ -97,7 +97,7 @@ async function checkMigrationMappings(){
  const inputs=[...el('plan').querySelectorAll('[data-mapping-index]')];
  for(const input of inputs){
   const item=currentSelection[Number(input.dataset.mappingIndex)];
-  if(item)mappingById[item.id]=input.value.trim();
+  if(item && (input.value.trim() || !mappingById[item.id]))mappingById[item.id]=input.value.trim();
  }
  const mappings=Object.create(null);
  for(const item of currentSelection){
