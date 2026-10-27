@@ -2373,10 +2373,10 @@ function adminCenterRow(title, description, actions = '') {
   </div>`;
 }
 
-function adminEmbeddedView(html) {
+function adminEmbeddedView(html, preserveActions = false) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '').trim();
-  template.content.querySelector('.page-head')?.remove();
+  if (!preserveActions) template.content.querySelector('.page-head')?.remove();
   return template.innerHTML;
 }
 
@@ -2442,7 +2442,7 @@ function adminView() {
 
   let panel = '';
   if (section === 'general') panel = adminGeneralPanel();
-  if (section === 'users') panel = adminEmbeddedView(usersView());
+  if (section === 'users') panel = adminEmbeddedView(usersView(), true);
   if (section === 'permissions') panel = adminEmbeddedView(permissionsView());
   if (section === 'smtp') panel = adminEmbeddedView(smtpView());
   if (section === 'settings') panel = adminEmbeddedView(settingsView());
