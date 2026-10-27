@@ -1973,17 +1973,22 @@ async function uploadFilesWithProgress(fileList, folderMode = false) {
     const destination = !folderMode && state.folder === '' ? libraryCategoryForName(file.name) : state.folder;
     return { file, path: [destination, clean].filter(Boolean).join('/') };
   });
-  try { await ensureUploadDirectories(targets.map(item => item.path)); }
+  try { await ensureUploadDirectories([...new Set(targets.map(item => item.path))]); }
   catch(error){updateMobileUploadTask({active:true,title:'Upload could not start',text:error.message||'Unable to prepare folders'});throw error;}
 
   const totalBytes = targets.reduce((sum, item) => sum + Number(item.file.size || 0), 0);
   const loadedByFile = new Array(targets.length).fill(0);
+  let transferredBytes = 0;
+  let lastProgressUpdate = 0;
   let completedCount = 0;
   let nextIndex = 0;
   const progress = window.LightNASProgress?.open(folderMode ? 'Uploading folder' : 'Uploading files', `${targets.length} item${targets.length === 1 ? '' : 's'} · ${bytes(totalBytes)}`, { modal:false });
 
-  const updateProgress = (activeName = '') => {
-    const transferred = loadedByFile.reduce((sum, value) => sum + value, 0);
+  const updateProgress = (activeName = '', force = false) => {
+    const now=Date.now();
+    if(!force && now-lastProgressUpdate<250)return;
+    lastProgressUpdate=now;
+    const transferred = transferredBytes;
     const percent = totalBytes ? Math.round((transferred / totalBytes) * 100) : Math.round((completedCount / targets.length) * 100);
     progress?.update(percent, `${completedCount} of ${targets.length} complete${activeName ? ` · ${activeName}` : ''} · ${bytes(transferred)} of ${bytes(totalBytes)}`);
     updateMobileUploadTask({active:true,percent,text:`${completedCount}/${targets.length} complete · ${bytes(transferred)} / ${bytes(totalBytes)}`});
@@ -2003,7 +2008,9 @@ async function uploadFilesWithProgress(fileList, folderMode = false) {
         try {
           const transfer = mobile ? chunkUploadRequest : uploadRequest;
           await transfer(path, file, loaded => {
-            loadedByFile[index] = loaded;
+            const value=Math.max(0,Math.min(Number(file.size||0),Number(loaded)||0));
+            transferredBytes+=value-loadedByFile[index];
+            loadedByFile[index]=value;
             updateProgress(file.name);
           });
           uploaded = true;
@@ -2024,10 +2031,12 @@ async function uploadFilesWithProgress(fileList, folderMode = false) {
         }
       }
       if (uploaded) {
+        transferredBytes+=Number(file.size||0)-loadedByFile[index];
         loadedByFile[index] = Number(file.size || 0);
         completedCount += 1;
       }
-      updateProgress();
+      updateProgress('',true);
+      if(index%12===0)await new Promise(resolve=>setTimeout(resolve,0));
     }
   };
 
