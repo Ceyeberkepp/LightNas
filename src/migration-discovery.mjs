@@ -220,7 +220,17 @@ function mapItems(items, type, sourcePrefix) {
   return (Array.isArray(items) ? items : []).map((x, i) => ({
     id: String(sourcePrefix + ':' + (x.vmid ?? x.id ?? x.name ?? i)).slice(0, 128),
     name: String(x.name || x.hostname || x.volid || x.vmid || 'Unnamed source').slice(0, 120),
-    type
+    type,
+    hardware: {
+      cpuCount: Number.isSafeInteger(x.cpu_count) && x.cpu_count>0 ? x.cpu_count :
+        Number.isSafeInteger(x.maxcpu) && x.maxcpu>0 ? x.maxcpu :
+        Number.isSafeInteger(x.vcpus) && x.vcpus>0 ? x.vcpus : null,
+      memoryMiB: Number.isSafeInteger(x.memory_size_MiB) && x.memory_size_MiB>0 ? x.memory_size_MiB :
+        Number.isFinite(x.maxmem) && x.maxmem>0 ? Math.round(x.maxmem/1048576) : null,
+      state: ['running','stopped','paused','suspended','POWERED_ON','POWERED_OFF'].includes(x.power_state||x.status)
+        ? (x.power_state||x.status) : null,
+      host: /^[A-Za-z0-9_.-]{1,100}$/.test(x.node||'') ? x.node : null
+    }
   }));
 }
 export async function inspectMigrationSource(input) {
@@ -264,7 +274,7 @@ export async function inspectMigrationSource(input) {
       jsonRequest(base, 'api/vcenter/network', headers)
     ]);
     items = [
-      ...mapItems((vms || []).map(x => ({ id: x.vm, name: x.name, power_state: x.power_state })), 'vm', 'vmware-vm'),
+      ...mapItems((vms || []).map(x => ({ id: x.vm, name: x.name, power_state: x.power_state, cpu_count: x.cpu_count, memory_size_MiB: x.memory_size_MiB })), 'vm', 'vmware-vm'),
       ...mapItems((datastores || []).map(x => ({ id: x.datastore, name: x.name })), 'storage', 'vmware-datastore'),
       ...mapItems((networks || []).map(x => ({ id: x.network, name: x.name })), 'network', 'vmware-network')
     ];
