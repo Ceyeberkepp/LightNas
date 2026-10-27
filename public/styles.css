@@ -2314,3 +2314,120 @@ body:not(.product-hypervisor) .backup-status-line {
     justify-content: flex-start;
   }
 }
+
+
+/* Profile editor: compact, responsive, with a single scrolling content area. */
+.profile-dialog {
+  width: min(820px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  overflow: hidden;
+  border-radius: 20px;
+}
+.profile-dialog .profile-form {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100dvh - 32px);
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.profile-dialog .dialog-head {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.profile-dialog .dialog-head h2 { margin: 5px 0 3px; }
+.profile-dialog .dialog-head p { margin: 0; }
+.profile-dialog .profile-layout {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  align-items: start;
+  gap: 16px;
+  padding: 18px 24px 22px;
+}
+.profile-dialog .profile-picture-editor,
+.profile-dialog .profile-account-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-2);
+  box-shadow: none;
+}
+.profile-dialog .profile-section-head { margin: 0 0 14px; }
+.profile-dialog .profile-section-head h3 { margin: 4px 0 4px; font-size: 15px; }
+.profile-dialog .profile-section-head p { margin: 0; font-size: 12px; line-height: 1.4; }
+.profile-dialog .profile-crop-stage {
+  width: min(184px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+}
+.profile-dialog .profile-picture-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.profile-dialog .profile-picture-actions button {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 8px;
+  font-size: 12px;
+  box-shadow: none;
+}
+.profile-dialog [data-profile-remove-photo] { grid-column: 1 / -1; }
+.profile-dialog .profile-position-controls { gap: 8px; }
+.profile-dialog .profile-picture-editor > label,
+.profile-dialog .profile-position-controls label { font-size: 12px; }
+.profile-dialog .profile-picture-editor > p.muted { font-size: 11px; margin: 8px 0 0; line-height: 1.4; }
+.profile-dialog .profile-account-fields { display: grid; gap: 12px; }
+.profile-dialog .profile-account-fields label { margin: 0; }
+.profile-dialog .profile-account-fields input { width: 100%; min-height: 40px; }
+.profile-dialog .profile-account-fields .manager-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 2px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.profile-dialog .profile-account-fields .module-note { margin: 0; line-height: 1.45; }
+.profile-dialog .form-error:empty { display: none; }
+.profile-dialog .form-error:not(:empty) { flex: 0 0 auto; padding: 8px 24px; }
+.profile-dialog .dialog-actions {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 24px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+.profile-dialog .dialog-actions button { min-height: 40px; box-shadow: none; }
+@media (max-width: 700px) {
+  .profile-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); border-radius: 14px; }
+  .profile-dialog .profile-form { max-height: calc(100dvh - 16px); }
+  .profile-dialog .dialog-head { padding: 16px; }
+  .profile-dialog .profile-layout { grid-template-columns: 1fr; gap: 12px; padding: 12px 16px 16px; }
+  .profile-dialog .profile-picture-editor,
+  .profile-dialog .profile-account-fields { padding: 14px; }
+  .profile-dialog .profile-crop-stage { width: min(164px, 55vw); }
+  .profile-dialog .dialog-actions { padding: 12px 16px; }
+}
+@media (max-width: 380px) {
+  .profile-dialog .profile-account-fields .manager-summary { grid-template-columns: 1fr; }
+  .profile-dialog .dialog-actions button { flex: 1 1 0; }
+}
