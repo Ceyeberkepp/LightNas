@@ -49,13 +49,25 @@ catch(error) {
 }
 inventory=result.items||[];const counts=result.counts||{};const coverage=result.coverage||{};el('scan-status').textContent='Found '+(counts.vm||0)+' VMs, '+(counts.container||0)+' containers, '+(counts.app||0)+' apps. Coverage: '+Object.entries(coverage).map(([k,v])=>k+' '+v).join(' · ');if(!inventory.length)throw Error('Connected, but no migration objects were returned');el('transfer-network-settings').checked=false;el('results').innerHTML='<table><thead><tr><th>Select</th><th>Workload</th><th>Type</th></tr></thead><tbody>'+inventory.map((x,i)=>'<tr><td><input aria-label="Select '+esc(x.name)+'" type="checkbox" data-workload="'+i+'" checked></td><td>'+esc(x.name)+'</td><td>'+esc(x.type)+(x.type==='network'?' (optional)':'')+'</td></tr>').join('')+'</tbody></table>';el('connect-status').textContent=inventory.length+' objects found';show(2);}catch(e){el('connect-status').textContent=e.message;el('connect-status').className='danger'}finally{el('password').value='';el('token').value='';el('scan').disabled=false;}};
 let currentSelection=[];
+let destinationPools=[];
+async function loadDestinationPools(){
+ const response=await fetch('/api/storage/pools',{credentials:'same-origin'});
+ const result=await response.json();
+ if(!response.ok)throw Error(result.error||'Could not load LightNAS destination pools');
+ destinationPools=(result.pools||[]).filter(p=>p.online===true&&p.writable===true);
+}
+function compatiblePools(type){
+ const content=type==='vm'?'images':type==='container'?'rootdir': 'files';
+ return destinationPools.filter(p=>Array.isArray(p.content)&&p.content.includes(content));
+}
+
 const mappingById=Object.create(null);
 function renderMigrationPlan(result){
  el('summary').textContent=result.steps.length+' selected · '+result.blockers.length+' compatibility blockers';
  el('plan').innerHTML='<table><thead><tr><th>Object</th><th>Type</th><th>Destination mapping</th><th>Status</th></tr></thead><tbody>'+
  result.steps.map((step,i)=>'<tr><td>'+esc(step.name)+'</td><td>'+esc(step.type)+'</td><td>'+
  (step.type==='app'?'Application-specific migration adapter required':
- '<input type="text" data-mapping-index="'+i+'" aria-label="Destination for '+esc(step.name)+'" value="'+esc(mappingById[step.id]||'')+'" placeholder="Destination name or pool" maxlength="120">')+
+ '<select data-mapping-index="'+i+'" aria-label="Destination pool for '+esc(step.name)+'"><option value="">Select an available LightNAS pool</option>'+compatiblePools(step.type).map(pool=>'<option value="'+esc(pool.id)+'"'+(mappingById[step.id]===pool.id?' selected':'')+'>'+esc(pool.name)+' ('+esc(pool.provider)+', '+Math.floor((pool.availableBytes||0)/1073741824)+' GiB free)</option>').join('')+'</select>')+
  '</td><td>'+esc(step.status)+'</td></tr>').join('')+'</tbody></table>';
  el('review-status').textContent=result.blockers.length?'Review mapping requirements before any transfer.':'Mappings recorded for review; no transfer has started.';
 }
@@ -76,7 +88,7 @@ el('review').onclick=async()=>{
    .map(x=>inventory[Number(x.dataset.workload)]).filter(x=>includeNetwork||x.type!=='network');
  if(!currentSelection.length){el('scan-status').textContent='Select at least one item';return;}
  el('scan-status').textContent='Preparing destination compatibility plan…';
- try{await checkMigrationMappings();show(3);}catch(e){el('scan-status').textContent=e.message;}
+ try{await loadDestinationPools();await checkMigrationMappings();show(3);}catch(e){el('scan-status').textContent=e.message;}
 };
 el('check-mappings').onclick=async()=>{
  el('check-mappings').disabled=true;
