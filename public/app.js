@@ -1512,7 +1512,7 @@ function filesView() {
     const meta = entry.directory ? 'Folder' : `${kind} · ${bytes(entry.sizeBytes)}${location ? ` · ${escapeHtml(location)}` : ''}`;
     const thumbVersion = encodeURIComponent(entry.modifiedAt || entry.sizeBytes || '1');
     const visual = entry.directory
-      ? '<span class="folder-glyph">▣</span>'
+      ? '<svg class="folder-card-icon" viewBox="0 0 64 64" fill="none" aria-hidden="true"><path d="M7 17a5 5 0 0 1 5-5h15l6 7h19a5 5 0 0 1 5 5v24a6 6 0 0 1-6 6H13a6 6 0 0 1-6-6V17Z" fill="currentColor" opacity=".26"/><path d="M7 28a6 6 0 0 1 6-6h38a6 6 0 0 1 6 6v20a6 6 0 0 1-6 6H13a6 6 0 0 1-6-6V28Z" fill="currentColor"/><path d="M13 23h38" stroke="currentColor" stroke-width="2" opacity=".4"/></svg>'
       : (kind === 'Photo' || kind === 'Video')
         ? `<img class="file-thumb" loading="eager" decoding="async" alt="" src="/api/files/thumbnail?path=${encodeURIComponent(path)}&v=${thumbVersion}">`
         : `<span class="file-glyph file-kind-${kind.toLowerCase()}">${kind === 'Audio' ? '♪' : '▤'}</span>`;

@@ -4452,3 +4452,12 @@ dialog.viewer-more-sheet.viewer-desktop-popover::backdrop { background: transpar
   background:var(--panel-color,#fff);color:var(--text,#111);
  }
 }
+
+/* LightNAS Files & Media folder card visuals */
+.file-card-visual:has(.folder-card-icon), .file-gallery-item .file-card-visual:has(.folder-card-icon) {
+  background:color-mix(in srgb,var(--accent,#16a34a) 7%,transparent);
+  border:1px solid color-mix(in srgb,var(--accent,#16a34a) 14%,transparent);
+  border-radius:12px;display:flex;align-items:center;justify-content:center;
+}
+.folder-card-icon {width:68px;height:68px;color:var(--accent,#16a34a);max-width:55%;max-height:55%}
+.file-card-open:hover .file-card-visual:has(.folder-card-icon) {background:color-mix(in srgb,var(--accent,#16a34a) 12%,transparent)}
