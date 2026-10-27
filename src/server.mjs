@@ -1,3 +1,4 @@
+import {reviewSftpGoMigration} from './migration-sftpgo-preflight.mjs';
 import {reviewGuestDependencies} from './migration-guest-dependencies.mjs';
 import {previewNetworkMigration} from './migration-network-preflight.mjs';
 import {evaluateMigrationAcceptance} from './migration-acceptance.mjs';
@@ -1273,6 +1274,10 @@ async function api(req, res, url) {
   if (url.pathname === '/api/migration/manifest' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res, 403, { error: 'Administrator session required.' });
     return send(res, 200, normalizeMigrationManifest(await bodyJson(req)));
+  }
+  if (url.pathname === '/api/migration/apps/sftpgo/preflight' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    return send(res,200,reviewSftpGoMigration(await bodyJson(req)));
   }
   if (url.pathname === '/api/migration/guest/dependencies' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
