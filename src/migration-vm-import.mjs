@@ -30,8 +30,16 @@ export async function importVerifiedVm(input) {
   if (input?.confirm !== 'IMPORT_VERIFIED_VM') {
     throw Object.assign(new Error('Explicit VM import confirmation required'), { status: 409 });
   }
-  const staged = verifiedMigrationFile(input.jobId);
-  if (!/\.(qcow2|raw|img)$/i.test(staged.name)) {
+  // Import every supplied disk, in boot order. Reject duplicate jobs and
+  // unsupported media rather than silently creating a partial guest.
+  const diskJobs = input.disks === undefined ? [input.jobId] : input.disks;
+  if (!Array.isArray(diskJobs) || diskJobs.length < 1 || diskJobs.length > 16 ||
+      diskJobs.some(x => typeof x !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(x)) ||
+      new Set(diskJobs).size !== diskJobs.length)
+    throw Object.assign(new Error('Supply 1–16 distinct verified VM disk job IDs in boot order'), {status:400});
+  const stagedDisks = diskJobs.map(jobId => verifiedMigrationFile(jobId));
+  const staged = stagedDisks[0];
+  if (stagedDisks.some(file => !/\.(qcow2|raw|img)$/i.test(file.name))) {
     throw Object.assign(new Error('Only verified QCOW2 or raw images can be imported directly; convert VMDK/OVA separately'), { status: 409 });
   }
   const runtime = (await runtimeInventory()).virtualization;
@@ -46,32 +54,36 @@ export async function importVerifiedVm(input) {
   }
   const storage = await resolveStoragePool(pool, 'images', true);
   const folder = join(storage.root, 'images', name);
-  const disk = join(folder, name + (staged.name.toLowerCase().endsWith('.qcow2') ? '.qcow2' : '.img'));
-  // Validate qemu sees a standalone image. Backing chains cannot silently
-  // reach files outside the verified staging directory.
-  const metadata = JSON.parse(await command('qemu-img', ['info','--output=json',staged.path]));
-  if (metadata['backing-filename'] || metadata['full-backing-filename'] || metadata.format === 'vmdk') {
-    throw Object.assign(new Error('Images with external backing files are not eligible for direct import'), { status: 409 });
+  const verifiedDisks = [];
+  // Validate ALL images before writing or defining any VM.
+  for (const [index, file] of stagedDisks.entries()) {
+    const metadata = JSON.parse(await command('qemu-img', ['info','--output=json',file.path]));
+    if (metadata['backing-filename'] || metadata['full-backing-filename'] ||
+        !['qcow2','raw'].includes(metadata.format))
+      throw Object.assign(new Error('Disk '+(index+1)+' uses unsupported format or an external backing chain'),{status:409});
+    verifiedDisks.push({file,format:metadata.format,
+      disk:join(folder,'disk-'+String(index).padStart(2,'0')+(metadata.format==='qcow2'?'.qcow2':'.img'))});
   }
   await command('virsh', ['-c','qemu:///system','dominfo',name]).then(
-    () => { throw Object.assign(new Error('VM name exists in libvirt'), { status: 409 }); },
+    () => { throw Object.assign(new Error('VM name exists in libvirt'), {status:409}); },
     error => { if (!/failed:|not found|Domain not found/i.test(error.message)) throw error; }
   );
-  await mkdir(folder, { recursive: true });
+  await mkdir(folder,{recursive:true});
   try {
-    await copyFile(staged.path, disk, 1); // COPYFILE_EXCL: never overwrite
-    const copied = await lstat(disk);
-    if (!copied.isFile() || copied.size !== staged.size) throw new Error('Copied disk failed size verification');
-    // Verify the destination image content, not only its byte length.
-    const destinationHash = createHash('sha256');
-    for await (const chunk of createReadStream(disk)) destinationHash.update(chunk);
-    if (destinationHash.digest('hex') !== staged.sha256) throw new Error('Imported disk checksum differs from staging copy');
+    for (const {file,disk} of verifiedDisks) {
+      await copyFile(file.path,disk,1);
+      const copied=await lstat(disk);
+      if (!copied.isFile() || copied.size!==file.size)throw Error('VM disk size verification failed');
+      const hash=createHash('sha256');
+      for await(const chunk of createReadStream(disk))hash.update(chunk);
+      if(hash.digest('hex')!==file.sha256)throw Error('VM disk integrity verification failed');
+    }
     const detail = runtime.networkDetails?.find(item => item.name === network);
     const netArg = detail?.type === 'host-bridge' ? 'bridge=' + network : 'network=' + network;
-    const diskFormat = metadata.format === 'qcow2' ? 'qcow2' : 'raw';
+    const diskArgs=verifiedDisks.flatMap(({disk,format})=>['--disk',`path=${disk},format=${format},bus=sata`]);
     const args = ['--connect','qemu:///system','--name',name,
       '--memory',String(memoryMiB),'--vcpus',String(cpus),
-      '--disk',`path=${disk},format=${diskFormat},bus=sata`,
+      ...diskArgs,
       '--network',netArg+',model=e1000','--graphics','vnc,listen=127.0.0.1',
       '--import','--osinfo','generic','--noautoconsole','--noreboot',
       '--print-xml'];
@@ -84,7 +96,7 @@ export async function importVerifiedVm(input) {
     const xmlFile = join(folder, 'import.xml');
     await writeFile(xmlFile, xml, { flag: 'wx', mode: 0o600 });
     await command('virsh',['-c','qemu:///system','define',xmlFile],30000);
-    return { name, state:'defined-offline', disk, network, pool, sourceSha256: staged.sha256,
+    return { name, state:'defined-offline', disks:verifiedDisks.map(({disk,file})=>({path:disk,sha256:file.sha256})), network, pool,
       warning:'VM has NOT started; confirm boot firmware, drivers, NIC and application data before cutover.' };
   } catch (error) {
     // Never delete a disk once libvirt has defined it: preserve recovery data.
