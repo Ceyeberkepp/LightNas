@@ -4461,3 +4461,32 @@ dialog.viewer-more-sheet.viewer-desktop-popover::backdrop { background: transpar
 }
 .folder-card-icon {width:68px;height:68px;color:var(--accent,#16a34a);max-width:55%;max-height:55%}
 .file-card-open:hover .file-card-visual:has(.folder-card-icon) {background:color-mix(in srgb,var(--accent,#16a34a) 12%,transparent)}
+
+/* Responsive containment: keep actions and forms reachable at narrow viewports.
+   Scoped to app content; do not clip long tables or change the sidebar. */
+#content {min-width:0;max-width:100%}
+#content :is(.panel,.card,.page-head,.head-actions,.admin-center-row,.admin-center-row-actions,.file-toolbar,.file-toolbar-actions,.user-form-grid,.files-settings-grid) {min-width:0;max-width:100%}
+#content :is(.page-head,.file-toolbar,.admin-center-row) {flex-wrap:wrap}
+#content :is(.head-actions,.file-toolbar-actions,.admin-center-row-actions){flex-wrap:wrap;min-width:0}
+#content :is(input,textarea,select){max-width:100%}
+#content :is(.panel,.card,.ai-message) {overflow-wrap:anywhere}
+#content :is(.storage-list,.table-wrap,.data-table-wrap){max-width:100%;overflow-x:auto}
+#content .ai-workspace-v2 {width:100%;max-width:100%;min-width:0;min-height:0;overflow:visible;grid-template-columns:minmax(0,240px) minmax(0,1fr)}
+#content .ai-workspace-v2 .ai-agent-chat {min-width:0;min-height:0;display:flex;flex-direction:column;overflow:visible}
+#content .ai-workspace-v2 .ai-agent-messages {min-width:0;min-height:180px;max-height:min(56dvh,650px);overflow-y:auto;overflow-x:hidden;overflow-wrap:anywhere}
+#content .ai-workspace-v2 .ai-agent-form {position:relative;display:flex;flex-wrap:wrap;min-width:0;width:100%;overflow:visible}
+#content .ai-workspace-v2 .ai-agent-form input {flex:1 1 180px;min-width:0;width:auto}
+#content .ai-workspace-v2 .ai-agent-form button {flex:0 0 auto}
+@media(max-width:800px){
+ #content .ai-workspace-v2 {display:flex;flex-direction:column;grid-template-columns:none}
+ #content .ai-workspace-v2 .ai-agent-context {width:100%;min-width:0}
+ #content .ai-workspace-v2 .ai-agent-messages {min-height:220px;max-height:min(50dvh,480px);padding:16px}
+ #content .ai-workspace-v2 .ai-agent-form {padding:12px;gap:8px;padding-bottom:max(12px,env(safe-area-inset-bottom))}
+ #content .ai-workspace-v2 .ai-agent-form input {flex:1 1 150px}
+ #content .ai-workspace-v2 .ai-agent-form button {min-width:72px}
+}
+@media(max-width:420px){
+ #content .ai-workspace-v2 .ai-agent-form input{flex-basis:100%}
+ #content .ai-workspace-v2 .ai-agent-form button{width:100%;justify-content:center}
+ #content .admin-center-row-actions > button {max-width:100%}
+}
