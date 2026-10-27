@@ -2060,7 +2060,7 @@ async function uploadFilesWithProgress(fileList, folderMode = false) {
       toast(message);
     }
   } finally {
-    updateMobileUploadTask({active:true,percent:failures.length?mobileUploadTask.percent:100,title:failures.length?'Upload needs attention':'Upload complete',text:failures.length?failures.length+' failed — check Files & Media':targets.length+' files uploaded'});
+    updateMobileUploadTask(failures.length ? {active:true,title:'Upload needs attention',text:failures.length+' failed — check Files & Media'} : {active:false,percent:100,title:'Upload complete',text:targets.length+' files uploaded'});
     if(state.view==='files')await loadFiles();
   }
 }
