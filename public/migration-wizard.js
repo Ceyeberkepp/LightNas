@@ -63,6 +63,20 @@ function compatiblePools(type){
 }
 
 const mappingById=Object.create(null);
+function autoMapDestinationPool(poolId){
+ const pool=destinationPools.find(p=>p.id===poolId);
+ if(!pool)throw Error('Selected destination pool is unavailable');
+ let mapped=0;
+ for(const item of currentSelection){
+  if(mappingById[item.id])continue;
+  if(compatiblePools(item.type).some(p=>p.id===poolId)){
+   mappingById[item.id]=poolId;
+   mapped++;
+  }
+ }
+ return mapped;
+}
+
 function renderMigrationPlan(result){
  el('summary').textContent=result.steps.length+' selected · '+result.blockers.length+' compatibility blockers';
  el('plan').innerHTML='<table><thead><tr><th>Object</th><th>Type</th><th>Destination mapping</th><th>Status</th></tr></thead><tbody>'+
@@ -70,13 +84,20 @@ function renderMigrationPlan(result){
  (step.type==='app'?'Application-specific migration adapter required':step.type==='network'?'Network interface mapping requires a separate destination network check':
  '<select data-mapping-index="'+i+'" aria-label="Destination pool for '+esc(step.name)+'"><option value="">Select an available LightNAS pool</option>'+compatiblePools(step.type).map(pool=>'<option value="'+esc(pool.id)+'"'+(mappingById[step.id]===pool.id?' selected':'')+'>'+esc(pool.name)+' ('+esc(pool.provider)+', '+Math.floor((pool.availableBytes||0)/1073741824)+' GiB free)</option>').join('')+'</select>')+
  '</td><td>'+esc(step.status)+'</td></tr>').join('')+'</tbody></table>';
+ el('plan').querySelectorAll('[data-mapping-index]').forEach(select=>select.addEventListener('change',async()=>{
+  const item=currentSelection[Number(select.dataset.mappingIndex)];
+  if(!item)return;
+  mappingById[item.id]=select.value;
+  if(select.value)autoMapDestinationPool(select.value);
+  try{await checkMigrationMappings();}catch(error){el('review-status').textContent=error.message;}
+ }));
  el('review-status').textContent=result.blockers.length?'Review mapping requirements before any transfer.':'Mappings recorded for review; no transfer has started.';
 }
 async function checkMigrationMappings(){
  const inputs=[...el('plan').querySelectorAll('[data-mapping-index]')];
  for(const input of inputs){
   const item=currentSelection[Number(input.dataset.mappingIndex)];
-  if(item)mappingById[item.id]=input.value.trim();
+  if(item && (input.value.trim() || !mappingById[item.id]))mappingById[item.id]=input.value.trim();
  }
  const mappings=Object.create(null);
  for(const item of currentSelection){
