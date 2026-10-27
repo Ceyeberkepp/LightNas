@@ -19,6 +19,7 @@ export async function executeVerifiedWorkloadRestore(input, adapters={}){
   const execute=adapters.vm||importVerifiedVm;
   const result=await execute({name:input.name,pool:input.pool,network:input.network,
     firmware:input.firmware,cpus:input.cpus,memoryMiB:input.memoryMiB,
+    interfaces:input.interfaces,
     disks,confirm:'IMPORT_VERIFIED_VM'});
   return {phase:'restored-offline',type:'vm',result,sourcePreserved:true,
     destinationFunctionalityVerified:false,cutoverAuthorized:false};

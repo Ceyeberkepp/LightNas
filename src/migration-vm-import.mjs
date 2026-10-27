@@ -30,6 +30,26 @@ export async function importVerifiedVm(input) {
   if (input?.confirm !== 'IMPORT_VERIFIED_VM') {
     throw Object.assign(new Error('Explicit VM import confirmation required'), { status: 409 });
   }
+  // Preserve multiple guest NICs, but never alter destination host networking.
+  const interfaces = input.interfaces === undefined
+    ? [{network,model:'e1000'}] : input.interfaces;
+  const macPattern=/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i;
+  if(!Array.isArray(interfaces)||interfaces.length<1||interfaces.length>12)
+    throw Object.assign(new Error('Supply 1–12 guest network adapters'),{status:400});
+  const macs=new Set();
+  for(const nic of interfaces){
+    if(!nic||typeof nic!=='object'||Array.isArray(nic)||
+       !/^[A-Za-z0-9_.:-]{1,48}$/.test(nic.network||'')||
+       !['virtio','e1000','rtl8139','vmxnet3'].includes(nic.model||'e1000')||
+       (nic.mac!==undefined&&!macPattern.test(nic.mac)))
+      throw Object.assign(new Error('Invalid VM guest NIC, model or MAC'),{status:400});
+    if(nic.mac){
+      const value=nic.mac.toLowerCase();
+      if(macs.has(value)||(parseInt(value.slice(0,2),16)&1))
+        throw Object.assign(new Error('Guest MAC address duplicated or multicast'),{status:400});
+      macs.add(value);
+    }
+  }
   // Import every supplied disk, in boot order. Reject duplicate jobs and
   // unsupported media rather than silently creating a partial guest.
   const diskJobs = input.disks === undefined ? [input.jobId] : input.disks;
@@ -46,7 +66,7 @@ export async function importVerifiedVm(input) {
   if (!runtime?.available || !runtime.enabled || runtime.provider?.startsWith('proxmox')) {
     throw Object.assign(new Error('Local LightNAS libvirt runtime required'), { status: 409 });
   }
-  if (!runtime.pools?.includes(pool) || !runtime.networks?.includes(network)) {
+  if (!runtime.pools?.includes(pool) || interfaces.some(nic=>!runtime.networks?.includes(nic.network))) {
     throw Object.assign(new Error('Selected storage pool or virtual network is unavailable'), { status: 409 });
   }
   if (runtime.machineDetails?.some(item => item.name === name)) {
@@ -78,13 +98,16 @@ export async function importVerifiedVm(input) {
       for await(const chunk of createReadStream(disk))hash.update(chunk);
       if(hash.digest('hex')!==file.sha256)throw Error('VM disk integrity verification failed');
     }
-    const detail = runtime.networkDetails?.find(item => item.name === network);
-    const netArg = detail?.type === 'host-bridge' ? 'bridge=' + network : 'network=' + network;
+    const nicArgs=interfaces.flatMap(nic=>{
+      const detail=runtime.networkDetails?.find(item=>item.name===nic.network);
+      const netArg=(detail?.type==='host-bridge'?'bridge=':'network=')+nic.network;
+      return ['--network',netArg+',model='+(nic.model||'e1000')+(nic.mac?',mac='+nic.mac:'')];
+    });
     const diskArgs=verifiedDisks.flatMap(({disk,format})=>['--disk',`path=${disk},format=${format},bus=sata`]);
     const args = ['--connect','qemu:///system','--name',name,
       '--memory',String(memoryMiB),'--vcpus',String(cpus),
       ...diskArgs,
-      '--network',netArg+',model=e1000','--graphics','vnc,listen=127.0.0.1',
+      ...nicArgs,'--graphics','vnc,listen=127.0.0.1',
       '--import','--osinfo','generic','--noautoconsole','--noreboot',
       '--print-xml'];
     if (firmware === 'uefi') args.push('--boot','uefi');
@@ -96,7 +119,7 @@ export async function importVerifiedVm(input) {
     const xmlFile = join(folder, 'import.xml');
     await writeFile(xmlFile, xml, { flag: 'wx', mode: 0o600 });
     await command('virsh',['-c','qemu:///system','define',xmlFile],30000);
-    return { name, state:'defined-offline', disks:verifiedDisks.map(({disk,file})=>({path:disk,sha256:file.sha256})), network, pool,
+    return { name, state:'defined-offline', disks:verifiedDisks.map(({disk,file})=>({path:disk,sha256:file.sha256})), network, interfaces, pool,
       warning:'VM has NOT started; confirm boot firmware, drivers, NIC and application data before cutover.' };
   } catch (error) {
     // Never delete a disk once libvirt has defined it: preserve recovery data.
