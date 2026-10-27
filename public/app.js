@@ -1653,7 +1653,7 @@ function filesView() {
     ${state.fileTruncated && allFiles ? '<div class="module-note">Showing the newest 10,000 files. Open a category or folder to browse beyond that safety limit.</div>' : ''}
     <div class="${effectiveFileView === 'gallery' ? 'file-photo-gallery' : effectiveFileView === 'grid' ? 'file-browser-grid' : 'storage-list'}">${state.fileError ? `<div class="empty error-state"><p><b>Files could not be loaded.</b></p><p>${escapeHtml(state.fileError)}</p><button class="secondary refresh-icon-button" data-action="refresh-files" aria-label="Try again" title="Try again">↻</button></div>` : entries === null ? '<div class="empty"><p>Loading files…</p></div>' : entries.length ? entries.map(item).join('') : `<div class="empty"><p>${foldersMode && state.folder === '' ? 'No folders have been created yet.' : allFiles ? 'No files have been uploaded yet.' : 'This folder is empty.'}</p></div>`}</div>
     </div>
-    <div id="mobile-file-upload-task" class="mobile-file-upload-task hidden" role="status" aria-live="polite"><b data-mobile-upload-title>Uploading photos</b><span data-mobile-upload-text></span><progress data-mobile-upload-meter max="100" value="0"></progress></div><button class="secondary mobile-files-settings-button" type="button" data-mobile-files-settings aria-label="Files & media settings">⚙ Settings</button>
+    <button class="secondary mobile-files-settings-button" type="button" data-mobile-files-settings aria-label="Files & media settings">⚙ Settings</button>
   </section>`;
 }
 
@@ -1945,20 +1945,25 @@ function uniqueUploadPath(path, attempt = 1) {
 let mobileUploadTask={active:false,percent:0,title:'',text:''};
 function updateMobileUploadTask(patch={}){
  mobileUploadTask={...mobileUploadTask,...patch};
- const node=document.getElementById('mobile-file-upload-task');
- if(!node)return;
+ let node=document.getElementById('mobile-file-upload-task');
+ if(!node){
+  node=document.createElement('aside');
+  node.id='mobile-file-upload-task';
+  node.className='mobile-file-upload-task hidden';
+  node.setAttribute('role','status');
+  node.setAttribute('aria-live','polite');
+  node.innerHTML='<b data-mobile-upload-title></b><span data-mobile-upload-text></span><progress data-mobile-upload-meter max="100" value="0"></progress>';
+  document.body.append(node);
+ }
  node.classList.toggle('hidden',!mobileUploadTask.active);
- const title=node.querySelector('[data-mobile-upload-title]');
- const detail=node.querySelector('[data-mobile-upload-text]');
- const meter=node.querySelector('[data-mobile-upload-meter]');
- if(title)title.textContent=mobileUploadTask.title;
- if(detail)detail.textContent=mobileUploadTask.text;
- if(meter)meter.value=mobileUploadTask.percent;
+ node.querySelector('[data-mobile-upload-title]').textContent=mobileUploadTask.title;
+ node.querySelector('[data-mobile-upload-text]').textContent=mobileUploadTask.text;
+ node.querySelector('[data-mobile-upload-meter]').value=mobileUploadTask.percent;
 }
 async function uploadFilesWithProgress(fileList, folderMode = false) {
   const files = [...fileList];
   if (!files.length) return;
-  updateMobileUploadTask({active:true,percent:0,title:folderMode?'Uploading folder':'Uploading files',text:files.length+' selected'});
+  updateMobileUploadTask({active:true,percent:0,title:folderMode?'Uploading folder':'Uploading photos & files',text:files.length+' selected · preparing uploads'});
   const targets = files.map(file => {
     const relative = folderMode ? (file.webkitRelativePath || file.name) : file.name;
     const clean = relative.split('/').filter(part => part && part !== '.' && part !== '..').join('/');
@@ -1968,7 +1973,8 @@ async function uploadFilesWithProgress(fileList, folderMode = false) {
     const destination = !folderMode && state.folder === '' ? libraryCategoryForName(file.name) : state.folder;
     return { file, path: [destination, clean].filter(Boolean).join('/') };
   });
-  await ensureUploadDirectories(targets.map(item => item.path));
+  try { await ensureUploadDirectories(targets.map(item => item.path)); }
+  catch(error){updateMobileUploadTask({active:true,title:'Upload could not start',text:error.message||'Unable to prepare folders'});throw error;}
 
   const totalBytes = targets.reduce((sum, item) => sum + Number(item.file.size || 0), 0);
   const loadedByFile = new Array(targets.length).fill(0);
@@ -2045,8 +2051,8 @@ async function uploadFilesWithProgress(fileList, folderMode = false) {
       toast(message);
     }
   } finally {
-    updateMobileUploadTask({active:false});
-    await loadFiles();
+    updateMobileUploadTask({active:true,percent:failures.length?mobileUploadTask.percent:100,title:failures.length?'Upload needs attention':'Upload complete',text:failures.length?failures.length+' failed — check Files & Media':targets.length+' files uploaded'});
+    if(state.view==='files')await loadFiles();
   }
 }
 
@@ -3792,7 +3798,7 @@ function bindViewActions() {
     const files = [...event.target.files];
     event.target.value = '';
     if(!files.length)return;
-    uploadFilesWithProgress(files, false).catch(error=>toast(error.message));
+    uploadFilesWithProgress(files, false).catch(error=>{updateMobileUploadTask({active:true,title:'Upload failed',text:error.message});toast(error.message);});
   });
   $('#mobile-folder-upload', content)?.addEventListener('change', async event => {
     const files = [...event.target.files];
