@@ -1503,6 +1503,7 @@ function filesView() {
           ? state.files.filter(entry => entry.directory)
           : state.files.filter(entry => entry.directory || !isSystemImageFile(entry.name)))
     : state.files;
+  if(Array.isArray(entries) && !allFiles)entries.sort((a,b)=>Number(Boolean(b.directory))-Number(Boolean(a.directory)) || String(a.name||'').localeCompare(String(b.name||''),undefined,{numeric:true,sensitivity:'base'}));
   const libraryOptions = librarySections.map(([folder, label]) => `<option value="${escapeHtml(folder)}" ${!state.filesSettingsOpen && section === folder ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('');
   const item = entry => {
     const path = fileEntryPath(entry);
@@ -1635,8 +1636,8 @@ function filesView() {
       <input id="folder-upload" type="file" webkitdirectory directory multiple hidden>
       <div class="mobile-direct-upload">
         <label class="secondary mobile-upload-button">
-          <span>Upload files</span>
-          <input id="mobile-native-upload" class="mobile-native-file-input" type="file" multiple>
+          <span>Select photos & videos</span>
+          <input id="mobile-native-upload" class="mobile-native-file-input" type="file" accept="image/*,video/*" multiple>
         </label>
         <label class="secondary mobile-upload-button">
           <span>Upload folder</span>
@@ -1652,7 +1653,7 @@ function filesView() {
     ${state.fileTruncated && allFiles ? '<div class="module-note">Showing the newest 10,000 files. Open a category or folder to browse beyond that safety limit.</div>' : ''}
     <div class="${effectiveFileView === 'gallery' ? 'file-photo-gallery' : effectiveFileView === 'grid' ? 'file-browser-grid' : 'storage-list'}">${state.fileError ? `<div class="empty error-state"><p><b>Files could not be loaded.</b></p><p>${escapeHtml(state.fileError)}</p><button class="secondary refresh-icon-button" data-action="refresh-files" aria-label="Try again" title="Try again">↻</button></div>` : entries === null ? '<div class="empty"><p>Loading files…</p></div>' : entries.length ? entries.map(item).join('') : `<div class="empty"><p>${foldersMode && state.folder === '' ? 'No folders have been created yet.' : allFiles ? 'No files have been uploaded yet.' : 'This folder is empty.'}</p></div>`}</div>
     </div>
-    <button class="secondary mobile-files-settings-button" type="button" data-mobile-files-settings aria-label="Files & media settings">⚙ Settings</button>
+    <div id="mobile-file-upload-task" class="mobile-file-upload-task hidden" role="status" aria-live="polite"><b data-mobile-upload-title>Uploading photos</b><span data-mobile-upload-text></span><progress data-mobile-upload-meter max="100" value="0"></progress></div><button class="secondary mobile-files-settings-button" type="button" data-mobile-files-settings aria-label="Files & media settings">⚙ Settings</button>
   </section>`;
 }
 
@@ -1941,9 +1942,23 @@ function uniqueUploadPath(path, attempt = 1) {
   return `${folder}${stem}-${Date.now()}-${attempt}${ext}`;
 }
 
+let mobileUploadTask={active:false,percent:0,title:'',text:''};
+function updateMobileUploadTask(patch={}){
+ mobileUploadTask={...mobileUploadTask,...patch};
+ const node=document.getElementById('mobile-file-upload-task');
+ if(!node)return;
+ node.classList.toggle('hidden',!mobileUploadTask.active);
+ const title=node.querySelector('[data-mobile-upload-title]');
+ const detail=node.querySelector('[data-mobile-upload-text]');
+ const meter=node.querySelector('[data-mobile-upload-meter]');
+ if(title)title.textContent=mobileUploadTask.title;
+ if(detail)detail.textContent=mobileUploadTask.text;
+ if(meter)meter.value=mobileUploadTask.percent;
+}
 async function uploadFilesWithProgress(fileList, folderMode = false) {
   const files = [...fileList];
   if (!files.length) return;
+  updateMobileUploadTask({active:true,percent:0,title:folderMode?'Uploading folder':'Uploading files',text:files.length+' selected'};
   const targets = files.map(file => {
     const relative = folderMode ? (file.webkitRelativePath || file.name) : file.name;
     const clean = relative.split('/').filter(part => part && part !== '.' && part !== '..').join('/');
@@ -1965,6 +1980,7 @@ async function uploadFilesWithProgress(fileList, folderMode = false) {
     const transferred = loadedByFile.reduce((sum, value) => sum + value, 0);
     const percent = totalBytes ? Math.round((transferred / totalBytes) * 100) : Math.round((completedCount / targets.length) * 100);
     progress?.update(percent, `${completedCount} of ${targets.length} complete${activeName ? ` · ${activeName}` : ''} · ${bytes(transferred)} of ${bytes(totalBytes)}`);
+    updateMobileUploadTask({active:true,percent,text:`${completedCount}/${targets.length} complete · ${bytes(transferred)} / ${bytes(totalBytes)}`});
   };
 
   const failures = [];
@@ -2029,6 +2045,7 @@ async function uploadFilesWithProgress(fileList, folderMode = false) {
       toast(message);
     }
   } finally {
+    updateMobileUploadTask({active:false});
     await loadFiles();
   }
 }
@@ -3649,7 +3666,7 @@ function bindViewActions() {
       dialog.innerHTML = `
         <div class="dialog-body">
           <div class="dialog-head"><div><span class="eyebrow">PHONE LIBRARY SYNC</span><h2>Automatically send new photos & videos to LightNAS</h2></div><button class="dialog-close" type="button" data-phone-sync-close aria-label="Close">×</button></div>
-          <p class="muted">LightNAS provides a private upload endpoint for iPhone Shortcuts or Android automation. New images are routed to Photos and videos to Videos automatically.</p>
+          <p class="muted">Automatic background sync is available through iPhone Shortcuts or Android automation. Enable it on your phone once; a browser alone cannot monitor new camera photos while closed. LightNAS provides a private upload endpoint. New images are routed to Photos and videos to Videos automatically.</p>
           <div class="phone-sync-steps">
             <div><b>1</b><span>Create a phone sync key.</span></div>
             <div><b>2</b><span>On iPhone, use Shortcuts automation when Camera closes or at a schedule. Send the newest photo/video with an HTTP PUT request.</span></div>
@@ -3771,10 +3788,11 @@ function bindViewActions() {
     event.target.value = '';
     await uploadFilesWithProgress(files, false);
   });
-  $('#mobile-native-upload', content)?.addEventListener('change', async event => {
+  $('#mobile-native-upload', content)?.addEventListener('change', event => {
     const files = [...event.target.files];
     event.target.value = '';
-    await uploadFilesWithProgress(files, false);
+    if(!files.length)return;
+    uploadFilesWithProgress(files, false).catch(error=>toast(error.message));
   });
   $('#mobile-folder-upload', content)?.addEventListener('change', async event => {
     const files = [...event.target.files];
