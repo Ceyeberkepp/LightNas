@@ -1503,6 +1503,7 @@ function filesView() {
           ? state.files.filter(entry => entry.directory)
           : state.files.filter(entry => entry.directory || !isSystemImageFile(entry.name)))
     : state.files;
+  if(Array.isArray(entries) && !allFiles)entries.sort((a,b)=>Number(Boolean(b.directory))-Number(Boolean(a.directory)) || String(a.name||'').localeCompare(String(b.name||''),undefined,{numeric:true,sensitivity:'base'}));
   const libraryOptions = librarySections.map(([folder, label]) => `<option value="${escapeHtml(folder)}" ${!state.filesSettingsOpen && section === folder ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('');
   const item = entry => {
     const path = fileEntryPath(entry);
@@ -3665,7 +3666,7 @@ function bindViewActions() {
       dialog.innerHTML = `
         <div class="dialog-body">
           <div class="dialog-head"><div><span class="eyebrow">PHONE LIBRARY SYNC</span><h2>Automatically send new photos & videos to LightNAS</h2></div><button class="dialog-close" type="button" data-phone-sync-close aria-label="Close">×</button></div>
-          <p class="muted">LightNAS provides a private upload endpoint for iPhone Shortcuts or Android automation. New images are routed to Photos and videos to Videos automatically.</p>
+          <p class="muted">Automatic background sync is available through iPhone Shortcuts or Android automation. Enable it on your phone once; a browser alone cannot monitor new camera photos while closed. LightNAS provides a private upload endpoint. New images are routed to Photos and videos to Videos automatically.</p>
           <div class="phone-sync-steps">
             <div><b>1</b><span>Create a phone sync key.</span></div>
             <div><b>2</b><span>On iPhone, use Shortcuts automation when Camera closes or at a schedule. Send the newest photo/video with an HTTP PUT request.</span></div>
