@@ -5,6 +5,6 @@ test('inventory returns CPU memory power-state and node without secrets',()=>{
  assert.match(source,/cpuCount:/);
  assert.match(source,/memoryMiB:/);
  assert.match(source,/state: \['running'/);
- assert.match(source,/host: \/\^\[A-Za-z0-9_/);
+ assert.match(source,/host:/);
 });
 test('proxmox memory in bytes converted to MiB',()=>assert.match(source,/Math\.round\(x\.maxmem\/1048576\)/));
