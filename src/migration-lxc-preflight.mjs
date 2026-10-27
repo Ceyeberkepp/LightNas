@@ -16,8 +16,8 @@ function safeEntry(name) {
 export function inspectArchiveMemberTypes(listing) {
   if(typeof listing!=='string') throw Object.assign(new Error('Invalid archive listing'),{status:400});
   const lines=listing.split('\n').filter(Boolean);
-  if(lines.length>200000 || lines.some(line=>!['-','d'].includes(line[0])))
-    throw Object.assign(new Error('Archive contains links, special files, or exceeds member limit'),{status:409});
+  if(lines.length>200000 || lines.some(line=>!['-','d','l'].includes(line[0])))
+    throw Object.assign(new Error('Archive contains unsupported hard links or special files, or exceeds member limit'),{status:409});
   return lines.length;
 }
 export async function inspectVerifiedLxcArchive(jobId) {
@@ -34,7 +34,7 @@ export async function inspectVerifiedLxcArchive(jobId) {
   } catch (error) {
     throw Object.assign(new Error('Cannot enumerate LXC archive: '+String(error.stderr || error.message).slice(0,200)), { status: 409 });
   }
-  // Reject archive links and device nodes until a safe root-owned extractor exists.
+  // Permit relative symlink entries; the offline extractor validates symlink targets lexically and enforces O_NOFOLLOW.
   // Tar's verbose listing starts with a member type (regular file '-', directory 'd').
   try {
     ({ stdout: verbose } = await exec('tar', ['-tvaf', source.path], { timeout: 90000, maxBuffer: 24 * 1024 * 1024 }));
