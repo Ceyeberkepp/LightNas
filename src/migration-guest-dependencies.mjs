@@ -1,9 +1,9 @@
 // Fail-closed dependency manifest for guest migrations. Read-only planning.
-const KIND=new Set(['disk','volume','bind-mount','database','configuration','identity','permission','secret','network','service','snapshot']);
+const KIND=new Set(['disk','volume','bind-mount','database','configuration','identity','permission','secret','network','service','snapshot','application-data','certificate','job','license']);
 const NAME=/^[A-Za-z0-9][A-Za-z0-9_.:/ -]{0,159}$/;
 function bad(s){throw Object.assign(new Error(s),{status:400});}
 export function reviewGuestDependencies(input){
- if(!input||typeof input!=='object'||!['vm','container'].includes(input.type)||
+ if(!input||typeof input!=='object'||!['vm','container','app'].includes(input.type)||
   !Array.isArray(input.dependencies)||input.dependencies.length>2000)bad('Invalid guest dependency manifest');
  if(input.inventoryComplete!==true)bad('Full source inventory required to review a guest');
  const ids=new Set();
@@ -22,7 +22,7 @@ export function reviewGuestDependencies(input){
  });
  const blockers=dependencies.filter(x=>x.status==='blocked').map(x=>x.id);
  return {phase:'guest-dependency-review',type:input.type,dependencies,blockers,
-   allDependenciesVerified:blockers.length===0,transferStarted:false,
+   coverage,allDependenciesVerified:blockers.length===0,transferStarted:false,
    guestActivationAuthorized:false,sourceDeletionAuthorized:false,
    note:'Guest disk alone does not establish that external volumes, databases, identities or services migrated'};
 }
