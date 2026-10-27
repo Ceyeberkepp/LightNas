@@ -57,7 +57,8 @@ async function loadDestinationPools(){
  destinationPools=(result.pools||[]).filter(p=>p.online===true&&p.writable===true);
 }
 function compatiblePools(type){
- const content=type==='vm'?'images':type==='container'?'rootdir': 'files';
+ const content=type==='vm'?'images':type==='container'?'rootdir':type==='storage'||type==='share'?'files':null;
+ if(!content)return [];
  return destinationPools.filter(p=>Array.isArray(p.content)&&p.content.includes(content));
 }
 
@@ -66,7 +67,7 @@ function renderMigrationPlan(result){
  el('summary').textContent=result.steps.length+' selected · '+result.blockers.length+' compatibility blockers';
  el('plan').innerHTML='<table><thead><tr><th>Object</th><th>Type</th><th>Destination mapping</th><th>Status</th></tr></thead><tbody>'+
  result.steps.map((step,i)=>'<tr><td>'+esc(step.name)+'</td><td>'+esc(step.type)+'</td><td>'+
- (step.type==='app'?'Application-specific migration adapter required':
+ (step.type==='app'?'Application-specific migration adapter required':step.type==='network'?'Network interface mapping requires a separate destination network check':
  '<select data-mapping-index="'+i+'" aria-label="Destination pool for '+esc(step.name)+'"><option value="">Select an available LightNAS pool</option>'+compatiblePools(step.type).map(pool=>'<option value="'+esc(pool.id)+'"'+(mappingById[step.id]===pool.id?' selected':'')+'>'+esc(pool.name)+' ('+esc(pool.provider)+', '+Math.floor((pool.availableBytes||0)/1073741824)+' GiB free)</option>').join('')+'</select>')+
  '</td><td>'+esc(step.status)+'</td></tr>').join('')+'</tbody></table>';
  el('review-status').textContent=result.blockers.length?'Review mapping requirements before any transfer.':'Mappings recorded for review; no transfer has started.';
@@ -78,7 +79,10 @@ async function checkMigrationMappings(){
   if(item)mappingById[item.id]=input.value.trim();
  }
  const mappings=Object.create(null);
- for(const item of currentSelection){if(mappingById[item.id])mappings[item.id]={target:mappingById[item.id]};}
+ for(const item of currentSelection){
+  if(mappingById[item.id]&&!compatiblePools(item.type).some(pool=>pool.id===mappingById[item.id]))throw Error('Destination pool is not available or compatible for '+item.name);
+  if(mappingById[item.id])mappings[item.id]={target:mappingById[item.id]};
+ }
  const result=await post('/api/migration/plan',{source:el('source').value,items:currentSelection,mappings});
  renderMigrationPlan(result);
 }
