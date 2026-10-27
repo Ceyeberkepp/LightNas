@@ -27,3 +27,11 @@ test('missing coverage blocks every supported platform workload type',()=>{
  }
 });
 test('missing coverage declaration is rejected',()=>assert.throws(()=>reviewGuestDependencies({type:'vm',inventoryComplete:true,dependencies:[]}),/coverage declaration/));
+
+test('missing coverage blocks the review for every VM container and app',()=>{
+ for(const type of ['vm','container','app']){
+  const result=reviewGuestDependencies({...base,type,dependencies:[],coverage:{...coverage,database:'unknown'}});
+  assert.ok(result.blockers.includes('coverage:database'));
+ }
+});
+test('missing coverage fails rather than throwing reference error',()=>assert.throws(()=>reviewGuestDependencies({...base,coverage:undefined}),/coverage declaration/));
