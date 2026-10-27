@@ -53,7 +53,7 @@ def safe_relative_link(parent_parts, linkname):
     # Permit standard Linux usr-merge symlinks (bin -> usr/bin) while
     # refusing absolute and upward links that escape the staged rootfs.
     if not isinstance(linkname, str) or not linkname or len(linkname) > 4096 or (
-            linkname.startswith("/") or "\\\\" in linkname or "\\x00" in linkname):
+            linkname.startswith("/") or chr(92) in linkname or chr(0) in linkname):
         fail("unsafe archive symlink target")
     stack = list(parent_parts)
     for segment in linkname.split("/"):
