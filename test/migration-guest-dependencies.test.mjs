@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {reviewGuestDependencies} from '../src/migration-guest-dependencies.mjs';
-const base={type:'container',inventoryComplete:true,dependencies:[
+const verifiedCoverage=Object.fromEntries(['storage','database','configuration','identity','permissions','secrets','network','services'].map(key=>[key,'verified']));
+const base={type:'container',inventoryComplete:true,coverage:verifiedCoverage,dependencies:[
  {id:'rootfs',kind:'disk',destinationVerified:true},
  {id:'postgres',kind:'database',destinationVerified:true,applicationConsistentBackup:false},
  {id:'external-data',kind:'bind-mount',external:true,destinationVerified:true}
@@ -17,3 +18,12 @@ test('complete review never directly activates guest',()=>{
  assert.equal(result.transferStarted,false);
 });
 test('requires complete source inventory',()=>assert.throws(()=>reviewGuestDependencies({...base,inventoryComplete:false}),/Full source inventory/));
+
+test('missing coverage blocks every supported platform workload type',()=>{
+ for(const type of ['vm','container','app']){
+  const result=reviewGuestDependencies({type,inventoryComplete:true,coverage:{...verifiedCoverage,database:'unknown'},dependencies:[]});
+  assert.ok(result.blockers.includes('coverage:database'));
+  assert.equal(result.guestActivationAuthorized,false);
+ }
+});
+test('missing coverage declaration is rejected',()=>assert.throws(()=>reviewGuestDependencies({type:'vm',inventoryComplete:true,dependencies:[]}),/coverage declaration/));
