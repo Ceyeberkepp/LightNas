@@ -60,6 +60,17 @@ class IsolatedExtractorTests(unittest.TestCase):
         self.assertNotEqual(self.run_restore(sha).returncode, 0)
         self.assertEqual(list(self.output.iterdir()), [])
 
+    def test_contained_usrmerge_symlink_survives_restore(self):
+        sha = self.build([("etc/os-release", b"NAME=Test\\n", "file"),
+                          ("usr/bin/tool", b"tool", "file"),
+                          ("bin", b"usr/bin", "symlink")])
+        run = self.run_restore(sha)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        link = self.output / "RestoredLxc/bin"
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(os.readlink(link), "usr/bin")
+        self.assertEqual((link / "tool").read_bytes(), b"tool")
+
     def test_checksum_mismatch_never_stages(self):
         self.build([("etc/os-release", b"ok", "file")])
         self.assertNotEqual(self.run_restore("0" * 64).returncode, 0)
