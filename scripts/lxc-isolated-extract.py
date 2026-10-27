@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline, unprivileged LXC rootfs extraction. Never registers or starts a container.
 
-Only regular files and directories are supported. Ownership, ACLs, xattrs and
+Regular files, directories and contained relative symlinks are supported. Ownership, ACLs, xattrs and
 capabilities intentionally require a separate privileged restoration phase.
 """
 import argparse
@@ -49,6 +49,24 @@ def walk_dir(rootfd, parts):
         os.close(fd)
         raise
 
+def safe_relative_link(parent_parts, linkname):
+    # Permit standard Linux usr-merge symlinks (bin -> usr/bin) while
+    # refusing absolute and upward links that escape the staged rootfs.
+    if not isinstance(linkname, str) or not linkname or len(linkname) > 4096 or (
+            linkname.startswith("/") or "\\\\" in linkname or "\\x00" in linkname):
+        fail("unsafe archive symlink target")
+    stack = list(parent_parts)
+    for segment in linkname.split("/"):
+        if segment in ("", "."):
+            continue
+        if segment == "..":
+            if not stack:
+                fail("archive symlink escapes destination root")
+            stack.pop()
+        else:
+            stack.append(segment)
+
+
 def verify_digest(path, expected):
     digest = hashlib.sha256()
     with open(path, "rb") as source:
@@ -90,8 +108,10 @@ def extract(archive, expected_sha256, destination_parent, name):
                     if normalized in seen:
                         fail("duplicate archive member")
                     seen.add(normalized)
-                    if not (member.isfile() or member.isdir()):
-                        fail("links and special archive members are not supported")
+                    if not (member.isfile() or member.isdir() or member.issym()):
+                        fail("hard links and special archive members are not supported")
+                    if member.issym():
+                        safe_relative_link(parts[:-1], member.linkname)
                     if member.size < 0 or (member.isfile() and written + member.size > MAX_BYTES):
                         fail("extracted byte limit exceeded")
                     folderfd = walk_dir(rootfd, parts[:-1])
@@ -102,6 +122,8 @@ def extract(archive, expected_sha256, destination_parent, name):
                             except FileExistsError:
                                 existing = os.open(parts[-1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=folderfd)
                                 os.close(existing)
+                        elif member.issym():
+                            os.symlink(member.linkname, parts[-1], dir_fd=folderfd)
                         else:
                             source = tar.extractfile(member)
                             if source is None:
