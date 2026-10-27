@@ -13,6 +13,19 @@ export async function verifyWorkloadTransferBundle(input){
     input.artifacts.length===0||input.artifacts.length>128)reject('Invalid workload artifact manifest');
  const review=reviewGuestDependencies(input);
  if(!review.allDependenciesVerified)reject('Workload dependencies or coverage are incomplete: '+review.blockers.join(', '));
+ // A checksum-valid root disk does not prove that the VM's databases,
+ // bind mounts or external volumes were included. Bind each such dependency
+ // to one specifically staged artifact so missing backup data cannot be hidden.
+ const requiredByKind={disk:['vm-disk','container-rootfs'],volume:['volume'],
+   'bind-mount':['volume'],'database':['database-backup'],
+   'application-data':['application-data'],configuration:['configuration-backup']};
+ const artifactLookup=new Map(input.artifacts.map(a=>[a?.jobId,a?.kind]));
+ for(const dep of input.dependencies){
+   const expected=requiredByKind[dep.kind];
+   if(!expected)continue;
+   if(typeof dep.artifactJobId!=='string'||!expected.includes(artifactLookup.get(dep.artifactJobId)))
+     reject('Workload dependency has no matching staged backup artifact: '+dep.id);
+ }
  const ids=new Set(), verified=[];
  for(const artifact of input.artifacts){
   if(!artifact||!KINDS.has(artifact.kind)||typeof artifact.jobId!=='string'||
