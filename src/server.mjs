@@ -1,3 +1,4 @@
+import {executeVerifiedWorkloadRestore} from './migration-restore-pipeline.mjs';
 import {preserveVerifiedApplication} from './migration-app-preserve.mjs';
 import {verifyWorkloadTransferBundle} from './migration-workload-bundle.mjs';
 import {reviewSftpGoMigration} from './migration-sftpgo-preflight.mjs';
@@ -1284,6 +1285,10 @@ async function api(req, res, url) {
   if (url.pathname === '/api/migration/app/preserve' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
     return send(res,201,await preserveVerifiedApplication(await bodyJson(req)));
+  }
+  if (url.pathname === '/api/migration/workload/restore-offline' && req.method === 'POST') {
+    if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
+    return send(res,201,await executeVerifiedWorkloadRestore(await bodyJson(req)));
   }
   if (url.pathname === '/api/migration/workload/verify-staged' && req.method === 'POST') {
     if (!isAdmin || context.apiToken) return send(res,403,{error:'Administrator session required.'});
