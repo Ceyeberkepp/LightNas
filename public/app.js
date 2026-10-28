@@ -567,7 +567,7 @@ function homeView() {
     : overviewChart('CPU usage', `${system.cpu.loadPercent}`, '%', state.metricHistory.cpu, 100, `${system.cpu.cores} logical CPUs · load ${loadAverage[0]} · ${system.cpu.model || 'CPU model unavailable'}`);
   return `<section class="ln-home-intro">
       <div class="ln-welcome"><span class="eyebrow">LIGHTNAS CONTROL CENTER</span><h1>Welcome back, ${escapeHtml(appliance.displayName || appliance.username || 'admin')}</h1><p>Your LightNAS is online. Live system health and performance at a glance.</p></div>
-      <div class="ln-home-intro-actions"><span class="ln-live-state"><i aria-hidden="true"></i> Live monitoring</span><button class="secondary refresh-icon-button" data-action="refresh" aria-label="Refresh system status" title="Refresh system status"><span aria-hidden="true">↻</span><span>Refresh</span></button></div>
+      <div class="ln-home-intro-actions"><span class="ln-live-state"><i aria-hidden="true"></i> Live monitoring</span><button class="secondary refresh-icon-button" data-action="refresh" aria-label="Refresh system status" title="Refresh system status"><span aria-hidden="true">↻</span></button></div>
     </section>
     <section class="ln-home-kpis" aria-label="Live system summary">
       <article class="ln-kpi ln-kpi-health"><span class="ln-kpi-symbol" aria-hidden="true">✓</span><div><small>System status</small><strong>Healthy</strong><span>${escapeHtml(appliance.deviceName || 'LightNAS')} · Online</span></div></article>
@@ -1632,7 +1632,7 @@ function filesView() {
       body = `<div class="mobile-photo-grid">${mobileMediaEntries.sort((a,b) => mobileDate(b)-mobileDate(a)).map(item).join('')}</div>`;
     }
     return `<section class="mobile-photos-experience">
-      <div class="mobile-photos-head"><div><span class="eyebrow">LIBRARY</span><h1>Files & media</h1></div><div class="mobile-photos-actions"><label class="mobile-library-picker"><span>Browse</span><select data-library-select aria-label="Library section">${libraryOptions}</select></label>${canManageOwnFiles ? `<label class="mobile-photo-add" aria-label="Upload photos and files"><span>＋</span><input id="mobile-gallery-upload" type="file" multiple></label>` : ''}</div></div>
+      <div class="mobile-photos-head"><div><span class="eyebrow">LIBRARY</span><h1>Files & media</h1></div><div class="mobile-photos-actions"><button type="button" class="mobile-photo-settings" data-mobile-files-settings aria-label="Files & media settings"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--panel)"/><circle cx="15" cy="17" r="3" fill="var(--panel)"/></svg></button><label class="mobile-library-picker"><span>Browse</span><select data-library-select aria-label="Library section">${libraryOptions}</select></label>${canManageOwnFiles ? `<label class="mobile-photo-add" aria-label="Upload photos and files"><span aria-hidden="true">+</span><input id="mobile-gallery-upload" type="file" multiple></label>` : ''}</div></div>
       ${body}
       ${periodTabs}
     </section>`;
@@ -2883,7 +2883,7 @@ function render(view) {
   content.dataset.currentView = state.view;
   content.classList.toggle('ln-view-home', state.view === 'home');
   content.innerHTML = rendered;
-  $('[data-view]').forEach(link => {
+  $$('[data-view]').forEach(link => {
     const library = link.dataset.fileLibrary;
     const filesChild = link.dataset.view === 'files' && library && !link.classList.contains('nav-files-parent');
     const regular = link.dataset.view === state.view && !library;
@@ -2895,6 +2895,13 @@ function render(view) {
   content.focus({ preventScroll: true });
   applyWorkspaceMode();
   bindViewActions();
+  content.querySelectorAll('.ln-workspace-nav [aria-current="page"], .admin-center-nav-item.active').forEach(currentSection => {
+    const nav = currentSection.parentElement;
+    const itemRect = currentSection.getBoundingClientRect();
+    const navRect = nav.getBoundingClientRect();
+    if (itemRect.right > navRect.right) nav.scrollLeft += itemRect.right - navRect.right + 4;
+    else if (itemRect.left < navRect.left) nav.scrollLeft -= navRect.left - itemRect.left + 4;
+  });
   if (state.view === 'files') {
     const key = filesSectionCacheKey();
     const checkedAt = Number(state.fileSectionCheckedAt.get(key) || 0);
@@ -3678,7 +3685,7 @@ function bindViewActions() {
     localStorage.setItem('lightnas-file-view', state.fileView);
     render('files');
   }));
-  $('[data-mobile-files-settings]', $('#content'))?.addEventListener('click', () => {
+  $$('[data-mobile-files-settings]', $('#content')).forEach(button => button.addEventListener('click', () => {
     let dialog = $('#mobile-files-settings-dialog');
     if (!dialog) {
       dialog = document.createElement('dialog');
@@ -3711,7 +3718,7 @@ function bindViewActions() {
     }
     dialog.querySelectorAll('[data-mobile-file-view]').forEach(button => button.classList.toggle('active', button.dataset.mobileFileView === state.fileView));
     dialog.showModal();
-  });
+  }));
 
   $('[data-phone-sync]', $('#content'))?.addEventListener('click', async () => {
     let dialog = $('#phone-sync-dialog');

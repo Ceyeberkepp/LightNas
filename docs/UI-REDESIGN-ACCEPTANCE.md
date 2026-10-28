@@ -17,7 +17,7 @@ No row is complete until it has been checked visually **and** functionally on a 
 
 | Area | Screens / workflows to verify | Status |
 | --- | --- | --- |
-| Overview | System status, live graph tabs, compute inventory, recent activity, task dock | Not verified |
+| Overview | System status, live graph tabs, compute inventory, recent activity, task dock | Layout/graph-action smoke passed; real workloads not verified |
 | Storage | Storage inventory, add/manage storage, storage operations, capacity states | Not verified |
 | Pools & datasets | Pool list, dataset actions, properties, dialogs | Not verified |
 | Files & media | All files, Documents, Photos, Videos, Audio, Folders, list/grid/gallery, settings | Not verified |
@@ -35,9 +35,9 @@ No row is complete until it has been checked visually **and** functionally on a 
 | Admin Center | General, Users & groups, Permissions, Email/SMTP, Settings & security | Not verified |
 | Admin Center advanced | Analytics, Capabilities, Integrations, Migration Center | Not verified |
 | Shell | Terminal sizing, mobile access, keyboard focus | Not verified |
-| Global dialogs | Validation, scrolling, close/cancel, focus, destructive-action confirmations | Not verified |
-| Global navigation | Sidebar expanded/collapsed, page search, breadcrumbs, keyboard, mobile menu | Not verified |
-| Mobile | Files/media gallery, bulk photo upload, background tasks, AI chat, every accessible view | Not verified |
+| Global dialogs | Validation, scrolling, close/cancel, focus, destructive-action confirmations | Firewall editor open/revert/close smoke passed; remaining dialogs not verified |
+| Global navigation | Sidebar expanded/collapsed, page search, breadcrumbs, keyboard, mobile menu | Route/current-section smoke passed; full keyboard/restricted-account checks outstanding |
+| Mobile | Files/media gallery, bulk photo upload, background tasks, AI chat, every accessible view | Route/settings smoke passed; media workloads not verified |
 
 Hypervisor-only edition work is outside the current NAS-only redesign scope.
 
@@ -69,3 +69,17 @@ Check at least **320×568, 390×844, 430×932, 768×1024, 1024×768, 1280×720, 
 - Validation against baseline `8cbde18018e643e2a78fe247e32010fb0efb14e2`: platform contract passes; JavaScript syntax passes; 11 focused workspace-navigation, workspace-page, VM-settings and user-management tests pass.
 - The unchanged baseline full suite reports 618 tests: 528 pass, 89 fail, 1 skipped. These failures were recorded before this continuation's edits; the suite is not green.
 - Local staging starts successfully. Browser verification is blocked because this workspace has no Chromium executable and the browser download returned an invalid archive. No matrix row is promoted to verified by these checks.
+
+## Browser continuation after PR #381
+
+The earlier browser blocker was resolved using a local Chromium executable. PR #381 was merged after focused checks and confirming the same full-suite failure count as its baseline.
+
+- Fixed a single-element query followed by `forEach` in `render`, which threw on every route before action handlers could attach. A behavioral regression test now checks that navigation updates reach action binding.
+- Matched the default logo background and wordmark-mask alignment; kept Overview refresh as a properly sized icon control.
+- Replaced the legacy minimum-width dashboard grid with a workspace-container layout. This restores graph-control access at tablet widths with the sidebar visible.
+- Kept the current workspace section visible in its horizontally scrolling navigation. Mobile Admin Center tabs use compact widths and retain the selected section in view after rendering.
+- Restored access to mobile Files settings in gallery mode through a header control. Every matching settings control receives its click handler.
+- Added `scripts/qa-workspace-browser.mjs`. It uses disposable server state and requires Playwright plus Chromium. `LIGHTNAS_PLAYWRIGHT_MODULE` and `LIGHTNAS_CHROMIUM_EXECUTABLE` can point to externally installed tools; `LIGHTNAS_QA_SCREENSHOTS` enables captures, and `LIGHTNAS_QA_COMPACT=1` runs the two main desktop/mobile sizes.
+- The browser matrix covers 15 routes, both themes and all nine required sizes plus 844×390 landscape: 300 route/theme/viewport combinations. Checks include page overflow, visibility of the current workspace section, graph actions, and firewall editor open/revert/close. Admin Center's nine sections and mobile/desktop Files settings receive additional checks at 390px and 1280px.
+- Focused regression checks: 12 pass. Full suite: 619 tests, 530 pass, 88 fail, 1 skip. Platform and syntax checks pass. This improves one baseline failure and adds one passing regression test; the full suite remains red.
+- These are layout and action smoke tests against a real local server. The staging environment lacks the privileged host/storage agents and installed workloads. Real uploads, media editing, storage/compute changes, backups, permissions and restricted-account behavior remain outside this evidence; the redesign is not fully accepted.

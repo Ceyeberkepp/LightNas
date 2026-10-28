@@ -1,5 +1,29 @@
 /* Page-specific redesign based on the real render classes in app.js.
    Unlike generic .file-grid/.app-grid selectors, these target the actual views. */
+/* Use workspace width, including the space taken by the sidebar. Older NAS
+   selectors otherwise force an 898px overview into tablet-sized workspaces. */
+#content[data-current-view="home"] .node-overview-grid {
+  grid-template-columns:minmax(0,.95fr) minmax(0,1.15fr);
+}
+#content[data-current-view="home"] .overview-bottom-grid {
+  grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);
+}
+@container(max-width:900px) {
+  #content[data-current-view="home"] :is(.node-overview-grid,.overview-bottom-grid) {
+    grid-template-columns:minmax(0,1fr);
+  }
+}
+@media(max-width:760px) {
+  #content[data-current-view="files"] .mobile-photo-settings {
+    display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;
+    width:44px;height:44px;padding:0;border:1px solid var(--line-strong);
+    border-radius:50%;background:var(--panel);color:var(--text);cursor:pointer;
+  }
+  #content[data-current-view="files"] .mobile-photos-head {gap:8px;}
+  #content[data-current-view="files"] .mobile-photos-head h1 {font-size:clamp(23px,6.8vw,30px);}
+  #content[data-current-view="files"] .mobile-photos-head > div:first-child {min-width:0;}
+  #content[data-current-view="files"] .mobile-photos-actions {flex:0 0 auto;gap:6px;}
+}
 /* Management editors keep their title and actions in view while fields scroll.
    Media viewers and terminal/hardware workspaces retain their own layouts. */
 dialog.ln-management-editor {
@@ -233,7 +257,7 @@ dialog.ln-management-editor .form-error:not(:empty) {margin-top:12px;overflow-wr
     max-height:none;
     gap:5px;
   }
-  #content[data-current-view="admin"] .admin-center-nav-item {flex:0 0 auto;white-space:nowrap;}
+  #content[data-current-view="admin"] .admin-center-nav-item {flex:0 0 auto;width:auto;white-space:nowrap;}
 }
 @container(max-width:740px) {
   #content[data-current-view="files"] .file-toolbar {grid-template-columns:1fr;}
