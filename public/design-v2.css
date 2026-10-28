@@ -1047,3 +1047,92 @@ dialog:not(.embedded-terminal-dialog) .dialog-actions {padding-top:9px;}
   .console .ln-live-state {display:none;}
   .console .content {padding-inline:10px;}
 }
+
+
+/* Every LightNAS tab — page-specific composition layer.
+   Scope to data-current-view so dense tools retain their natural workflows. */
+#content[data-current-view] {min-width:0;overflow-x:clip;container-type:inline-size;}
+#content[data-current-view] > * {max-width:100%;min-width:0;}
+#content[data-current-view] :is(.panel,.card,.file-browser,.compute-table-wrap,.admin-center-panel,.settings-dashboard) {min-width:0;}
+#content[data-current-view] :is(.panel-head,.page-head,.toolbar,.file-toolbar) {min-width:0;}
+#content[data-current-view] :is(h1,h2,h3,p,small,b,span) {overflow-wrap:break-word;}
+#content[data-current-view] :is(.toolbar,.file-toolbar,.head-actions,.panel-head) {gap:8px;}
+#content[data-current-view] .page-head h1 {font-size:clamp(20px,2.2vw,28px);}
+#content[data-current-view] .page-head {align-items:center;margin-bottom:12px;padding-bottom:12px;}
+#content[data-current-view] :is(.panel,.card,.admin-center-panel) {padding:clamp(12px,1.1vw,18px);}
+#content[data-current-view] :is(.panel,.card) > .panel-head {margin-bottom:10px;}
+#content[data-current-view] :is(.empty,.compact-empty,.no-results) {min-height:0;padding:20px 16px;}
+#content[data-current-view] :is(.file-row,.compute-row,.storage-table-row,.admin-center-row) {min-width:0;}
+#content[data-current-view] .file-toolbar :is(button,input,select) {min-height:34px;}
+#content[data-current-view] :is(.primary,.secondary) {white-space:normal;max-width:100%;}
+#content[data-current-view] :is(.data-table,.template-table,.compute-table,.storage-table) {font-size:12px;}
+#content[data-current-view] :is(.data-table,.template-table,.compute-table,.storage-table) :is(th,td) {padding:9px 11px;}
+/* Storage: inventory density, retained detailed properties. */
+#content[data-current-view="storage"] :is(.storage-overview-strip,.storage-detail-summary,.storage-provider-grid) {gap:10px;}
+#content[data-current-view="storage"] :is(.storage-overview-strip,.storage-detail-summary) {border-radius:12px;}
+#content[data-current-view="storage"] :is(.storage-workspace,.attached-storage-grid) {margin-block:10px;gap:10px;}
+#content[data-current-view="storage"] :is(.storage-table-row,.storage-table-head) {min-height:36px;}
+/* Pools and datasets: compact data lists and editor. */
+#content[data-current-view="pools"] :is(.pool-summary-grid,.dataset-grid,.dataset-list) {gap:10px;}
+#content[data-current-view="pools"] :is(.dataset-create-form,.storage-detail-summary) {margin-block:10px;}
+/* Files and media: Finder-like toolstrip, flexible browser and compact thumbnails. */
+#content[data-current-view="files"] .file-toolbar {display:flex;align-items:center;flex-wrap:wrap;padding:6px 0;}
+#content[data-current-view="files"] .file-browser {background:var(--panel);border-radius:13px;}
+#content[data-current-view="files"] .file-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,145px),1fr));gap:10px;}
+#content[data-current-view="files"] .file-grid .file-row {padding:8px;border-radius:11px;box-shadow:none;}
+#content[data-current-view="files"] :is(.files-library-tabs,.library-tabs) {gap:4px;margin-bottom:9px;}
+#content[data-current-view="files"] :is(.file-toolbar-actions,.file-toolbar) button {white-space:nowrap;}
+/* Shares and backups: efficient policy and job lists. */
+#content[data-current-view="shares"] :is(.share-list,.share-grid,.policy-grid) {gap:10px;}
+#content[data-current-view="backups"] :is(.backup-toolbar,.backup-console) {border-radius:12px;}
+#content[data-current-view="backups"] .backup-row {min-height:34px;}
+/* App catalog, AI and compute: restrained card density. */
+#content[data-current-view="apps"] :is(.app-grid,.catalog-grid,.apps-grid) {display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,215px),1fr));gap:12px;}
+#content[data-current-view="apps"] :is(.app-card,.catalog-card) {min-height:0;border-radius:12px;}
+#content[data-current-view="ai"] :is(.ai-workspace-v2,.assistant-layout) {min-width:0;gap:12px;}
+#content[data-current-view="ai"] :is(.ai-agent-messages,.assistant-chat) {min-height:min(36dvh,300px);overflow-wrap:anywhere;}
+#content[data-current-view="containers"] :is(.compute-table-wrap,.compute-section-head),
+#content[data-current-view="vms"] :is(.compute-table-wrap,.compute-section-head),
+#content[data-current-view="kubernetes"] :is(.compute-table-wrap,.compute-section-head) {margin-block:10px;}
+#content[data-current-view="containers"] .compute-row,
+#content[data-current-view="vms"] .compute-row {min-height:48px;}
+/* Admin, users, permissions and settings get consistent two-column editor proportions. */
+#content[data-current-view="admin"] .admin-center-workspace {grid-template-columns:minmax(155px,190px) minmax(0,1fr);gap:12px;}
+#content[data-current-view="admin"] .admin-center-panel-head {padding:14px 16px;}
+#content[data-current-view="admin"] .admin-center-section {padding-inline:16px;}
+#content[data-current-view="admin"] .admin-center-row {min-height:48px;}
+#content[data-current-view="users"] :is(.user-manager,.user-list-section,.user-management-grid),
+#content[data-current-view="permissions"] :is(.permission-grid,.policy-grid),
+#content[data-current-view="settings"] :is(.settings-dashboard,.settings-grid) {gap:12px;}
+#content[data-current-view="settings"] :is(.settings-dashboard,.settings-section) {margin-block:10px;}
+/* Connectivity, advanced administration and logs. */
+#content[data-current-view="network"] :is(.network-grid,.network-card,.network-connections) {gap:10px;}
+#content[data-current-view="firewall"] :is(.firewall-grid,.firewall-rule-list) {gap:10px;}
+#content[data-current-view="integrations"] :is(.integration-grid,.integration-card) {gap:10px;}
+#content[data-current-view="smtp"] :is(.settings-grid,.smtp-form) {gap:12px;}
+#content[data-current-view="analytics"] :is(.analytics-grid,.chart-grid) {gap:12px;}
+#content[data-current-view="logs"] :is(.logs-toolbar,.logs-filters) {gap:8px;}
+#content[data-current-view="logs"] :is(.logs-table,.logs-row) {font-size:12px;}
+#content[data-current-view="capabilities"] :is(.capability-grid,.capability-section) {gap:12px;}
+#content[data-current-view="shell"] :is(.shell-console,.terminal-panel) {min-height:clamp(280px,45dvh,650px);}
+#content[data-current-view="hypervisor"] :is(.hv-grid,.hv-panel,.hv-workspace) {gap:10px;}
+@container(max-width:900px) {
+  #content[data-current-view="admin"] .admin-center-workspace {grid-template-columns:1fr;}
+  #content[data-current-view="admin"] .admin-center-nav {position:static;display:flex;overflow-x:auto;gap:5px;}
+  #content[data-current-view="admin"] .admin-center-nav-item {flex:0 0 auto;white-space:nowrap;}
+}
+@container(max-width:650px) {
+  #content[data-current-view] .page-head {align-items:flex-start;flex-wrap:wrap;}
+  #content[data-current-view] :is(.overview-bottom-grid,.storage-detail-summary,.pool-summary-grid,.assistant-layout) {grid-template-columns:1fr;}
+  #content[data-current-view] :is(.toolbar,.file-toolbar) {flex-wrap:wrap;}
+  #content[data-current-view="files"] .file-grid {grid-template-columns:repeat(auto-fill,minmax(115px,1fr));}
+}
+@media(max-height:850px) and (min-width:761px) {
+  .console .content {padding-top:11px;padding-bottom:62px;}
+  .console .ln-home-intro {margin-bottom:8px;}
+  .console .ln-home-kpis {margin-bottom:9px;}
+  .console .ln-kpi {min-height:62px;}
+  .console .node-usage-row {padding-block:5px;}
+  .console .overview-chart svg {height:clamp(112px,18vh,175px);}
+  .console .overview-bottom-grid {margin-top:10px;}
+}

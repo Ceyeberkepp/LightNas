@@ -2849,8 +2849,10 @@ function render(view) {
   if (window.LIGHTNAS_PRODUCT_MODE === 'hypervisor' && !['home','hypervisor'].includes(state.view)) {
     rendered = hypervisorSubViewShell(rendered, state.view);
   }
+  content.dataset.currentView = state.view;
+  content.classList.toggle('ln-view-home', state.view === 'home');
   content.innerHTML = rendered;
-  $$('[data-view]').forEach(link => {
+  $('[data-view]').forEach(link => {
     const library = link.dataset.fileLibrary;
     const filesChild = link.dataset.view === 'files' && library && !link.classList.contains('nav-files-parent');
     const regular = link.dataset.view === state.view && !library;
