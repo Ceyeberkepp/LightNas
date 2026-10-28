@@ -571,9 +571,9 @@ function homeView() {
     </section>
     <section class="ln-home-kpis" aria-label="Live system summary">
       <article class="ln-kpi ln-kpi-health"><span class="ln-kpi-symbol" aria-hidden="true">✓</span><div><small>System status</small><strong>Healthy</strong><span>${escapeHtml(appliance.deviceName || 'LightNAS')} · Online</span></div></article>
-      <article class="ln-kpi"><span class="ln-kpi-symbol">▥</span><div><small>CPU usage</small><strong>${system.cpu.loadPercent}%</strong><span>${system.cpu.cores} logical CPUs</span></div></article>
-      <article class="ln-kpi"><span class="ln-kpi-symbol">◉</span><div><small>Memory</small><strong>${system.memory.usedPercent}%</strong><span>${bytes(system.memory.usedBytes)} used</span></div></article>
-      <article class="ln-kpi"><span class="ln-kpi-symbol">⌁</span><div><small>Network</small><strong>${Number(system.network?.interfaces || 0)} interfaces</strong><span>Live system monitoring</span></div></article>
+      <article class="ln-kpi"><span class="ln-kpi-symbol" aria-hidden="true">♟</span><div><small>Users</small><strong>${Array.isArray(state.users) ? state.users.length : '—'}</strong><span>Local accounts</span></div></article>
+      <article class="ln-kpi"><span class="ln-kpi-symbol" aria-hidden="true">⬡</span><div><small>Apps</small><strong>${state.runtimes?.docker?.containers ? state.runtimes.docker.containers.filter(item => item.managed && String(item.name || '').startsWith('lightnas-app-')).length : '—'}</strong><span>Installed apps</span></div></article>
+      <article class="ln-kpi"><span class="ln-kpi-symbol" aria-hidden="true">↶</span><div><small>Backups</small><strong>${Array.isArray(state.backupJobs) ? state.backupJobs.length : '—'}</strong><span>Configured jobs</span></div></article>
     </section>
     <section class="node-overview-grid">
       <article class="panel node-summary-card"><div class="panel-head"><div><span class="eyebrow">${escapeHtml(appliance.deviceName)}</span><h2>System status</h2></div><span class="volume-state writable">ONLINE</span></div>
@@ -968,7 +968,7 @@ async function loadUsers() {
     const data = await request('/api/users');
     state.users = data.users || [];
     state.userAccess = { permissionOptions: data.permissionOptions || [], groups: data.groups || [] };
-    if (['users', 'permissions', 'admin'].includes(state.view)) render(state.view);
+    if (['home', 'users', 'permissions', 'admin'].includes(state.view)) render(state.view);
   } catch (error) { toast(error.message); }
 }
 
@@ -1305,7 +1305,7 @@ async function loadBackupJobs() {
   try {
     state.backupJobs = (await request('/api/backups/jobs')).jobs || [];
     if (state.selectedBackupJobId && !state.backupJobs.some(job => job.id === state.selectedBackupJobId)) state.selectedBackupJobId = null;
-    if (state.view === 'backups') render('backups');
+    if (['home', 'backups'].includes(state.view)) render(state.view);
   } catch (error) {
     state.backupJobs = [];
     if (state.view === 'backups') render('backups');
@@ -2911,12 +2911,12 @@ function render(view) {
     }
   }
   if (['pools', 'storage'].includes(state.view) && state.spaces === null) loadSpaces();
-  if (['users', 'permissions', 'admin'].includes(state.view) && state.users === null) loadUsers();
+  if (['home', 'users', 'permissions', 'admin'].includes(state.view) && state.users === null) loadUsers();
   if ((['smtp','integrations'].includes(state.view) || (state.view === 'admin' && ['smtp','integrations'].includes(state.adminSection))) && state.smtp === undefined) loadSmtp();
   if (['files', 'media'].includes(state.view) && state.media === null) loadMedia();
   if (['network', 'firewall', 'admin'].includes(state.view) && !state.network) loadNetwork();
   if ((['logs','backups','analytics'].includes(state.view) || (state.view === 'admin' && state.adminSection === 'analytics')) && state.logs === null) loadLogs();
-  if (state.view === 'backups' && state.backupJobs === null && window.LIGHTNAS_PRODUCT_MODE !== 'hypervisor') loadBackupJobs();
+  if (['home', 'backups'].includes(state.view) && state.backupJobs === null && window.LIGHTNAS_PRODUCT_MODE !== 'hypervisor') loadBackupJobs();
   if (state.view === 'apps') {
     const catalogStale = !state.communityCatalog || Date.now() - Number(state.communityCatalogCheckedAt || 0) > 15000;
     if (catalogStale && !state.communityCatalogLoading) {
