@@ -491,6 +491,12 @@ label { font-size:13px;font-weight:550;gap:6px; }
   border-radius:8px;
 }
 .brand-mark.default-logo > span { display:none; }
+.sidebar-brand .brand-mark.default-logo,
+.auth-story .brand-mark.default-logo {
+  padding:0;
+  background-position:center;
+  background-origin:border-box;
+}
 .brand:has(.default-logo) > [data-brand-name] { display:none; }
 .console.sidebar-collapsed .sidebar-brand .brand-mark.default-logo {
   width:48px; height:48px; background-size:216px auto; background-position:4px center;
