@@ -445,6 +445,27 @@ async function autoDetectStorage() {
 setInterval(autoDetectStorage, 12000);
 addEventListener('focus', () => { if (['home', 'storage', 'pools'].includes(state.view)) autoDetectStorage(); });
 
+const LIGHTNAS_WORKSPACE_LINKS = {
+  storage:[['storage','Inventory'],['pools','Pools & datasets'],['files','Files'],['shares','Shares'],['backups','Backups']],
+  apps:[['apps','App Store'],['ai','AI'],['containers','Containers'],['vms','Virtual machines'],['kubernetes','Kubernetes']],
+  network:[['network','Networking'],['firewall','Firewall'],['integrations','Integrations']],
+  admin:[['admin','Admin Center'],['users','Users'],['permissions','Permissions'],['settings','Settings'],['logs','Logs']]
+};
+
+function workspaceNavigation() {
+  if (window.LIGHTNAS_PRODUCT_MODE === 'hypervisor') return '';
+  const view = state.view;
+  const family = ['storage','pools','files','shares','backups'].includes(view) ? 'storage'
+    : ['apps','ai','containers','vms','kubernetes'].includes(view) ? 'apps'
+    : ['network','firewall','integrations'].includes(view) ? 'network'
+    : ['admin','users','permissions','settings','smtp','analytics','logs','capabilities','shell'].includes(view) ? 'admin' : '';
+  if (!family) return '';
+  const options = LIGHTNAS_WORKSPACE_LINKS[family].filter(([id]) => canView(id));
+  if (options.length < 2) return '';
+  return `<nav class="ln-workspace-nav" aria-label="${family === 'apps' ? 'Apps and compute' : family === 'admin' ? 'Administration' : family === 'network' ? 'Connectivity' : 'Storage'} sections">${options.map(([id,label]) =>
+    `<button type="button" data-view-link="${id}" class="ln-workspace-nav-item ${view === id ? 'active' : ''}" ${view === id ? 'aria-current="page"' : ''}>${escapeHtml(label)}</button>`).join('')}</nav>`;
+}
+
 function pageHead(title, description, action = '') {
   const groups = {
     storage:'Storage',pools:'Storage',files:'Storage',shares:'Storage',backups:'Storage',
@@ -454,7 +475,7 @@ function pageHead(title, description, action = '') {
     analytics:'System tools',logs:'System tools',shell:'System tools',capabilities:'System tools',hypervisor:'System tools'
   };
   const group = groups[state.view] || 'Control Center';
-  return `<header class="page-head ln-standard-hero"><div class="ln-standard-heading"><span class="eyebrow">LIGHTNAS / ${escapeHtml(group)}</span><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p></div>${action ? `<div class="ln-standard-actions">${action}</div>` : ''}</header>`;
+  return `<header class="page-head ln-standard-hero"><div class="ln-standard-heading"><span class="eyebrow">LIGHTNAS / ${escapeHtml(group)}</span><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p></div>${action ? `<div class="ln-standard-actions">${action}</div>` : ''}</header>${workspaceNavigation()}`;
 }
 
 function metric(label, value, percent, detail) {

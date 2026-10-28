@@ -1318,3 +1318,32 @@ dialog:not(.embedded-terminal-dialog) .dialog-actions {padding-top:9px;}
   #content .ln-standard-heading {flex-basis:100%;}
   #content .ln-standard-actions {width:100%;justify-content:flex-start;}
 }
+
+
+/* Functional cross-page workspace navigation, sized to actual viewport. */
+#content .ln-workspace-nav {
+  display:flex;flex-wrap:nowrap;align-items:center;gap:4px;
+  overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:thin;
+  padding:4px;margin:0 0 14px;border-radius:12px;
+  border:1px solid var(--line);background:var(--panel);
+}
+#content .ln-workspace-nav-item {
+  flex:0 0 auto;min-width:0;min-height:33px;
+  display:inline-flex;align-items:center;justify-content:center;
+  padding:7px 12px;border:1px solid transparent;border-radius:9px;
+  color:var(--muted);background:transparent;font:inherit;font-size:12px;font-weight:600;
+  white-space:nowrap;cursor:pointer;transition:background .16s,border-color .16s;
+}
+#content .ln-workspace-nav-item:hover {
+  color:var(--text);background:var(--panel-2);
+}
+#content .ln-workspace-nav-item.active {
+  color:var(--text);border-color:var(--line-strong);
+  background:color-mix(in srgb,var(--accent) 14%,var(--panel));
+  box-shadow:inset 0 -2px 0 var(--accent);
+}
+#content .ln-workspace-nav-item:focus-visible {outline:2px solid var(--accent);outline-offset:-2px;}
+@container(max-width:650px) {
+  #content .ln-workspace-nav {margin-bottom:10px;}
+  #content .ln-workspace-nav-item {padding:7px 10px;}
+}
