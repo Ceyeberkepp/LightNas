@@ -530,20 +530,28 @@ function homeView() {
   const available = visibleStorage.availableBytes ?? Math.max(0, total - used);
   const storagePercent = visibleStorage.usedPercent ?? (total ? Math.round((used / total) * 100) : 0);
   const loadAverage = system.cpu.loadAverage || [0, 0, 0];
-  const graphButtons = [['cpu','CPU'],['load','Load'],['memory','Memory'],['storage','Storage'],['network','Network']].map(([id, label]) => `<button type="button" class="${state.overviewMetric === id ? 'active' : ''}" data-overview-metric="${id}" aria-pressed="${state.overviewMetric === id}">${label}</button>`).join('');
+  const graphButtons = [['cpu','CPU'],['load','Load'],['memory','Memory'],['network','Network']].map(([id, label]) => `<button type="button" class="${state.overviewMetric === id ? 'active' : ''}" data-overview-metric="${id}" aria-pressed="${state.overviewMetric === id}">${label}</button>`).join('');
   const graph = state.overviewMetric === 'network' ? overviewNetworkChart(system)
     : state.overviewMetric === 'load' ? overviewChart('System load', `${loadAverage[0]}`, '', state.metricHistory.load, Math.max(2, system.cpu.cores), `1m ${loadAverage[0]} · 5m ${loadAverage[1]} · 15m ${loadAverage[2]} · ${system.cpu.cores} CPUs`)
     : state.overviewMetric === 'memory' ? overviewChart('Memory usage', `${system.memory.usedPercent}`, '%', state.metricHistory.memory, 100, `${bytes(system.memory.usedBytes)} used · ${bytes(system.memory.totalBytes)} total · ${bytes(system.memory.freeBytes)} free`)
     : state.overviewMetric === 'storage' ? overviewChart('Storage usage', `${storagePercent}`, '%', state.metricHistory.storage, 100, `${bytes(used)} used · ${bytes(total)} total · ${bytes(available)} free`)
     : overviewChart('CPU usage', `${system.cpu.loadPercent}`, '%', state.metricHistory.cpu, 100, `${system.cpu.cores} logical CPUs · load ${loadAverage[0]} · ${system.cpu.model || 'CPU model unavailable'}`);
-  return `${pageHead('Overview', 'Live system health and storage at a glance.', '<button class="secondary refresh-icon-button" data-action="refresh" aria-label="Refresh" title="Refresh">↻</button>')}
+  return `<section class="ln-home-intro">
+      <div><span class="eyebrow">LIGHTNAS CONTROL CENTER</span><h1>Overview</h1><p>Live system health and performance at a glance.</p></div>
+      <button class="secondary refresh-icon-button" data-action="refresh" aria-label="Refresh system status" title="Refresh">↻ Refresh</button>
+    </section>
+    <section class="ln-home-kpis" aria-label="Live system summary">
+      <article class="ln-kpi"><span class="ln-kpi-symbol">✓</span><div><small>System</small><strong>Online</strong><span>${escapeHtml(appliance.deviceName || 'LightNAS')}</span></div></article>
+      <article class="ln-kpi"><span class="ln-kpi-symbol">▥</span><div><small>CPU usage</small><strong>${system.cpu.loadPercent}%</strong><span>${system.cpu.cores} logical CPUs</span></div></article>
+      <article class="ln-kpi"><span class="ln-kpi-symbol">◉</span><div><small>Memory</small><strong>${system.memory.usedPercent}%</strong><span>${bytes(system.memory.usedBytes)} used</span></div></article>
+      <article class="ln-kpi"><span class="ln-kpi-symbol">⌁</span><div><small>Network</small><strong>${Number(system.network?.interfaces || 0)} interfaces</strong><span>Live system monitoring</span></div></article>
+    </section>
     <section class="node-overview-grid">
       <article class="panel node-summary-card"><div class="panel-head"><div><span class="eyebrow">${escapeHtml(appliance.deviceName)}</span><h2>System status</h2></div><span class="volume-state writable">ONLINE</span></div>
         <div class="node-usage-row"><span>CPU usage</span><div class="track"><span style="width:${system.cpu.loadPercent}%"></span></div><b>${system.cpu.loadPercent}% of ${system.cpu.cores} CPU(s)</b></div>
         <div class="node-usage-row"><span>Load average</span><div class="track"><span style="width:${Math.min(100, (loadAverage[0] / Math.max(system.cpu.cores, 1)) * 100)}%"></span></div><b>${loadAverage.join(', ')}</b></div>
         <div class="node-usage-row"><span>RAM usage</span><div class="track"><span style="width:${system.memory.usedPercent}%"></span></div><b>${system.memory.usedPercent}% · ${bytes(system.memory.usedBytes)} of ${bytes(system.memory.totalBytes)}</b></div>
-        <div class="node-usage-row"><span>Storage</span><div class="track"><span style="width:${storagePercent}%"></span></div><b>${storagePercent}% · ${bytes(used)} of ${bytes(total)}</b></div>
-        <dl class="node-facts"><div><dt>CPU</dt><dd>${escapeHtml(system.cpu.model)}</dd></div><div><dt>Kernel</dt><dd>${escapeHtml(system.kernel)}</dd></div><div><dt>Architecture</dt><dd>${escapeHtml(system.architecture)}</dd></div><div><dt>Mounted filesystems</dt><dd>${filesystems.length}</dd></div><div><dt>Available storage</dt><dd>${bytes(available)}</dd></div></dl>
+        <dl class="node-facts"><div><dt>CPU</dt><dd>${escapeHtml(system.cpu.model)}</dd></div><div><dt>Kernel</dt><dd>${escapeHtml(system.kernel)}</dd></div><div><dt>Architecture</dt><dd>${escapeHtml(system.architecture)}</dd></div><div><dt>Mounted filesystems</dt><dd>${filesystems.length}</dd></div></dl>
       </article>
       <section class="overview-graph-panel"><nav class="overview-graph-tabs" aria-label="Performance graph">${graphButtons}</nav>${graph}</section>
     </section>
