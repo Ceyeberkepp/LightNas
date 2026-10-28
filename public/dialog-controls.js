@@ -17,7 +17,7 @@ function closeDialog(dialog) {
 function showEditor({ eyebrow, title, description, fields, submitLabel = 'Save changes', danger = false, wide = false, onSubmit }) {
   const vmHardwareEditor = wide && eyebrow === 'VIRTUAL MACHINE SETTINGS';
   const dialog = document.createElement('dialog');
-  dialog.className = `lightnas-dialog${wide ? ' runtime-dialog hardware-editor-dialog' : ''}${vmHardwareEditor ? ' vsphere-hardware-dialog' : ''}`;
+  dialog.className = `lightnas-dialog${wide ? ' runtime-dialog hardware-editor-dialog' : ''}${vmHardwareEditor ? ' vsphere-hardware-dialog' : ' ln-management-editor'}`;
 
   const vmGroups = [
     ['summary','Summary',['name','firmwareInfo','machineInfo','startOnBoot']],
@@ -56,9 +56,11 @@ function showEditor({ eyebrow, title, description, fields, submitLabel = 'Save c
         <div><span class="eyebrow">${eyebrow}</span><h2></h2></div>
         <button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button>
       </div>
-      <p class="muted" data-dialog-description></p>
-      <div data-dialog-fields></div>
-      <div class="form-error" role="alert"></div>
+      <div class="ln-editor-content">
+        <p class="muted" data-dialog-description></p>
+        <div data-dialog-fields></div>
+        <div class="form-error" role="alert" tabindex="-1"></div>
+      </div>
       <div class="dialog-actions">
         <button class="secondary" type="button" data-editor-revert>Revert changes</button>
         <button class="secondary" type="button" data-dialog-close>Cancel</button>
@@ -68,6 +70,12 @@ function showEditor({ eyebrow, title, description, fields, submitLabel = 'Save c
 
   dialog.querySelector('h2').textContent = title;
   dialog.querySelector('[data-dialog-description]').textContent = description;
+  const editorId = `ln-editor-${crypto.randomUUID()}`;
+  dialog.querySelector('h2').id = `${editorId}-title`;
+  dialog.querySelector('[data-dialog-description]').id = `${editorId}-description`;
+  dialog.setAttribute('aria-labelledby', `${editorId}-title`);
+  dialog.setAttribute('aria-describedby', `${editorId}-description`);
+  dialog.querySelector('.form-error').tabIndex = -1;
   const fieldRoot = dialog.querySelector('[data-dialog-fields]');
 
   if (vmHardwareEditor) {
@@ -121,6 +129,11 @@ function showEditor({ eyebrow, title, description, fields, submitLabel = 'Save c
       }
       if (field.value !== undefined) input.value = field.value;
     }
+    // Form.reset() uses defaults, not the current value assigned above.
+    if (input.tagName === 'SELECT') {
+      const selectedOptions = Array.from(input.options, option => option.selected);
+      Array.from(input.options).forEach((option, index) => { option.toggleAttribute('selected', selectedOptions[index]); });
+    } else input.defaultValue = input.value;
     label.append(input);
     if (vmHardwareEditor) {
       dialog.querySelector(`[data-vm-field-group="${groupFor(field.name)}"]`)?.append(label);
@@ -138,6 +151,7 @@ function showEditor({ eyebrow, title, description, fields, submitLabel = 'Save c
   dialog.querySelectorAll('[data-dialog-close]').forEach(button => button.addEventListener('click', () => closeDialog(dialog)));
   dialog.querySelector('[data-editor-revert]')?.addEventListener('click', () => {
     dialog.querySelector('form')?.reset();
+    dialog.querySelector('.form-error').textContent = '';
     window.LightNASToast?.show?.('Unsaved changes reverted.');
   });
   dialog.addEventListener('close', () => dialog.remove(), { once: true });
@@ -153,6 +167,7 @@ function showEditor({ eyebrow, title, description, fields, submitLabel = 'Save c
       dialog.close();
     } catch (problem) {
       error.textContent = problem.message;
+      error.focus();
       submit.disabled = false;
     }
   });

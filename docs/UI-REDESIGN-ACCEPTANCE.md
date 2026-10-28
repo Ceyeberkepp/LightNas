@@ -61,3 +61,11 @@ Check at least **320×568, 390×844, 430×932, 768×1024, 1024×768, 1280×720, 
 - PRs #372–#376 introduced dashboard composition, compact shell sizing and scoped per-page styling.
 - PR #377 adds a functional navigation search and consistent SVG icons, plus targeted rules for actual Files & media, App Store, Users, Admin Center, Settings, Networking and Backups markup.
 - **Browser-level verification remains outstanding**. The running user's private LAN instance cannot be reached from GitHub source access alone.
+
+## Continuation: management editors
+
+- Standard `showEditor` dialogs now use a header, scrolling field area and action footer. Mobile controls use 44px minimum heights; media viewers and VM hardware editors keep their specialized layouts.
+- Editors expose their title and description to assistive technology, focus submission errors, and restore loaded input/select values when Revert is pressed.
+- Validation against baseline `8cbde18018e643e2a78fe247e32010fb0efb14e2`: platform contract passes; JavaScript syntax passes; 11 focused workspace-navigation, workspace-page, VM-settings and user-management tests pass.
+- The unchanged baseline full suite reports 618 tests: 528 pass, 89 fail, 1 skipped. These failures were recorded before this continuation's edits; the suite is not green.
+- Local staging starts successfully. Browser verification is blocked because this workspace has no Chromium executable and the browser download returned an invalid archive. No matrix row is promoted to verified by these checks.
