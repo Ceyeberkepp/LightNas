@@ -751,3 +751,129 @@ dialog:not(.embedded-terminal-dialog) .dialog-actions {
 @media (prefers-reduced-motion:reduce) {
   .console *,dialog * { scroll-behavior:auto!important;transition-duration:.01ms!important; }
 }
+
+
+/* LightNAS full visual composition — shared across all management views. */
+:root {
+  --ln-glass:color-mix(in srgb,var(--panel) 90%,transparent);
+  --ln-hairline:color-mix(in srgb,var(--line) 82%,transparent);
+}
+.console .sidebar { border-right:1px solid var(--ln-hairline); }
+.console .topbar { min-height:62px; padding-inline:clamp(14px,2vw,30px); }
+.console .content {
+  padding:clamp(18px,2vw,28px) clamp(16px,2.4vw,36px) 100px;
+}
+.console .sidebar nav a { align-items:center;gap:11px;font-weight:560; }
+.console .sidebar nav a.active {
+  background:color-mix(in srgb,var(--accent) 15%,var(--panel));
+  box-shadow:inset 3px 0 var(--accent);
+}
+.console .sidebar .nav-group { margin-top:9px;padding-top:10px; }
+.console .page-head {
+  padding:4px 0 19px;
+  margin-bottom:20px;
+  border-bottom:1px solid var(--ln-hairline);
+}
+.console .page-head h1 { font-size:clamp(27px,2.6vw,36px); }
+.console .page-head p { max-width:700px; }
+.console .ln-home-intro {
+  display:flex;justify-content:space-between;align-items:center;gap:16px;
+  margin-bottom:20px;
+}
+.console .ln-home-intro h1 {
+  margin:6px 0 2px;font-size:clamp(28px,2.8vw,38px);letter-spacing:-.045em;
+}
+.console .ln-home-intro p { color:var(--muted);margin:0;font-size:13px; }
+.console .ln-home-kpis {
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px;
+}
+.console .ln-kpi {
+  display:flex;align-items:center;gap:14px;min-width:0;
+  padding:18px 16px;background:var(--panel);
+  border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 8px 22px rgba(0,32,13,.045);
+}
+.console .ln-kpi-symbol {
+  display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;
+  border-radius:14px;background:color-mix(in srgb,var(--accent) 12%,var(--panel));
+  color:var(--accent);font-size:20px;font-weight:750;
+}
+.console .ln-kpi div { display:grid;gap:3px;min-width:0; }
+.console .ln-kpi small { color:var(--muted);font-size:11px; }
+.console .ln-kpi strong { font-size:19px;line-height:1.2;letter-spacing:-.025em; }
+.console .ln-kpi div > span {color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.console .node-overview-grid {
+  grid-template-columns:minmax(340px,.96fr) minmax(400px,1.14fr);
+  gap:16px;align-items:stretch;
+}
+.console .node-summary-card,
+.console .overview-chart { border-radius:17px; }
+.console .node-summary-card .panel-head {
+  padding-bottom:14px;margin-bottom:8px;border-bottom:1px solid var(--line);
+}
+.console .node-summary-card .eyebrow { font-size:12px;letter-spacing:.01em; }
+.console .node-usage-row {padding:12px 0;}
+.console .node-facts {margin-top:20px;padding-top:10px;border-top:1px solid var(--line);}
+.console .overview-graph-panel {gap:10px;}
+.console .overview-chart {min-height:310px;}
+.console .overview-chart-head {padding:18px 20px 16px;}
+.console .overview-chart-head strong {font-size:24px;font-weight:720;}
+.console .overview-chart svg {height:244px;}
+.console .overview-bottom-grid {gap:16px;margin-top:16px;}
+.console .overview-bottom-grid .panel {border-radius:17px;}
+.console .overview-bottom-grid .panel-head {border-bottom:1px solid var(--line);padding-bottom:13px;}
+/* All views share the same grouped control surface, rather than unrelated old cards. */
+.console .content :is(.storage-toolbar,.file-toolbar,.backup-toolbar,.pool-toolbar,
+ .logs-toolbar,.settings-toolbar,.user-toolbar,.app-toolbar,.page-actions) {
+  border-radius:13px;gap:9px;
+}
+.console .content :is(.file-browser,.compute-table-wrap,.template-table,
+ .settings-dashboard,.storage-table-wrap,.admin-center-panel) {
+  border:1px solid var(--line);border-radius:15px;overflow:hidden;
+}
+.console .content :is(.storage-table-row,.compute-row,.file-row,.admin-center-row) {
+  transition:background .16s ease;
+}
+.console .content :is(.storage-table-row,.compute-row,.file-row,.admin-center-row):hover {
+  background:color-mix(in srgb,var(--accent) 6%,var(--panel));
+}
+.console .content :is(.file-grid,.inventory-grid,.app-grid,.storage-overview-grid) {
+  gap:14px;
+}
+.console .content :is(.storage-card,.app-card,.file-row,.inventory-card,.admin-tool-card) {
+  border-radius:14px;
+}
+.console .content .admin-center-workspace {gap:20px;}
+.console .content .admin-center-nav {border-radius:14px;}
+.console .content .admin-center-nav-item {min-height:38px;border-radius:9px;}
+.console .content .admin-center-nav-item.active {
+  background:color-mix(in srgb,var(--accent) 12%,var(--panel));
+}
+dialog:not(.embedded-terminal-dialog) .dialog-head {padding-bottom:16px;}
+dialog:not(.embedded-terminal-dialog) .dialog-actions {padding-top:14px;}
+.console .task-dock {
+  background:var(--ln-glass);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  border-top:1px solid var(--ln-hairline);
+}
+@media(min-width:761px) {
+  .console:not(.sidebar-collapsed) > .task-dock {left:232px!important;right:0;}
+  .console.sidebar-collapsed > .task-dock {left:86px!important;right:0;}
+}
+@media(max-width:1180px) {
+  .console .ln-home-kpis {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .console .node-overview-grid {grid-template-columns:1fr;}
+}
+@media(max-width:760px) {
+  .console .ln-home-intro {align-items:flex-start;}
+  .console .ln-home-kpis {grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+  .console .ln-kpi {padding:12px;gap:8px;}
+  .console .ln-kpi-symbol {width:32px;height:32px;flex-basis:32px;}
+  .console .ln-kpi strong {font-size:16px;}
+  .console .content {padding:15px 12px 90px;}
+}
+@media(max-width:390px) {
+  .console .ln-home-kpis {grid-template-columns:1fr;}
+  .console .ln-home-intro {flex-wrap:wrap;}
+}
