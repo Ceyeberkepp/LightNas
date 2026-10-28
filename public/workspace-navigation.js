@@ -74,7 +74,10 @@ function visibleNavigationLink(link) {
   let current = link;
   while (current && current.id !== 'console') {
     if (current.hidden || current.classList?.contains('hidden')) return false;
-    if (getComputedStyle(current).display === 'none') return false;
+    // Library sub-tabs are visually collapsed in the sidebar but remain
+    // discoverable through command search when Files & media is permitted.
+    if (!current.classList?.contains('nav-files-subtabs') &&
+        getComputedStyle(current).display === 'none') return false;
     current = current.parentElement;
   }
   return true;
