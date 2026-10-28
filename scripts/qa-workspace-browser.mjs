@@ -87,7 +87,10 @@ try {
         for (const section of ['general','users','permissions','smtp','settings','analytics','capabilities','integrations','migration']) {
           await page.locator(`.admin-center-nav [data-admin-section="${section}"]`).click();
           await page.waitForTimeout(100);
-          assert.ok(await page.locator(`.admin-center-nav [data-admin-section="${section}"]`).evaluate(e=>e.classList.contains('active')));
+          assert.ok(await page.locator(`.admin-center-nav [data-admin-section="${section}"]`).evaluate(e=>{
+            const r=e.getBoundingClientRect(), n=e.parentElement.getBoundingClientRect();
+            return e.classList.contains('active') && r.left>=n.left-1 && r.right<=n.right+1;
+          }), `Admin ${section} current tab must remain visible`);
           assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth + 1), `Admin ${section} overflow`);
         }
         await go('files');
