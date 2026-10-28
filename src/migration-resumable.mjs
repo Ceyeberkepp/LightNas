@@ -26,9 +26,15 @@ export async function recoverResumableImports(){
    const j=JSON.parse(await readFile(receiptPath(id),'utf8'));
    if(j.id!==id||typeof j.name!=='string'||!Number.isSafeInteger(j.size)||j.size<=0||!DIGEST.test(j.sha256)||
       !Number.isSafeInteger(j.offset)||j.offset<0||j.offset>j.size||!['receiving','verifying','verified'].includes(j.state))continue;
-   const path=j.state==='verified'?paths(id).done:paths(id).part;
+   let path=j.state==='verified'?paths(id).done:paths(id).part;
    if(j.offset===0 && j.state!=='verified') { jobs.set(id,j);recovered.push(resumableImportStatus(id));continue; }
-   const info=await stat(path);
+   let info,completedRename=false;
+   try {info=await stat(path);} catch(error) {
+    // Finalization renames data before saving its receipt. A restart between
+    // those writes must validate the renamed artifact rather than lose it.
+    if(error.code!=='ENOENT'||j.state!=='verifying'||j.offset!==j.size)throw error;
+    path=paths(id).done;info=await stat(path);j.state='verified';completedRename=true;
+   }
    if(!info.isFile()||info.size<j.offset)continue;
    if(j.state!=='verified'&&info.size>j.offset){
      const fd=await open(path,'r+');try{await fd.truncate(j.offset);await fd.sync();}finally{await fd.close();}
@@ -38,6 +44,7 @@ export async function recoverResumableImports(){
      const hash=createHash('sha256');for await(const piece of createReadStream(path))hash.update(piece);
      if(hash.digest('hex')!==j.sha256)continue;
    }else j.state='receiving';
+   if(completedRename)await persist(j);
    jobs.set(id,j);recovered.push(resumableImportStatus(id));
   }catch{}
  }
@@ -48,7 +55,8 @@ function paths(id){if(!UUID.test(id))fail('Invalid transfer ID');return {part:re
 export async function createResumableImport({name,size,sha256}){
  if(typeof name!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,179}$/.test(name)||!/\.(?:qcow2|raw|img|vmdk|tar|gz|xz|zst|json|xml)$/i.test(name))fail('Invalid transfer name');
  if(!Number.isSafeInteger(size)||size<=0||size>2**50||!DIGEST.test(sha256))fail('Invalid size or SHA-256');
- if(jobs.size>=128)fail('Too many active transfers',503);
+ const activeTransfers=Array.from(jobs.values()).filter(job=>job.state==='receiving'||job.state==='verifying').length;
+ if(activeTransfers>=128)fail('Too many active transfers',503);
  const id=randomUUID();const job={id,name,size,sha256:sha256.toLowerCase(),offset:0,state:'receiving'};jobs.set(id,job);
  try {
   await mkdir(ROOT,{recursive:true,mode:0o700});

@@ -110,16 +110,16 @@ test('managed application terminal opens in a separate browser window and keeps 
     readFile(new URL('../public/app.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/runtimes-next.mjs', import.meta.url), 'utf8')
   ]);
-  assert.match(app, /container-console\\.html\\?id=/);
+  assert.match(app, /container-console\.html\?id=/);
   assert.match(app, /type=app/);
   assert.match(app, /popup=yes/);
   assert.match(app, /lightnas-terminal-/);
-  assert.match(app, /terminalWindow\\.focus\\(\\)/);
+  assert.match(app, /terminalWindow\.focus\(\)/);
   assert.doesNotMatch(app, /function openManagedAppTerminal/);
   assert.doesNotMatch(app, /managed-app-terminal-dialog/);
-  assert.match(runtime, /docker[\\s\\S]*exec[\\s\\S]*--privileged[\\s\\S]*--user[\\s\\S]*0:0[\\s\\S]*'-i'[\\s\\S]*TERM=xterm-256color/);
-  assert.match(runtime, /exec \\/bin\\/bash --noprofile --norc -i/);
-  assert.match(runtime, /exec \\/bin\\/sh -i/);
+  assert.match(runtime, /docker[\s\S]*exec[\s\S]*--privileged[\s\S]*--user[\s\S]*0:0[\s\S]*'-i'[\s\S]*TERM=xterm-256color/);
+  assert.ok(runtime.includes('exec /bin/bash --noprofile --norc -i'));
+  assert.ok(runtime.includes('exec /bin/sh -i'));
 });
 
 
@@ -129,11 +129,24 @@ test('managed app terminal bindings use the multi-element selector helper', asyn
   assert.doesNotMatch(app, /(^|[^$])\$\('\[data-app-terminal\]', \$\('#content'\)\)\.forEach/m);
 });
 
-test('embedded terminal page may be framed only by the same LightNAS origin', async () => {
-  const server = await readFile(new URL('../src/server.mjs', import.meta.url), 'utf8');
-  assert.match(server, /const embeddedConsoleCsp = csp\.replace\("frame-ancestors 'none'", "frame-ancestors 'self'"\)/);
-  assert.match(server, /url\.pathname === '\/container-console\.html' \? embeddedConsoleCsp : csp/);
-  assert.match(server, /frame-ancestors 'none'/);
+test('embedded terminal page may be framed only by the same LightNAS origin', async t => {
+  const {mkdtemp,rm}=await import('node:fs/promises');
+  const {join}=await import('node:path');
+  const {tmpdir}=await import('node:os');
+  const directory=await mkdtemp(join(tmpdir(),'lightnas-console-csp-'));
+  process.env.NAS_DATA_FILE=join(directory,'state.json');
+  const {createServer}=await import('../src/server.mjs');
+  const server=createServer();
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});});
+  const base=`http://127.0.0.1:${server.address().port}`;
+  for(const path of ['/container-console.html','/migration-wizard.html']){
+    const response=await fetch(base+path);
+    assert.equal(response.status,200);
+    assert.match(response.headers.get('content-security-policy'),/frame-ancestors 'self'/);
+  }
+  const response=await fetch(base+'/');
+  assert.match(response.headers.get('content-security-policy'),/frame-ancestors 'none'/);
 });
 
 test('managed application settings support app credentials and container root password', async () => {
