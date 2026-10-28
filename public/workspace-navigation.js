@@ -203,7 +203,7 @@ function initWorkspaceSearch() {
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       if (list.hidden) refresh();
-      highlight(active - 1);
+      highlight(active < 0 ? results.length - 1 : active - 1);
     } else if (event.key === 'Enter') {
       if (list.hidden) refresh();
       if (results.length) {
