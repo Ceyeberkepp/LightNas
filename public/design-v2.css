@@ -523,3 +523,47 @@ label { font-size:13px;font-weight:550;gap:6px; }
 :root[data-theme] .auth-panel .primary:hover {
   background:color-mix(in srgb, var(--login-button) 84%, white);
 }
+
+
+/* Approved LightNAS dashboard refinements: final layer after flat V2 styling. */
+@media (min-width:761px) {
+  .console:not(.sidebar-collapsed) > .task-dock {
+    left:232px; right:0; width:auto; border-left:1px solid var(--line);
+  }
+  .console.sidebar-collapsed > .task-dock { left:86px;right:0; }
+  .console .content {
+    max-width:none;
+    padding-bottom:94px;
+    background:radial-gradient(ellipse at 65% 0%,color-mix(in srgb,var(--accent) 7%,transparent),transparent 65%),var(--bg);
+  }
+}
+.console .sidebar nav a { border-radius:9px; }
+.console .sidebar nav a.active {
+  background:color-mix(in srgb,var(--accent) 12%,var(--panel));
+  border-radius:9px;
+  box-shadow:inset 3px 0 var(--accent);
+}
+.console .task-dock { background:var(--panel); box-shadow:0 -4px 18px rgba(0,0,0,.05); }
+.console .task-dock-bar { background:var(--panel); }
+.console .node-overview-grid { gap:16px; }
+.console .node-overview-grid .panel,
+.console .overview-bottom-grid .panel,
+.console .overview-chart {
+  border-radius:16px;
+  border-color:var(--line);
+  box-shadow:0 8px 26px rgba(9,42,20,.055);
+}
+.console .node-summary-card .panel-head h2 { font-size:18px;letter-spacing:-.025em; }
+.console .node-usage-row { padding-block:11px; }
+.console .node-facts { grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px; }
+.console .node-facts > div { display:block;min-width:0; }
+.console .node-facts dd { text-align:left;margin-top:5px; }
+.console .overview-graph-tabs { border-radius:14px;padding:5px; }
+.console .overview-graph-tabs button { border-radius:10px;min-height:40px; }
+.console .overview-chart svg { background-size:20% 25%; }
+@media (max-width:1050px) {
+  .console .node-overview-grid { grid-template-columns:1fr; }
+}
+@media (max-width:760px) {
+  .console .node-facts { grid-template-columns:1fr; }
+}
