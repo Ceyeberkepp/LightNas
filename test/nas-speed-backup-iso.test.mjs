@@ -14,7 +14,7 @@ test('App Store loads built-ins immediately and community catalog in background'
   assert.match(app, /loadCommunityCatalog\(false\)/);
   assert.match(app, /communityCatalogLoading/);
   assert.doesNotMatch(app, /state\.communityCatalog = await request\('\/api\/catalog\/community\?refresh=1'\)/);
-  assert.match(community, /stale:true, refreshing:true/);
+  assert.match(community, /stale:\s*true,[\s\S]*refreshing:\s*true/);
   assert.match(community, /Promise\.all\(DEFAULT_SOURCES\.map/);
   assert.match(community, /MANIFEST_CONCURRENCY = 10/);
   assert.match(server, /RUNTIME_INVENTORY_TTL_MS = 30000/);

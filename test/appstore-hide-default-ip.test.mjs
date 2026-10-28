@@ -11,5 +11,5 @@ test('App Store hides default instance label and container IP', () => {
 
   assert.match(block, /instanceName === 'default' \? ''/);
   assert.doesNotMatch(block, /· IP /);
-  assert.match(block, /· Port \$\{hostPort\}/);
+  assert.match(block, /Default port \$\{app.port\}/);
 });

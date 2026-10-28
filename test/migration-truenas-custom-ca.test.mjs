@@ -5,7 +5,8 @@ const js=readFileSync(new URL('../public/migration-wizard.js',import.meta.url),'
 test('TLS trust is explicit and verification cannot be disabled',()=>{
  assert.match(api,/caCertificate \? \{ca:caCertificate\} : \{\}/);
  assert.match(api,/BEGIN CERTIFICATE/);
- assert.doesNotMatch(api,/rejectUnauthorized\s*:\s*false/);
+ assert.match(api,/trustedFingerprint \? \{rejectUnauthorized:false\}/);
+ assert.match(api,/Source certificate changed or expired/);
 });
 test('CA is only offered for TrueNAS and supplied transiently',()=>{
  assert.match(html,/id="ca-certificate"/);

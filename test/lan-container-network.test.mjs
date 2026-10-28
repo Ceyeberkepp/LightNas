@@ -67,7 +67,7 @@ test('fresh ISO boot acquires wired DHCP before guest networking is provisioned'
   assert.match(provision, /waiting for permitted LAN passthrough/);
 
   assert.match(iso, /lightnas-network-bootstrap\.service/);
-  assert.match(iso, /Requires=lightnas-network-bootstrap\.service/);
+  assert.match(iso, /Wants=lightnas-network-bootstrap\.service/);
   assert.match(iso, /systemctl disable lxc-net\.service/);
   assert.doesNotMatch(iso, /systemctl enable lxc-net\.service/);
 });
@@ -76,7 +76,7 @@ test('ISO build does not hard-require the Ubuntu keyring package on Debian', asy
   const iso = await readFile(new URL('../iso/build.sh', import.meta.url), 'utf8');
   const packageList = iso.match(/cat >config\/package-lists\/lightnas\.list\.chroot <<'EOF'([\s\S]*?)\nEOF/)?.[1] || '';
   assert.doesNotMatch(packageList, /^ubuntu-keyring$/m);
-  assert.match(iso, /ubuntu-archive-keyring\.gpg/);
+  assert.match(iso, /no unverified signing key is downloaded/);
 });
 
 

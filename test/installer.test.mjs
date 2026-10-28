@@ -74,7 +74,7 @@ test('nested bridge migration keeps the appliance LAN address and only uses NAT 
   assert.match(network, /ip addr replace "\$\{address\}" dev "\$\{BRIDGE\}"/);
   assert.match(network, /ip route replace default via "\$\{default_gw\}" dev "\$\{BRIDGE\}"/);
   assert.match(network, /ip addr del "\$\{address\}" dev "\$\{uplink\}"/);
-  assert.match(network, /LIGHTNAS_NETWORK_MODE=lxc-nat/);
+  assert.match(network, /LIGHTNAS_NETWORK_MODE=pending-uplink/);
 });
 
 

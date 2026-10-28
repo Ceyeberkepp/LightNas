@@ -11,10 +11,10 @@ test('catalog apps publish and verify their LightNAS endpoint automatically', as
     readFile(new URL('../src/network.mjs', import.meta.url), 'utf8')
   ]);
 
-  assert.match(runtime, /lightnas\.web\.port=/);
-  assert.match(runtime, /0\.0\.0\.0:\$\{app\.port\}:\$\{app\.containerPort\}/);
-  assert.match(runtime, /waitForAppPort\(app\.port\)/);
-  assert.match(runtime, /access: \{ scheme: 'http', port: app\.port, path: '\/' \}/);
+  assert.match(runtime, /lightnas\.web\.containerPort=/);
+  assert.match(runtime, /0\.0\.0\.0:\$\{requestedPort\}:\$\{app\.containerPort\}/);
+  assert.match(runtime, /waitForAppPort\(hostPort\)/);
+  assert.match(runtime, /access: \{ scheme: 'http', port: hostPort, path: '\/' \}/);
   for (const port of [3000, 3001, 8081, 8082, 8083, 8096]) assert.match(installer, new RegExp(`\\b${port}\\b`));
   assert.match(installer, /LightNAS managed app/);
   assert.match(app, /Open application/);

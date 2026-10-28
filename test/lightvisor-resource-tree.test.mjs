@@ -17,7 +17,7 @@ test('LightVisor uses a hierarchical Proxmox-style resource tree', async () => {
 
   assert.match(tree, /RESOURCE TREE/);
   assert.match(tree, /Local Datacenter/);
-  assert.match(tree, /LXC Containers/);
+  assert.match(tree, /Containers/);
   assert.match(tree, /Nodes/);
   assert.match(tree, /Virtual Machines/);
   assert.match(tree, /SDN \/ Networks/);
@@ -56,7 +56,7 @@ test('LightVisor keeps inventory and operational navigation separate', async () 
   const operations = tree.indexOf('OPERATIONS');
   assert.ok(inventory >= 0 && operations > inventory);
 
-  for (const label of ['LXC Containers','Nodes','Virtual Machines','SDN / Networks','Storage']) {
+  for (const label of ['Containers','Nodes','Virtual Machines','SDN / Networks','Storage']) {
     const marker = '<b>' + label + '</b>';
     const pos = tree.indexOf(marker, inventory);
     assert.ok(pos > inventory && pos < operations, label + ' must remain in resource inventory');

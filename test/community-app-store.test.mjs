@@ -14,7 +14,7 @@ test('community App Store entries are normalized and deployable Compose apps exp
   assert.match(catalog, /installable: Boolean/);
   assert.match(catalog, /composeUrl/);
   assert.match(catalog, /docker'[\s\S]*compose[\s\S]*up[\s\S]*-d/);
-  assert.match(catalog, /CATALOG_SCHEMA_VERSION = 3/);
+  assert.match(catalog, /CATALOG_SCHEMA_VERSION = 4/);
 
   assert.match(app, /app\.installable/);
   assert.match(app, /data-community-install/);
@@ -32,7 +32,7 @@ test('community installer preserves unsupported entries as unavailable instead o
 
   assert.match(app, /app\.installReason/);
   assert.match(app, />Unavailable<\/button>/);
-  assert.match(catalog, /does not provide a Docker Compose manifest/);
+  assert.match(catalog, /has no deployable Compose manifest/);
   assert.match(catalog, /does not support this CPU architecture/);
 });
 
@@ -75,7 +75,7 @@ test('TrueNAS catalog entries stay visible without pretending every TrueNAS temp
   ]);
   assert.match(catalog, /id:'truenas'/);
   assert.match(catalog, /trueNasCatalog/);
-  assert.match(app, /TrueNAS catalog entry/);
+  assert.match(app, /app\.community \? \'\' :/);
 });
 
 test('TrueNAS catalog apps use the official renderer and expose a real Install action', async () => {

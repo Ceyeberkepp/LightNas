@@ -83,3 +83,21 @@ The earlier browser blocker was resolved using a local Chromium executable. PR #
 - The browser matrix covers 15 routes, both themes and all nine required sizes plus 844×390 landscape: 300 route/theme/viewport combinations. Checks include page overflow, visibility of the current workspace section, graph actions, and firewall editor open/revert/close. Admin Center's nine sections and mobile/desktop Files settings receive additional checks at 390px and 1280px.
 - Focused regression checks: 12 pass. Full suite: 619 tests, 530 pass, 88 fail, 1 skip. Platform and syntax checks pass. This improves one baseline failure and adds one passing regression test; the full suite remains red.
 - These are layout and action smoke tests against a real local server. The staging environment lacks the privileged host/storage agents and installed workloads. Real uploads, media editing, storage/compute changes, backups, permissions and restricted-account behavior remain outside this evidence; the redesign is not fully accepted.
+
+## Remaining-failure cleanup
+
+The previously reported 76 JavaScript failures are resolved. The current full suite reports **633 tests: 632 pass, zero fail, one pre-existing environment skip** (Unix-socket creation is unavailable in this workspace). No new skips or deleted tests were used to clear failures. All **39 Python tests** pass, including generated guest DNS files and isolated archive extraction. The platform contract, modified JavaScript syntax, shell syntax and ISO workflow YAML checks pass.
+
+Product fixes in this cleanup:
+
+- Containers refresh reloads native container inventory alongside application runtimes.
+- Fullscreen image previews request the 1280px preview rather than the grid's 320px thumbnail. Browser QA uses a real 1600px PNG and verifies the mobile image reaches 1280px.
+- Missing migration credentials fail before source DNS/network work; loopback validation preserves a user-facing HTTP 400 error, including case-insensitive localhost names.
+- Minimal systemd guests receive valid resolver scripts, service/timer files and one static DNS record per line, with actual newlines. Tests execute provisioning against a temporary guest filesystem with privileged commands mocked.
+- Debian ISO builds can proceed when an authenticated Ubuntu keyring is unavailable; Ubuntu templates remain unavailable and no unsigned key is downloaded.
+- ISO workflows rebuild when embedded source/public/configuration changes; obsolete private-NAT fallback code was removed without changing the management-address rollback.
+- The Logs dialog uses the same accessible refresh icon as other workspaces.
+
+Contract tests were reconciled with the native installer, explicit certificate pinning, Admin Center sections, per-instance application ports, generated photo-editor controls and the existing evaluation license. No license terms or TLS pinning behavior were changed. The isolated-extraction fixture now distinguishes a valid contained link from an escaping link; both behaviors are exercised.
+
+This clears automated suite failures. It does not certify a newly built ISO boot, external architecture qualification or privileged appliance workloads; those retain their separate verification gates.

@@ -13,8 +13,8 @@ test('LightNAS is licensed and documented as a platform-neutral independent prod
     readFile(new URL('../package.json', import.meta.url), 'utf8')
   ]);
 
-  assert.match(license, /Apache License[\s\S]*Version 2\.0/);
-  assert.match(license, /Copyright 2026 Cyverax LLC/);
+  assert.match(license, /LightNAS Development and Community Evaluation License/);
+  assert.match(license, /Copyright \(c\) 2026 LightNAS Project/);
   assert.match(disclaimer, /LightNAS is an independent storage and infrastructure operating environment/);
   assert.match(disclaimer, /No responsibility for independently operated instances/);
   assert.match(disclaimer, /operator remains responsible/);
@@ -25,6 +25,6 @@ test('LightNAS is licensed and documented as a platform-neutral independent prod
   assert.match(integrations, /Proxmox deployment integration/);
   assert.doesNotMatch(app, /Proxmox-style host networking/);
   assert.doesNotMatch(app, /No Proxmox configuration/);
-  assert.match(app, /LightNAS · Apache License 2\.0/);
-  assert.equal(JSON.parse(pkg).license, 'Apache-2.0');
+  assert.match(app, /LightNAS · Development & Community Evaluation License/);
+  assert.equal(JSON.parse(pkg).license, 'SEE LICENSE IN LICENSE');
 });

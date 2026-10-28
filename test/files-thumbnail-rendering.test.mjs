@@ -16,7 +16,7 @@ test('Files renders thumbnails directly instead of mutating them later', async (
 
 test('viewer close no longer rewrites gallery thumbnail sources', async () => {
   const enhancements = await read('public/enhancements.js');
-  const close = enhancements.slice(enhancements.indexOf("dialog.addEventListener('close'"), enhancements.indexOf("dialog.querySelector('[data-viewer-close]')"));
+  const close = enhancements.slice(enhancements.indexOf("dialog.addEventListener('close'"), enhancements.indexOf("  });", enhancements.indexOf("dialog.addEventListener('close'")));
   assert.doesNotMatch(close, /file-thumb/);
   assert.doesNotMatch(close, /thumbnail\?path/);
 });

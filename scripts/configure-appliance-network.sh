@@ -125,7 +125,7 @@ PY
 # topology and moving the address to an inner bridge can disconnect LightNAS.
 #
 # Direct-LAN inner containers are used only when macvlan can be created on the
-# existing uplink. Otherwise use the reliable private NAT fallback.
+# existing uplink. Otherwise report unavailable LAN passthrough without moving management networking.
 container_kind="$(systemd-detect-virt --container 2>/dev/null || true)"
 if [[ -n "$container_kind" && "$container_kind" != "none" ]]; then
   nested_uplink="$(ip -4 route show default 2>/dev/null | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')"
@@ -448,10 +448,6 @@ if ! ip -4 route show default dev "${BRIDGE}" 2>/dev/null | grep -q .; then
   ip link set "${uplink}" nomaster >/dev/null 2>&1 || true
   ip addr replace "${address}" dev "${uplink}" >/dev/null 2>&1 || true
   [[ -n "${default_gw}" ]] && ip route replace default via "${default_gw}" dev "${uplink}" >/dev/null 2>&1 || true
-  if [[ "${nested_bridge_requested:-0}" == "1" ]]; then
-    printf 'LIGHTNAS_NETWORK_MODE=lxc-nat\nLIGHTNAS_UPLINK=%s\nLIGHTNAS_CONTAINER_BRIDGE=lightnas0\nLIGHTNAS_VM_NETWORK=default\n' "${uplink}" >"${STATE_FILE}"
-    echo "LightNAS network: transparent nested LAN bridge is unavailable; using private compatibility NAT." >&2
-  fi
   exit 1
 fi
 

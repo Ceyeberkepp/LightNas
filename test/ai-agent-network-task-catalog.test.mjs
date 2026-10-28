@@ -9,7 +9,7 @@ test('nested LightNAS preserves management networking and uses direct LAN only w
   assert.match(network, /LIGHTNAS_NESTED_LAN_MODE:-auto/);
   assert.match(network, /LIGHTNAS_NETWORK_MODE=nested-macvlan/);
   assert.match(network, /direct LAN is available/);
-  assert.match(network, /preserving management networking and using safe container NAT fallback/);
+  assert.match(network, /guest creation must wait/);
   assert.match(provision, /direct_type="\$\{network_mode#nested-\}"/);
   assert.match(provision, /lxc\.net\.0\.macvlan\.mode = bridge/);
   assert.match(provision, /lxc\.net\.0\.ipvlan\.mode = l2/);
@@ -22,9 +22,9 @@ test('managed container network is DHCP-first and repairs legacy auto-static gue
   assert.doesNotMatch(agent, /"ipv4Address": next_managed_container_ipv4\(name\)/);
   assert.match(agent, /def kick_container_dhcp/);
   assert.match(agent, /ClientIdentifier=mac/);
-  assert.match(provision, /dhcp-authoritative/);
-  assert.match(provision, /Older LightNAS builds silently converted DHCP/);
-  assert.match(provision, /virbr0\|lxcbr0\|lightnas0/);
+  assert.match(provision, /Do not create lightnas0 as a NAT router/);
+  assert.match(provision, /restore_guest_lan_dhcp\(\)/);
+  assert.match(provision, /lightnas0\|lxcbr0\|virbr0/);
 });
 
 test('AI helper can diagnose and repair no-IP containers', async () => {

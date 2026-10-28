@@ -17,12 +17,12 @@ test('LXC appliance networking follows the host LAN when direct nested LAN is av
   assert.match(network, /LIGHTNAS_NESTED_LAN_MODE:-auto/);
   assert.match(network, /systemd-detect-virt --container/);
   assert.match(network, /LIGHTNAS_NETWORK_MODE=bridge/);
-  assert.match(network, /LIGHTNAS_NETWORK_MODE=lxc-nat/);
+  assert.match(network, /LIGHTNAS_NETWORK_MODE=pending-uplink/);
 
-  assert.match(provision, /10\.77\.0\.1/);
+  assert.match(provision, /10\\\.77\\\.0\\\.1/);
   assert.match(provision, /192\.168\.122\.1/);
   assert.match(provision, /network_mode.*lxc-nat/);
-  assert.match(provision, /virbr0\|lxcbr0/);
+  assert.match(provision, /lightnas0\|lxcbr0\|virbr0/);
 
   assert.match(helper, /Keep the existing LightNAS eth0\/net0 connection and IP exactly as-is/);
   assert.match(helper, /firewall=0/);
@@ -43,6 +43,6 @@ test('network bootstrap service never performs a nested management-interface cut
     readFile(new URL('../scripts/configure-appliance-network.sh', import.meta.url), 'utf8')
   ]);
   assert.match(installer, /lightnas-network-bootstrap\.service/);
-  assert.match(network, /preserving management networking/);
+  assert.match(network, /Do not move the management address/);
   assert.doesNotMatch(network, /trying transparent host-LAN bridge/);
 });

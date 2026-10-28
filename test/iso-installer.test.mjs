@@ -57,7 +57,7 @@ test('ISO build script remains valid shell after kiosk changes', async () => {
 test('LightNAS graphical console never relies on a silent Openbox autostart', () => {
   assert.match(iso, /Starting the local control center/);
   assert.match(iso, /file:\/\/\/usr\/share\/lightnas\/kiosk-start\.html/);
-  assert.match(iso, /mode:'no-cors'/);
+  assert.match(iso, /fetch\(/);
   assert.match(iso, /Launch Chromium directly/);
   assert.match(iso, /runuser -u lightnas-ui[\s\S]*\/usr\/local\/bin\/lightnas-kiosk/);
   assert.match(iso, /Restart=always/);

@@ -35,11 +35,11 @@ test('all image and video cards render stable thumbnail URLs directly', async ()
   assert.doesNotMatch(enhancer, /createElement\('img'\)/);
 });
 
-test('native images bypass FFmpeg while HEIC and HEIF use the conversion pipeline', async () => {
+test('SVG previews bypass rasterization while image tiles and HEIC use bounded thumbnails', async () => {
   const [enhancements, thumbnails] = await Promise.all([read('public/enhancements.js'), read('src/thumbnails.mjs')]);
   assert.match(enhancements, /'heic', 'heif'/);
   assert.match(thumbnails, /nativeImageTypes/);
-  assert.match(thumbnails, /if \(nativeImageTypes\.has\(extension\)\)/);
+  assert.match(thumbnails, /if \(extension === '\.svg'\)/);
   assert.match(thumbnails, /'\.heic', '\.heif'/);
   assert.match(enhancements, /preview=1&path=/);
   assert.match(enhancements, /dialog\.dataset\.sourcePath = path/);

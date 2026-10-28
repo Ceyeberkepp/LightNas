@@ -13,7 +13,7 @@ test('mobile Files exposes only Grid and Photos view controls', async () => {
 
 test('mobile photo mode hides Files chrome but preserves Settings and gallery', async () => {
   const [app, css] = await Promise.all([read('public/app.js'), read('public/enhancements.css')]);
-  assert.match(app, /files-page \$\{state\.fileView === 'gallery' \? 'photo-mode' : 'grid-mode'\}/);
+  assert.match(app, /files-page \$\{effectiveFileView === 'gallery' \? 'photo-mode' : 'grid-mode'\}/);
   assert.match(app, /data-mobile-files-settings/);
   assert.match(css, /files-page\.photo-mode > \.page-head/);
   assert.match(css, /files-page\.photo-mode > \.mobile-files-settings-button/);

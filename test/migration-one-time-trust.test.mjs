@@ -5,7 +5,7 @@ test('untrusted server requires explicit approval before credentials are submitt
  assert.match(js,/window\.confirm\(/);
  assert.match(js,/No password was sent/);
  assert.match(js,/data\.trustedFingerprint=certificate\.sha256Fingerprint/);
- assert.ok(js.indexOf('window.confirm(')<js.indexOf("const result=await post('/api/migration/inspect',data)"));
+ assert.ok(js.indexOf('window.confirm(')<js.indexOf("result=await post('/api/migration/inspect',data)"));
 });
 test('TLS pin is validated before TrueNAS authentication handshake',()=>{
  assert.match(api,/fingerprint256/);

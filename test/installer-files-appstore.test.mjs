@@ -24,7 +24,7 @@ test('All Files is limited to the four media/document libraries and folder uploa
   assert.match(app, /data-file-drop/);
   assert.match(app, /event\.dataTransfer\?\.files/);
   assert.match(files, /mkdir\(await checked\(relative, false\), \{ recursive: true/);
-  assert.match(app, /allFiles \? state\.files\.filter\(entry => !entry\.directory && !isSystemImageFile\(entry\.name\)\)/);
+  assert.match(app, /allFiles\s*\? state\.files\.filter\(entry => !entry\.directory && !isSystemImageFile\(entry\.name\)\)/);
 });
 
 test('Files refresh and storage hot-plug detection are explicit', async () => {
@@ -44,7 +44,7 @@ test('ISO boots directly into the LightNAS graphical control center without a De
   assert.match(iso, /lightnas-display-console\.service/);
   assert.match(iso, /\/usr\/bin\/xinit \/usr\/local\/bin\/lightnas-xsession/);
   assert.match(iso, /systemctl mask lightdm\.service/);
-  assert.match(iso, /openbox-session/);
+  assert.match(iso, /openbox >\/var\/log\/lightnas-openbox\.log/);
   assert.match(iso, /PRETTY_NAME="LightNAS 1\.0 \(Debian 13\)"/);
   assert.match(iso, /Name=LightNAS/);
   assert.match(iso, /plymouth-set-default-theme lightnas/);
