@@ -537,11 +537,11 @@ function homeView() {
     : state.overviewMetric === 'storage' ? overviewChart('Storage usage', `${storagePercent}`, '%', state.metricHistory.storage, 100, `${bytes(used)} used · ${bytes(total)} total · ${bytes(available)} free`)
     : overviewChart('CPU usage', `${system.cpu.loadPercent}`, '%', state.metricHistory.cpu, 100, `${system.cpu.cores} logical CPUs · load ${loadAverage[0]} · ${system.cpu.model || 'CPU model unavailable'}`);
   return `<section class="ln-home-intro">
-      <div><span class="eyebrow">LIGHTNAS CONTROL CENTER</span><h1>Overview</h1><p>Live system health and performance at a glance.</p></div>
-      <button class="secondary refresh-icon-button" data-action="refresh" aria-label="Refresh system status" title="Refresh">↻ Refresh</button>
+      <div class="ln-welcome"><span class="eyebrow">LIGHTNAS CONTROL CENTER</span><h1>Welcome back, ${escapeHtml(appliance.displayName || appliance.username || 'admin')}</h1><p>Your LightNAS is online. Live system health and performance at a glance.</p></div>
+      <div class="ln-home-intro-actions"><span class="ln-live-state"><i aria-hidden="true"></i> Live monitoring</span><button class="secondary refresh-icon-button" data-action="refresh" aria-label="Refresh system status" title="Refresh system status"><span aria-hidden="true">↻</span><span>Refresh</span></button></div>
     </section>
     <section class="ln-home-kpis" aria-label="Live system summary">
-      <article class="ln-kpi"><span class="ln-kpi-symbol">✓</span><div><small>System</small><strong>Online</strong><span>${escapeHtml(appliance.deviceName || 'LightNAS')}</span></div></article>
+      <article class="ln-kpi ln-kpi-health"><span class="ln-kpi-symbol" aria-hidden="true">✓</span><div><small>System status</small><strong>Healthy</strong><span>${escapeHtml(appliance.deviceName || 'LightNAS')} · Online</span></div></article>
       <article class="ln-kpi"><span class="ln-kpi-symbol">▥</span><div><small>CPU usage</small><strong>${system.cpu.loadPercent}%</strong><span>${system.cpu.cores} logical CPUs</span></div></article>
       <article class="ln-kpi"><span class="ln-kpi-symbol">◉</span><div><small>Memory</small><strong>${system.memory.usedPercent}%</strong><span>${bytes(system.memory.usedBytes)} used</span></div></article>
       <article class="ln-kpi"><span class="ln-kpi-symbol">⌁</span><div><small>Network</small><strong>${Number(system.network?.interfaces || 0)} interfaces</strong><span>Live system monitoring</span></div></article>
