@@ -16,7 +16,7 @@ test('nested LXC libvirt avoids device chown failures', async () => {
   assert.match(provision, /remember_owner = 0/);
   assert.match(provision, /systemd-detect-virt --container/);
 
-  assert.match(runtimes, /Failed to chown device \\/dev\\/urandom/);
-  assert.match(runtimes, /localApplianceRepair\(\)/);
+  assert.ok(runtimes.includes(String.raw`Failed to chown device \/dev\/urandom`));
+  assert.match(runtimes, /localRepairNestedLibvirt\(\)/);
   assert.match(runtimes, /retry this request once automatically/);
 });
