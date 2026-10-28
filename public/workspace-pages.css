@@ -1,5 +1,51 @@
 /* Page-specific redesign based on the real render classes in app.js.
    Unlike generic .file-grid/.app-grid selectors, these target the actual views. */
+/* Management editors keep their title and actions in view while fields scroll.
+   Media viewers and terminal/hardware workspaces retain their own layouts. */
+dialog.ln-management-editor {
+  width:min(560px,calc(100vw - 24px));
+  max-width:calc(100vw - 24px);
+  max-height:calc(100dvh - 24px);
+  padding:0;overflow:hidden;border-radius:16px;
+}
+dialog.ln-management-editor > .dialog-body {
+  display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+  max-height:calc(100dvh - 26px);padding:0;gap:0;
+}
+dialog.ln-management-editor .dialog-head {
+  margin:0;padding:16px 20px;border-bottom:1px solid var(--line);
+  align-items:center;gap:12px;min-width:0;
+}
+dialog.ln-management-editor .dialog-head > div {min-width:0;}
+dialog.ln-management-editor .dialog-head h2 {
+  font-size:20px;line-height:1.25;letter-spacing:-.025em;overflow-wrap:anywhere;
+}
+dialog.ln-management-editor .dialog-close {flex:0 0 36px;}
+dialog.ln-management-editor .ln-editor-content {
+  min-height:0;overflow:auto;overscroll-behavior:contain;
+  padding:16px 20px;scroll-padding-block:12px;
+}
+dialog.ln-management-editor [data-dialog-description] {
+  margin:0 0 16px;font-size:12px;line-height:1.5;
+}
+dialog.ln-management-editor [data-dialog-fields] {display:grid;gap:12px;}
+dialog.ln-management-editor [data-dialog-fields] label {
+  display:grid;gap:6px;margin:0;min-width:0;font-size:12px;
+}
+dialog.ln-management-editor :is(input,select) {min-width:0;max-width:100%;}
+dialog.ln-management-editor .dialog-actions {
+  margin:0;padding:12px 20px;border-top:1px solid var(--line);
+  background:var(--panel-2);flex-wrap:wrap;gap:8px;
+}
+dialog.ln-management-editor .dialog-actions button {min-height:36px;}
+dialog.ln-management-editor .form-error:not(:empty) {margin-top:12px;overflow-wrap:anywhere;}
+@media(max-width:480px) {
+  dialog.ln-management-editor {border-radius:12px;}
+  dialog.ln-management-editor :is(.dialog-head,.ln-editor-content,.dialog-actions) {padding:12px;}
+  dialog.ln-management-editor .dialog-actions button {flex:1 1 auto;min-height:44px;}
+  dialog.ln-management-editor :is(input,select) {font-size:16px;min-height:44px;}
+  dialog.ln-management-editor .dialog-close {min-height:44px;flex-basis:44px;}
+}
 #content[data-current-view="files"] .files-page,
 #content[data-current-view="apps"] .app-catalog-grid,
 #content[data-current-view="users"] .user-card-grid,
