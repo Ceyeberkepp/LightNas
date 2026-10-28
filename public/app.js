@@ -890,9 +890,10 @@ function storageAddMenuHeader() {
 function storageView() {
   const spaces = Array.isArray(state.spaces) ? state.spaces : [];
   const actions = `<div class="head-actions"><button class="secondary refresh-icon-button" data-action="refresh-storage" aria-label="Refresh" title="Refresh">↻</button><button class="primary" data-view-link="pools">Manage storage</button>${storageAddMenuHeader()}</div>`;
-  return `${pageHead('Storage', 'LightNAS storage pools, capacity and content libraries.', actions)}
-    <div id="storage-manager"><div class="empty"><p>Loading LightNAS Storage Manager…</p></div></div>
-    ${spaces.length ? `<section class="storage-spaces-section"><div class="section-heading"><div><span class="eyebrow">FILE STORAGE</span><h2>LightNAS storage spaces</h2></div></div><div class="storage-list">${spaces.map(space => `<article class="storage-row"><div><h3>${escapeHtml(space.label)}</h3><p>Spaces/${escapeHtml(space.name)}</p></div><button class="secondary" data-open-space="${escapeHtml(space.name)}">Open</button></article>`).join('')}</div></section>` : ''}`;
+  return `<section class="ln-page-hero ln-storage-hero"><div class="ln-page-identity"><span class="eyebrow">STORAGE WORKSPACE</span><h1>Storage</h1><p>Manage pools, capacity, and content libraries from one place.</p></div>${actions}</section>
+    <nav class="ln-context-links" aria-label="Storage shortcuts"><button type="button" data-view-link="pools">Pools & datasets <span aria-hidden="true">↗</span></button><button type="button" data-view-link="shares">Shared folders <span aria-hidden="true">↗</span></button><button type="button" data-view-link="backups">Backups <span aria-hidden="true">↗</span></button><button type="button" data-view-link="files">Browse files <span aria-hidden="true">↗</span></button></nav>
+    <section class="ln-page-section" aria-label="Storage inventory"><div class="ln-section-title"><div><span class="eyebrow">INVENTORY</span><h2>Storage manager</h2></div><span class="ln-section-caption">Pools and attached devices</span></div><div id="storage-manager"><div class="empty"><p>Loading LightNAS Storage Manager…</p></div></div></section>
+    ${spaces.length ? `<section class="ln-page-section storage-spaces-section"><div class="ln-section-title"><div><span class="eyebrow">FILE STORAGE</span><h2>Storage spaces</h2></div><span class="ln-section-caption">${spaces.length} available</span></div><div class="storage-list">${spaces.map(space => `<article class="storage-row"><div><h3>${escapeHtml(space.label)}</h3><p>Spaces/${escapeHtml(space.name)}</p></div><button class="secondary" data-open-space="${escapeHtml(space.name)}">Open</button></article>`).join('')}</div></section>` : ''}`;
 }
 
 function poolsView() {
@@ -1624,7 +1625,8 @@ function filesView() {
     </section>
     ${mobileFiles && ['', 'Photos', 'Videos'].includes(section) ? mobileGallery() : ''}
     <div class="files-library-content desktop-files-library ${state.filesSettingsOpen ? 'hidden' : ''}">
-    <div class="file-toolbar"><div class="breadcrumbs">${crumbs}</div><div class="file-toolbar-actions">
+    <section class="ln-files-location" aria-label="Current file location"><div class="ln-files-location-info"><span class="eyebrow">FILE LIBRARY</span><div class="breadcrumbs">${crumbs}</div></div><span class="ln-files-view-hint">${effectiveFileView === 'gallery' ? 'Gallery' : effectiveFileView === 'grid' ? 'Grid view' : 'List view'}</span></section>
+    <div class="file-toolbar"><div class="file-toolbar-actions">
       ${foldersMode && state.folder === '' ? '' : `<label class="file-toolbar-select">View
         <select data-file-view-select aria-label="File view">
           <option value="list" ${state.fileView === 'list' ? 'selected' : ''}>☷ List</option>
@@ -2459,7 +2461,7 @@ function adminView() {
   if (section === 'integrations') panel = adminEmbeddedView(integrationsView());
   if (section === 'migration') panel = '<section class="panel"><h2>Migration Center</h2><p>Transfer from Proxmox, VMware, TrueNAS or Red Hat using guided discovery and compatibility checks.</p><button class="primary" type="button" data-open-migration-wizard>Open transfer wizard</button></section>';
 
-  return `${pageHead('Admin Center', 'Manage accounts, access, settings, security, and system services from one workspace.')}
+  return `<section class="ln-page-hero ln-admin-hero"><div class="ln-page-identity"><span class="eyebrow">SYSTEM MANAGEMENT</span><h1>Admin Center</h1><p>People, access, settings, security, and system services.</p></div><span class="ln-hero-section">${escapeHtml(ADMIN_CENTER_SECTIONS.find(([id]) => id === section)?.[1] || 'General')}</span></section>
     <div class="admin-center-workspace">
       <aside class="admin-center-nav panel" aria-label="Admin Center sections">
         ${ADMIN_CENTER_SECTIONS.map(([id, label]) => adminCenterSectionButton(id, label)).join('')}
