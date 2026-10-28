@@ -2895,14 +2895,13 @@ function render(view) {
   content.focus({ preventScroll: true });
   applyWorkspaceMode();
   bindViewActions();
-  const currentSection = content.querySelector('.ln-workspace-nav [aria-current="page"]');
-  if (currentSection) {
+  content.querySelectorAll('.ln-workspace-nav [aria-current="page"], .admin-center-nav-item.active').forEach(currentSection => {
     const nav = currentSection.parentElement;
     const itemRect = currentSection.getBoundingClientRect();
     const navRect = nav.getBoundingClientRect();
     if (itemRect.right > navRect.right) nav.scrollLeft += itemRect.right - navRect.right + 4;
     else if (itemRect.left < navRect.left) nav.scrollLeft -= navRect.left - itemRect.left + 4;
-  }
+  });
   if (state.view === 'files') {
     const key = filesSectionCacheKey();
     const checkedAt = Number(state.fileSectionCheckedAt.get(key) || 0);
