@@ -1136,3 +1136,89 @@ dialog:not(.embedded-terminal-dialog) .dialog-actions {padding-top:9px;}
   .console .overview-chart svg {height:clamp(112px,18vh,175px);}
   .console .overview-bottom-grid {margin-top:10px;}
 }
+
+
+/* Workspace refinement: consistent per-page hierarchy, scroll containment and
+   dense controls. All styles are scoped to the active view and preserve behavior. */
+#content[data-current-view] {
+  --ln-control-height:34px;
+  --ln-section-gap:12px;
+  font-variant-numeric:tabular-nums;
+}
+#content[data-current-view] :is(.page-head,.panel-head,.section-heading) {
+  min-width:0;
+}
+#content[data-current-view] .page-head {display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;}
+#content[data-current-view] .page-head > div:first-child {flex:1 1 240px;min-width:0;}
+#content[data-current-view] .page-head .head-actions {display:flex;flex:0 1 auto;flex-wrap:wrap;align-items:center;gap:6px;}
+#content[data-current-view] .page-head .head-actions > :is(button,a) {flex:0 0 auto;min-height:var(--ln-control-height);}
+#content[data-current-view] .refresh-icon-button {
+  display:inline-flex!important;flex-flow:row nowrap!important;
+  align-items:center;justify-content:center;min-width:34px;
+  white-space:nowrap!important;line-height:1!important;
+}
+#content[data-current-view] .refresh-icon-button > span {white-space:nowrap;}
+#content[data-current-view] .section-heading {
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
+  margin:14px 0 10px;
+}
+#content[data-current-view] .section-heading :is(h2,h3) {margin:0;}
+#content[data-current-view] :is(.panel-head,.section-heading,.admin-center-panel-head) > div:first-child {min-width:0;}
+#content[data-current-view] :is(.data-table,.compute-table,.backup-table,.storage-table,.logs-table) {
+  max-width:100%;overflow:auto;overscroll-behavior-x:contain;
+}
+#content[data-current-view] :is(.table-wrap,.compute-table-wrap,.backup-table-wrap,.storage-table-wrap,.logs-table-wrap) {
+  max-width:100%;min-width:0;overflow-x:auto;
+  scrollbar-width:thin;
+}
+#content[data-current-view] :is(.settings-grid,.form-grid,.storage-detail-summary,.pool-summary-grid) > * {min-width:0;}
+#content[data-current-view] :is(input,textarea,select) {max-width:100%;min-width:0;}
+#content[data-current-view] :is(.action-row,.form-actions,.dialog-actions) {display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+/* Distinct section treatments by page family */
+#content[data-current-view="files"] .file-toolbar {
+  position:relative;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:8px 10px;margin-bottom:10px;
+}
+#content[data-current-view="files"] .file-browser {min-height:220px;}
+#content[data-current-view="files"] .file-grid .file-row {min-width:0;}
+#content[data-current-view="files"] :is(.file-name,.file-row b,.file-row span) {
+  overflow-wrap:anywhere;
+}
+#content[data-current-view="storage"] .storage-list,
+#content[data-current-view="pools"] .dataset-list,
+#content[data-current-view="shares"] .share-list {
+  display:grid;gap:9px;min-width:0;
+}
+#content[data-current-view="apps"] :is(.app-card,.catalog-card) {display:flex;flex-direction:column;min-width:0;}
+#content[data-current-view="apps"] :is(.app-card,.catalog-card) :is(h3,p) {overflow-wrap:anywhere;}
+#content[data-current-view="ai"] .ai-workspace-v2 {min-height:0;max-width:100%;}
+#content[data-current-view="ai"] .ai-agent-form,
+#content[data-current-view="ai"] .ai-agent-messages {min-width:0;}
+#content[data-current-view="admin"] .admin-center-content {min-width:0;}
+#content[data-current-view="admin"] .admin-center-nav-item {text-align:left;}
+#content[data-current-view="admin"] .admin-center-panel {overflow:visible;}
+#content[data-current-view="admin"] .admin-center-row-actions {flex:0 1 auto;min-width:0;}
+#content[data-current-view="settings"] :is(.settings-dashboard,.settings-grid) {max-width:100%;}
+#content[data-current-view="network"] :is(.network-table,.network-grid),
+#content[data-current-view="firewall"] :is(.firewall-grid,.firewall-table),
+#content[data-current-view="integrations"] :is(.integration-grid,.integration-list) {
+  min-width:0;max-width:100%;
+}
+#content[data-current-view="containers"] .compute-table-wrap,
+#content[data-current-view="vms"] .compute-table-wrap,
+#content[data-current-view="kubernetes"] .compute-table-wrap {
+  overflow-x:auto;
+}
+#content[data-current-view="logs"] .logs-row,
+#content[data-current-view="backups"] .backup-row {font-variant-numeric:tabular-nums;}
+@container(max-width:800px) {
+  #content[data-current-view] .page-head .head-actions {justify-content:flex-start;}
+  #content[data-current-view="admin"] .admin-center-nav {width:100%;overflow-x:auto;scrollbar-width:thin;}
+  #content[data-current-view="admin"] .admin-center-nav-item {white-space:nowrap;}
+  #content[data-current-view="files"] .file-toolbar {flex-wrap:wrap;}
+}
+@media(max-width:760px) {
+  #content[data-current-view] :is(.page-head,.panel-head,.section-heading) {align-items:flex-start;}
+  #content[data-current-view] .page-head .head-actions {width:100%;justify-content:flex-start;}
+  #content[data-current-view] :is(.primary,.secondary) {min-height:36px;}
+}
