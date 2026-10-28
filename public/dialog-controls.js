@@ -131,7 +131,8 @@ function showEditor({ eyebrow, title, description, fields, submitLabel = 'Save c
     }
     // Form.reset() uses defaults, not the current value assigned above.
     if (input.tagName === 'SELECT') {
-      for (const option of input.options) option.defaultSelected = option.selected;
+      const selectedOptions = Array.from(input.options, option => option.selected);
+      Array.from(input.options).forEach((option, index) => { option.toggleAttribute('selected', selectedOptions[index]); });
     } else input.defaultValue = input.value;
     label.append(input);
     if (vmHardwareEditor) {
