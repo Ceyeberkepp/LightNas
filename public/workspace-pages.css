@@ -1,0 +1,208 @@
+/* Page-specific redesign based on the real render classes in app.js.
+   Unlike generic .file-grid/.app-grid selectors, these target the actual views. */
+#content[data-current-view="files"] .files-page,
+#content[data-current-view="apps"] .app-catalog-grid,
+#content[data-current-view="users"] .user-card-grid,
+#content[data-current-view="admin"] .admin-center-content {min-width:0;}
+#content[data-current-view="files"] .file-toolbar {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:10px;
+  margin-bottom:10px;
+}
+#content[data-current-view="files"] .breadcrumbs {
+  min-width:0;
+  overflow-x:auto;
+  white-space:nowrap;
+  scrollbar-width:thin;
+  font-size:12px;
+}
+#content[data-current-view="files"] .file-toolbar-actions {
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:6px;
+  min-width:0;
+}
+#content[data-current-view="files"] .file-browser-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,160px),1fr));
+  align-items:start;
+  gap:10px;
+}
+#content[data-current-view="files"] .file-card {
+  display:grid;
+  gap:6px;
+  min-width:0;
+  padding:8px;
+  border-radius:12px;
+  box-shadow:none;
+}
+#content[data-current-view="files"] .file-card-open {min-width:0;gap:6px!important;}
+#content[data-current-view="files"] .file-card-visual {
+  min-height:0;
+  height:110px;
+  border-radius:9px;
+}
+#content[data-current-view="files"] .file-card-open .file-thumb {
+  width:100%;height:110px;min-height:0;object-fit:cover;
+}
+#content[data-current-view="files"] .file-card-title {
+  display:block;
+  font-size:12px;
+  font-weight:650;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+#content[data-current-view="files"] .file-location {
+  font-size:10px;
+  line-height:1.35;
+  overflow-wrap:anywhere;
+}
+#content[data-current-view="files"] .file-card-actions {display:flex;flex-wrap:wrap;gap:4px;}
+#content[data-current-view="files"] .file-card-actions .secondary {
+  min-height:27px;
+  padding:4px 6px;
+  font-size:10px;
+  flex:1 1 auto;
+}
+#content[data-current-view="files"] .file-drop-zone {
+  min-height:0;
+  padding:13px 16px;
+  border-radius:11px;
+}
+#content[data-current-view="files"] .files-library-content > p.muted {
+  margin:5px 0 10px;
+  font-size:11px;
+  line-height:1.4;
+}
+/* App Store: compact catalog cards with consistent install action alignment. */
+#content[data-current-view="apps"] .app-catalog-toolbar {
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:space-between;
+  align-items:flex-end;
+  gap:14px;
+  padding:15px 17px;
+  margin-bottom:12px;
+}
+#content[data-current-view="apps"] .app-catalog-toolbar > div:first-child {flex:1 1 260px;min-width:0;}
+#content[data-current-view="apps"] .app-catalog-toolbar h2 {font-size:18px;line-height:1.2;}
+#content[data-current-view="apps"] .app-filter-controls {
+  display:flex;flex:1 1 340px;justify-content:flex-end;flex-wrap:wrap;gap:8px;
+}
+#content[data-current-view="apps"] .app-filter-controls label {flex:1 1 145px;min-width:0;}
+#content[data-current-view="apps"] .app-catalog-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));
+  gap:12px;
+  align-items:stretch;
+}
+#content[data-current-view="apps"] .app-catalog-grid .app-card {
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  gap:6px;
+  padding:14px;
+  border-radius:13px;
+}
+#content[data-current-view="apps"] .app-catalog-grid .app-card h2 {font-size:15px;margin:0;}
+#content[data-current-view="apps"] .app-catalog-grid .app-card p {
+  font-size:11px;
+  line-height:1.45;
+  margin:0;
+  overflow-wrap:anywhere;
+}
+#content[data-current-view="apps"] .app-install-actions {margin-top:auto;padding-top:10px;}
+#content[data-current-view="apps"] .app-install-actions > button {width:100%;}
+/* Users & groups: clearer rows and compact forms without changing actions. */
+#content[data-current-view="users"] .user-summary-grid,
+#content[data-current-view="admin"] .user-summary-grid {gap:10px;margin-bottom:12px;}
+#content[data-current-view="users"] .user-card,
+#content[data-current-view="admin"] .user-card {
+  grid-template-columns:38px minmax(0,1fr) auto;
+  gap:10px;
+  padding:11px 13px;
+  border-radius:12px;
+}
+#content[data-current-view="users"] .user-card-avatar,
+#content[data-current-view="admin"] .user-card-avatar {width:36px;height:36px;}
+#content[data-current-view="users"] .user-form-grid,
+#content[data-current-view="admin"] .user-form-grid {gap:10px;}
+/* Admin Center: stable sub-navigation and compact section hierarchy. */
+#content[data-current-view="admin"] .admin-center-workspace {
+  grid-template-columns:minmax(165px,185px) minmax(0,1fr);
+  gap:12px;
+}
+#content[data-current-view="admin"] .admin-center-nav {
+  position:sticky;
+  top:70px;
+  align-self:start;
+  max-height:calc(100dvh - 115px);
+  overflow-y:auto;
+  padding:8px;
+  scrollbar-width:thin;
+}
+#content[data-current-view="admin"] .admin-center-nav-item {
+  min-height:35px;
+  padding:7px 10px;
+  font-size:12px;
+  text-align:left;
+  border-radius:8px;
+}
+#content[data-current-view="admin"] .admin-center-panel-head {padding:12px 16px;}
+#content[data-current-view="admin"] .admin-center-panel-head h2 {font-size:18px;}
+#content[data-current-view="admin"] .admin-center-section {padding:12px 16px;}
+#content[data-current-view="admin"] .admin-center-row {padding:10px 0;gap:10px;}
+/* Settings: preserve the existing form flow while tightening spacing. */
+#content[data-current-view="settings"] .settings-dashboard > .panel,
+#content[data-current-view="admin"] .settings-dashboard > .panel {
+  min-width:0;
+  padding:14px;
+  margin-bottom:12px;
+}
+#content[data-current-view="settings"] .settings-general-grid,
+#content[data-current-view="admin"] .settings-general-grid {
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));
+  gap:10px;
+}
+/* Network and backups: keep wide data tables scrollable within the workspace. */
+#content[data-current-view="network"] .network-table-panel,
+#content[data-current-view="backups"] .backup-console {min-width:0;overflow:hidden;}
+#content[data-current-view="network"] .network-table,
+#content[data-current-view="backups"] .backup-table-wrap {max-width:100%;overflow-x:auto;}
+#content[data-current-view="backups"] .backup-table-wrap {min-height:180px;}
+#content[data-current-view="shares"] .share-row,
+#content[data-current-view="storage"] .storage-row {padding:11px 14px;border-radius:12px;}
+@container(max-width:1000px) {
+  #content[data-current-view="admin"] .admin-center-workspace {grid-template-columns:1fr;}
+  #content[data-current-view="admin"] .admin-center-nav {
+    position:static;
+    display:flex;
+    overflow-x:auto;
+    overflow-y:hidden;
+    max-height:none;
+    gap:5px;
+  }
+  #content[data-current-view="admin"] .admin-center-nav-item {flex:0 0 auto;white-space:nowrap;}
+}
+@container(max-width:740px) {
+  #content[data-current-view="files"] .file-toolbar {grid-template-columns:1fr;}
+  #content[data-current-view="files"] .file-toolbar-actions {justify-content:flex-start;}
+  #content[data-current-view="apps"] .app-filter-controls {justify-content:flex-start;}
+  #content[data-current-view="settings"] .settings-general-grid,
+  #content[data-current-view="admin"] .settings-general-grid {grid-template-columns:1fr;}
+}
+@media(max-width:760px) {
+  #content[data-current-view="files"] .file-browser-grid {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+  #content[data-current-view="files"] .file-card-visual,
+  #content[data-current-view="files"] .file-card-open .file-thumb {height:100px;}
+  #content[data-current-view="users"] .user-card,
+  #content[data-current-view="admin"] .user-card {grid-template-columns:34px minmax(0,1fr);}
+}
