@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - 'iso/**'
+      - 'src/**'
+      - 'public/**'
+      - 'config/**'
       - '.github/workflows/build-iso.yml'
       - 'scripts/lightnas-install-hub.py'
       - 'scripts/lightnas-network-*.py'
@@ -14,6 +17,9 @@ on:
   pull_request:
     paths:
       - 'iso/**'
+      - 'src/**'
+      - 'public/**'
+      - 'config/**'
       - '.github/workflows/build-iso.yml'
       - 'scripts/lightnas-install-hub.py'
       - 'scripts/lightnas-network-*.py'

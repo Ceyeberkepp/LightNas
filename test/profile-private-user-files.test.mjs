@@ -91,7 +91,7 @@ test('mobile shell hides desktop top and task bars', async () => {
 });
 
 test('mobile upload uses the native browser picker directly', () => {
-  assert.match(app, /id="mobile-native-upload" type="file" multiple hidden/);
+  assert.match(app, /id="mobile-gallery-upload" type="file" multiple/);
   assert.match(app, /mobile \? \$\('#mobile-native-upload', content\) : \$\('#file-upload', content\)/);
   assert.doesNotMatch(app, /openMobileUploadSourcePicker/);
   assert.doesNotMatch(app, /data-mobile-upload-source=/);
@@ -100,7 +100,7 @@ test('mobile upload uses the native browser picker directly', () => {
 
 test('mobile file and folder uploads use direct native file inputs', async () => {
   const styles = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
-  assert.match(app, /id="mobile-native-upload" class="mobile-native-file-input" type="file" multiple/);
+  assert.match(app, /id="mobile-native-upload" class="mobile-native-file-input" type="file"[^>]*multiple/);
   assert.match(app, /id="mobile-folder-upload" class="mobile-native-file-input" type="file" webkitdirectory directory multiple/);
   assert.match(app, /\$\('#mobile-folder-upload', content\)\?\.addEventListener\('change'/);
   assert.match(styles, /\.mobile-native-file-input[\s\S]*?position: absolute[\s\S]*?opacity: 0/);
@@ -139,7 +139,7 @@ test('mobile file viewer uses swipe navigation instead of arrow buttons', async 
   const enhancements = await readFile(new URL('../public/enhancements.js', import.meta.url), 'utf8');
   const enhancementStyles = await readFile(new URL('../public/enhancements.css', import.meta.url), 'utf8');
   assert.match(enhancements, /stage\.addEventListener\('pointerdown'/);
-  assert.match(enhancements, /navigatePreview\(dx < 0 \? 1 : -1\)/);
+  assert.match(enhancements, /requestAnimationFrame\(\(\) => navigatePreview\(direction\)\)/);
   assert.match(enhancements, /viewer-chrome-hidden/);
   assert.match(enhancementStyles, /@media \(max-width: 760px\)[\s\S]*?\.lightnas-viewer \.viewer-arrow[\s\S]*?display: none !important/);
   assert.match(enhancementStyles, /height: 100dvh/);
@@ -163,15 +163,15 @@ test('mobile viewer preloads neighbors and exposes edit save delete actions', as
 test('multi-select media upload continues after individual file failures', () => {
   assert.match(app, /const failures = \[\]/);
   assert.match(app, /failures\.push\(/);
-  assert.match(app, /const concurrency = Math\.min\(mobile \? 2 : 3, targets\.length\)/);
+  assert.match(app, /const concurrency = Math\.min\(mobile \? 1 : 3, targets\.length\)/);
   assert.match(app, /const succeeded = targets\.length - failed/);
 });
 
 
-test('mobile viewer loads cached previews first and upgrades to full resolution', async () => {
+test('viewer paints cached tiles first and prepares larger previews with desktop originals', async () => {
   const enhancements = await readFile(new URL('../public/enhancements.js', import.meta.url), 'utf8');
   const enhancementStyles = await readFile(new URL('../public/enhancements.css', import.meta.url), 'utf8');
-  assert.match(enhancements, /const viewerPreloadCache = new Map\(\)/);
+  assert.match(enhancements, /function warmViewerImage\(url\)/);
   assert.match(enhancements, /viewer\.src = urls\.preview/);
   assert.match(enhancements, /warmViewerImage\(urls\.original\)\.then/);
   assert.match(enhancements, /stage\.addEventListener\('pointermove'/);
@@ -283,7 +283,7 @@ test('mobile video playback normalizes source codecs for iPhone and Android', as
   assert.match(server, /'-profile:v', 'main'/);
   assert.match(server, /'-c:a', 'aac'/);
   assert.match(server, /'-profile:a', 'aac_low'/);
-  assert.match(server, /'format=yuv420p'/);
+  assert.match(server, /scale=1280:720:[^\n]*format=yuv420p/);
   assert.match(server, /'-movflags', '\+faststart'/);
 
   assert.match(enhancements, /Android\|iPhone\|iPad\|iPod/);
@@ -303,8 +303,8 @@ test('mobile photo editor fills viewport and uses native-style single-control wo
   const styles = await readFile(new URL('../public/enhancements.css', import.meta.url), 'utf8');
 
   assert.match(enhancements, /data-editor-slider/);
-  assert.match(enhancements, /data-adjust-tool="brightness"/);
-  assert.match(enhancements, /data-adjust-tool="vignette"/);
+  assert.match(enhancements, /key:'brightness', label:'Brightness'/);
+  assert.match(enhancements, /key:'vignette', label:'Vignette'/);
   assert.match(enhancements, /filter-preview/);
   assert.match(enhancements, /mobile-crop-actions/);
 
@@ -326,12 +326,12 @@ test('mobile video preview is cached as a seekable MP4', async () => {
   assert.match(server, /return streamRangedMedia\(req, res, preview, 'video\/mp4'\)/);
 });
 
-test('mobile Files prewarms metadata and uses small lazy thumbnails', async () => {
+test('mobile Files restores metadata and loads visible small thumbnails promptly', async () => {
   const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const thumbnails = await readFile(new URL('../src/thumbnails.mjs', import.meta.url), 'utf8');
   assert.match(app, /restoreMobileFilesCache\(appliance\.username\)/);
-  assert.match(app, /setTimeout\(\(\) => \{ if \(state\.files === null\) loadFiles\(false\); \}, 120\)/);
-  assert.match(app, /loading="lazy" fetchpriority="low"/);
+  assert.match(app, /loadFiles\(false\)/);
+  assert.match(app, /loading="eager" decoding="async"/);
   assert.match(thumbnails, /const maxWidth = preview \? 1280 : 320/);
   assert.match(thumbnails, /source\.mtimeMs/);
 });
@@ -364,7 +364,7 @@ test('mobile media is prepared before the user opens it', async () => {
 
   assert.match(enhancements, /const mobileImageViewer/);
   assert.match(enhancements, /if \(urls\.original && !mobileImageViewer\)/);
-  assert.match(enhancements, /body:JSON\.stringify\(\{ paths:nearby\.map/);
+  assert.match(enhancements, /preloadPreviewNeighbors\(path\)/);
 
   assert.match(thumbnails, /const thumbnailJobs = new Map\(\)/);
   assert.match(thumbnails, /const maxWidth = preview \? 1280 : 320/);
@@ -374,7 +374,9 @@ test('mobile media is prepared before the user opens it', async () => {
 test('thumbnail module remains syntactically clean after mobile prewarm changes', async () => {
   const thumbnails = await readFile(new URL('../src/thumbnails.mjs', import.meta.url), 'utf8');
   assert.match(thumbnails, /export async function thumbnailFor\(relative, options = \{\}\)/);
-  assert.doesNotMatch(thumbnails, /\}\) \{/);
+  const {spawnSync}=await import('node:child_process');
+  const syntax=spawnSync(process.execPath,['--check',new URL('../src/thumbnails.mjs',import.meta.url).pathname],{encoding:'utf8'});
+  assert.equal(syntax.status,0,syntax.stderr);
   assert.match(thumbnails, /const thumbnailJobs = new Map\(\)/);
   assert.match(thumbnails, /const maxWidth = preview \? 1280 : 320/);
 });

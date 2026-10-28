@@ -66,7 +66,7 @@ test('All Files scan is bounded, cached and manually refreshable', async () => {
   assert.match(files, /offset \+= 48/);
   assert.match(files, /Promise\.all\(batch\.map/);
   assert.match(files, /const allFilesCache = new Map\(\)/);
-  assert.match(files, /allFilesCache\.set\(cacheKey, \{ expiresAt: now \+ 5000, value \}\)/);
+  assert.match(files, /allFilesCache\.set\(cacheKey, \{ expiresAt: now \+ 60000, value \}\)/);
   assert.match(files, /listAllFiles\(forceRefresh = false, scopePrefix = ''\)/);
   assert.match(server, /listAllFiles\(url\.searchParams\.get\('refresh'\) === '1', scope\)/);
   assert.match(app, /loadFiles\(true\)/);
@@ -74,7 +74,7 @@ test('All Files scan is bounded, cached and manually refreshable', async () => {
 
 test('folder uploads use bounded parallel streams with aggregate progress', async () => {
   const app = await read('public/app.js');
-  assert.match(app, /const concurrency = Math\.min\(3, targets\.length\)/);
+  assert.match(app, /const concurrency = Math\.min\(mobile \? 1 : 3, targets\.length\)/);
   assert.match(app, /Promise\.all\(Array\.from\(\{ length: concurrency \}/);
-  assert.match(app, /loadedByFile\.reduce/);
+  assert.match(app, /transferredBytes\+=value-loadedByFile\[index\]/);
 });

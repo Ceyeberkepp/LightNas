@@ -1153,7 +1153,7 @@ def configure_container_guest(config: Path, data: dict) -> None:
             if resolv_conf.exists() or resolv_conf.is_symlink():
                 resolv_conf.unlink()
             resolv_conf.write_text(
-                "".join(f"nameserver {server}\\n" for server in dns_values),
+                "".join(f"nameserver {server}\n" for server in dns_values),
                 encoding="utf-8",
             )
         elif mode == "dhcp":
@@ -1163,38 +1163,39 @@ def configure_container_guest(config: Path, data: dict) -> None:
             sync = rootfs / "usr" / "local" / "sbin" / "lightnas-dhcp-resolv"
             sync.parent.mkdir(parents=True, exist_ok=True)
             sync.write_text(
-                '#!/bin/sh\n'
-                'set -eu\n'
-                'for lease in /run/systemd/netif/leases/*; do\n'
-                '  [ -f "$lease" ] || continue\n'
-                '  dns=$(sed -n "s/^DNS=//p" "$lease" | head -n 1)\n'
-                '  [ -n "$dns" ] || continue\n'
-                '  tmp=/etc/resolv.conf.lightnas-tmp\n'
-                '  : > "$tmp"\n'
-                '  for server in $dns; do\n'
-                '    case "$server" in *[!0-9a-fA-F:.]*|"") continue ;; esac\n'
-                '    printf "nameserver %s\\\n" "$server" >> "$tmp"\n'
-                '  done\n'
-                '  [ -s "$tmp" ] && mv "$tmp" /etc/resolv.conf || rm -f "$tmp"\n'
-                '  exit 0\n'
-                'done\n',
+                r"""#!/bin/sh
+set -eu
+for lease in /run/systemd/netif/leases/*; do
+  [ -f "$lease" ] || continue
+  dns=$(sed -n "s/^DNS=//p" "$lease" | head -n 1)
+  [ -n "$dns" ] || continue
+  tmp=/etc/resolv.conf.lightnas-tmp
+  : > "$tmp"
+  for server in $dns; do
+    case "$server" in *[!0-9a-fA-F:.]*|"") continue ;; esac
+    printf "nameserver %s\n" "$server" >> "$tmp"
+  done
+  [ -s "$tmp" ] && mv "$tmp" /etc/resolv.conf || rm -f "$tmp"
+  exit 0
+done
+""",
                 encoding="utf-8",
             )
             sync.chmod(0o755)
             service_dir = rootfs / "etc" / "systemd" / "system"
             service_dir.mkdir(parents=True, exist_ok=True)
             (service_dir / "lightnas-dhcp-resolv.service").write_text(
-                "[Unit]\\nDescription=Synchronize DHCP-provided DNS for LightNAS guest\\n"
-                "After=systemd-networkd.service\\n"
-                "[Service]\\nType=oneshot\\n"
-                "ExecStart=/usr/local/sbin/lightnas-dhcp-resolv\\n",
+                "[Unit]\nDescription=Synchronize DHCP-provided DNS for LightNAS guest\n"
+                "After=systemd-networkd.service\n"
+                "[Service]\nType=oneshot\n"
+                "ExecStart=/usr/local/sbin/lightnas-dhcp-resolv\n",
                 encoding="utf-8",
             )
             (service_dir / "lightnas-dhcp-resolv.timer").write_text(
-                "[Unit]\\nDescription=Update LightNAS guest DNS after DHCP renewals\\n"
-                "[Timer]\\nOnBootSec=20s\\nOnUnitActiveSec=60s\\n"
-                "Unit=lightnas-dhcp-resolv.service\\n"
-                "[Install]\\nWantedBy=timers.target\\n",
+                "[Unit]\nDescription=Update LightNAS guest DNS after DHCP renewals\n"
+                "[Timer]\nOnBootSec=20s\nOnUnitActiveSec=60s\n"
+                "Unit=lightnas-dhcp-resolv.service\n"
+                "[Install]\nWantedBy=timers.target\n",
                 encoding="utf-8",
             )
             subprocess.run(

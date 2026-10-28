@@ -804,7 +804,7 @@ async function editCurrentImage() {
 function viewerUrls({ path }) {
   const encoded = encodeURIComponent(path);
   return {
-    preview: `/api/files/thumbnail?path=${encoded}`,
+    preview: `/api/files/thumbnail?preview=1&path=${encoded}`,
     original: `/api/files/download?path=${encoded}`
   };
 }

@@ -30,7 +30,7 @@ class IsolatedExtractorTests(unittest.TestCase):
                     tar.addfile(item, io.BytesIO(payload))
                 elif kind == "symlink":
                     item.type = tarfile.SYMTYPE
-                    item.linkname = "../../outside"
+                    item.linkname = payload.decode() if payload else "../../outside"
                     tar.addfile(item)
         return hashlib.sha256(self.archive.read_bytes()).hexdigest()
 

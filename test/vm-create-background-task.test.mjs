@@ -10,7 +10,9 @@ test('VM wizard closes immediately and reports creation through Tasks', async ()
   assert.match(dialogs, /\{ taskOnly:true \}/);
   assert.match(dialogs, /dialog\.close\(\);\s*progress\.update\(10/);
   assert.match(dialogs, /X-LightNAS-Task-Managed/);
-  assert.match(dialogs, /managedTask = headers\.get\('X-LightNAS-Task-Managed'\) === '1'/);
+  assert.match(dialogs, /headers: \{ 'X-LightNAS-Task-Managed': '1' \}/);
+  assert.match(dialogs, /progress\.succeed\(/);
+  assert.match(dialogs, /progress\.fail\(/);
   assert.doesNotMatch(dialogs, /error\.textContent = problem\.message;\s*create\.disabled = false;/);
 });
 

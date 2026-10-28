@@ -1,9 +1,10 @@
 // Prerequisite: Playwright plus an installed Chromium, or supply the two
 // LIGHTNAS_* environment paths below. Uses disposable state, never a live NAS.
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {photoFixture} from '../test-support/png-fixture.mjs';
 
 const temporary = await mkdtemp(join(tmpdir(), 'lightnas-browser-'));
 process.env.NAS_DATA_FILE = join(temporary, 'state.json');
@@ -25,6 +26,8 @@ try {
     data: { deviceName: 'browser-staging', username: 'owner', password: 'ExampleCredential123', timezone: 'UTC' }
   });
   assert.equal(setup.status(), 201);
+  await mkdir(join(temporary,'files','Photos'),{recursive:true});
+  await writeFile(join(temporary,'files','Photos','resolution-check.png'),photoFixture());
   const page = await context.newPage();
   page.setDefaultTimeout(7000);
   const errors = [];
@@ -98,6 +101,14 @@ try {
           await page.locator('[data-mobile-files-settings]:visible').click();
           await page.locator('#mobile-files-settings-dialog[open]').waitFor();
           await page.locator('[data-mobile-files-settings-close]').click();
+          await page.locator('.file-name[data-directory="false"]').first().click();
+          const preview=page.locator('dialog.lightnas-viewer[open] [data-viewer-stage] img');
+          await preview.waitFor();
+          await page.waitForFunction(()=>{
+            const image=document.querySelector('dialog.lightnas-viewer[open] [data-viewer-stage] img');
+            return image?.complete && image.naturalWidth===1280;
+          });
+          await page.locator('dialog.lightnas-viewer[open]').evaluate(dialog=>dialog.close());
         } else {
           await page.locator('[data-files-settings-tab]').click();
           await page.locator('[data-files-settings-close]').waitFor();

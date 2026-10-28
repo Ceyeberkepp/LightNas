@@ -69,7 +69,7 @@ test('Permissions has its own tab with expanded enforceable scopes', async () =>
     read('src/server.mjs'),
     read('public/admin-security.js')
   ]);
-  assert.match(index, /href="#permissions"/);
+  assert.match(index, /href="#admin"/);
   assert.match(app, /function permissionsView\(\)/);
   for (const permission of ['files.download', 'files.delete', 'firewall.manage', 'monitoring.view']) {
     assert.ok(server.includes(`'${permission}'`), `missing permission ${permission}`);
@@ -136,11 +136,12 @@ test('Networking exposes Proxmox-style interfaces plus bridges VLANs bonds and r
 test('Admin Center is a focused operational dashboard and legacy injectors are disabled', async () => {
   const [app, enhancements] = await Promise.all([read('public/app.js'), read('public/enhancements.js')]);
   const admin = app.slice(app.indexOf('function adminView()'), app.indexOf('function moduleView'));
-  assert.match(admin, /admin-overview-grid/);
-  assert.match(admin, /Self-management/);
+  assert.match(admin, /admin-center-workspace/);
+  assert.match(app, /function adminGeneralPanel/);
+  assert.match(app, /Access and identity/);
   assert.doesNotMatch(admin, /Application catalog/);
   assert.match(enhancements, /Admin Center is rendered directly by app\.js/);
-  assert.match(enhancements, /Permissions moved to the dedicated #permissions workspace/);
+  assert.match(app, /adminEmbeddedView\(permissionsView\(\)\)/);
 });
 
 
@@ -192,7 +193,7 @@ test('App Store contains a broad searchable one-click catalog', async () => {
 
 test('ISO is branded, graphical, hybrid BIOS-UEFI, and provides a local web kiosk', async () => {
   const [build, preseed] = await Promise.all([read('iso/build.sh'), read('iso/preseed.cfg')]);
-  assert.match(build, /--debian-installer-gui true/);
+  assert.match(build, /--debian-installer false/);
   assert.match(build, /--bootloaders 'syslinux,grub-efi'/);
   assert.match(build, /--uefi-secure-boot auto/);
   assert.match(build, /--firmware-binary true/);

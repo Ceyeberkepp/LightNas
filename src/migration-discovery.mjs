@@ -12,7 +12,7 @@ function internal(address) {
   return false;
 }
 async function assertInternal(host) {
-  if (host === 'localhost' || host.endsWith('.localhost')) throw new Error('loopback destinations are forbidden');
+  if (host.toLowerCase() === 'localhost' || host.toLowerCase().endsWith('.localhost')) throw Object.assign(new Error('loopback destinations are forbidden'),{status:400});
   const ips = isIP(host) ? [{ address: host }] : await lookup(host, { all: true, verbatim: true });
   if (!ips.length || ips.some(ip => !internal(ip.address))) throw Object.assign(new Error('Source server must resolve only to private LAN addresses.'),{status:400});
 }
@@ -248,6 +248,7 @@ export async function inspectMigrationSource(input) {
   if (caCertificate && (caCertificate.length > 16384 || !/^-----BEGIN CERTIFICATE-----\s*[A-Za-z0-9+/=\s]+-----END CERTIFICATE-----$/.test(caCertificate))) throw Object.assign(new Error('Provide a valid PEM CA certificate, not a private key.'), {status:400});
   if (!/^[a-zA-Z0-9.:-]{1,253}$/.test(host) || (!['proxmox','truenas','vmware'].includes(source) && !token) || token.length > 2048) throw new Error('source hostname and scoped token required');
   if (host.includes('..') || host.includes('@') || host.includes('/') || host.includes('#')) throw new Error('invalid source host');
+  if (!token && !(username && password)) throw Object.assign(new Error('Source username/password or scoped token required'),{status:400});
   try { await assertInternal(host); }
   catch(error) { if(error.status)throw error; throw Object.assign(new Error('Cannot resolve the source host from LightNAS. Check its address and DNS.'),{status:400}); }
   const port = source === 'proxmox' ? 8006 : source === 'truenas' ? 443 : 443;

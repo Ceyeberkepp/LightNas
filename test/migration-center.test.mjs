@@ -17,7 +17,7 @@ test('discovery rejects localhost, unsupported sources, and absent tokens withou
 test('migration UI does not claim transfer support or persist credentials', async () => {
   const ui=await readFile(new URL('../public/migration-center.html',import.meta.url),'utf8');
   const server=await readFile(new URL('../src/server.mjs',import.meta.url),'utf8');
-  assert.match(ui,/Transfer — not available yet/);
+  assert.match(ui,/Direct source transfer, restore, cutover, and rollback are not implemented yet/);
   assert.match(ui,/\$\('token'\)\.value=''/);
   assert.match(server,/\/api\/migration\/inspect/);
   assert.match(server,/Administrator session required/);

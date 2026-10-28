@@ -20,7 +20,7 @@ test('App Store keeps install available and lists every installed instance', asy
   const app = await read('public/app.js');
 
   assert.match(app, /installed instance/);
-  assert.match(app, /Install another instance/);
+  assert.match(app, /data-install="\$\{app.id\}" data-instance-count=/);
   assert.match(app, /data-app-instance=/);
   assert.match(app, /data-instance-count=/);
   assert.match(app, /setup\.instanceName/);

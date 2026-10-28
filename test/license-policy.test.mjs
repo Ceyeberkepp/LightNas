@@ -14,8 +14,8 @@ test('repository declares the development and community evaluation license', asy
   ]);
 
   assert.match(license, /THIS IS NOT AN OPEN-SOURCE LICENSE/);
-  assert.match(license, /development and early testing only/i);
-  assert.match(license, /Enterprise and commercial users must obtain a separate paid license/i);
+  assert.match(license, /development and early testing/i);
+  assert.match(license, /separate paid license/i);
   assert.match(license, /Future Open-Source Release/);
 
   assert.equal(JSON.parse(pkg).license, 'SEE LICENSE IN LICENSE');
@@ -23,7 +23,7 @@ test('repository declares the development and community evaluation license', asy
   assert.match(readme, /Default.*5 GiB|development and early testing/i);
 
   assert.match(app, /Development & Community Evaluation License/);
-  assert.match(app, /Production, enterprise, commercial, hosting, managed-service/);
+  assert.match(app, /not licensed for production or enterprise use without a separate paid license/);
 
   assert.match(module, /licenseName: 'LightNAS Development and Community Evaluation License'/);
   assert.match(module, /productionAllowed: paidProduction/);

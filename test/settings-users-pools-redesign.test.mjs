@@ -163,7 +163,7 @@ test('Admin Center is the single administration workspace', async () => {
     'capabilitiesView()',
     'integrationsView()'
   ]) {
-    assert.ok(admin.includes(`adminEmbeddedView(${embedded})`), `missing embedded admin view ${embedded}`);
+    assert.ok(admin.includes(`adminEmbeddedView(${embedded})`) || (embedded === 'usersView()' && admin.includes('adminEmbeddedView(usersView(), true)')), `missing embedded admin view ${embedded}`);
   }
 
   assert.match(admin, /data-appliance-health/);

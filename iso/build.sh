@@ -662,9 +662,8 @@ ubuntu_candidate="$(apt-cache policy ubuntu-keyring 2>/dev/null | awk '/Candidat
 if [[ -n "$ubuntu_candidate" && "$ubuntu_candidate" != "(none)" ]]; then
   apt-get install -y ubuntu-keyring
 else
-  echo 'ERROR: ubuntu-keyring is unavailable from an authenticated APT repository.' >&2
-  echo 'Refusing to download and trust an unverified signing key.' >&2
-  exit 1
+  echo 'WARNING: Ubuntu container templates remain unavailable until an authenticated Ubuntu archive keyring is installed.' >&2
+  echo 'The Debian appliance build can continue; no unverified signing key is downloaded.' >&2
 fi
 
 #

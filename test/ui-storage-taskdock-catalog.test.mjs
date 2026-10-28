@@ -86,7 +86,7 @@ test('managed App Store containers show access address and terminal controls', a
   assert.match(app, /data-app-terminal/);
   assert.match(app, /data-app-open/);
   assert.match(app, /primaryIpv4 \|\| location\.hostname/);
-  assert.match(app, /http:\/\/\$\{hostAddress\}:\$\{app\.port\}/);
+  assert.match(app, /http:\/\/\$\{hostAddress\}:\$\{appPort\}/);
   assert.match(app, /Container IP:/);
   assert.match(runtime, /NetworkSettings\.Networks/);
   assert.match(runtime, /details\.get\(item\.name\)/);
@@ -226,7 +226,7 @@ test('managed applications expose real Docker limits and can be edited', async (
   assert.match(server, /\/update\$/.source ? /updateCatalogApp/ : /updateCatalogApp/);
   assert.match(app, /data-app-edit/);
   assert.match(app, /app-resource-cell/);
-  assert.match(dialogs, /Edit \$\{app\.name\}/);
+  assert.match(dialogs, /Settings · \$\{app.name\}/);
   assert.match(dialogs, /Memory limit \(MiB\)/);
   assert.match(dialogs, /CPU limit/);
   assert.match(dialogs, /Restart policy/);
@@ -265,7 +265,7 @@ test('overview and container screens expose CPU count and live resource telemetr
   assert.match(app, /Container memory use/);
   assert.match(app, /Allocated vCPU/);
   assert.match(app, /Host capacity/);
-  assert.match(app, /Edit resources/);
+  assert.match(app, /data-app-edit/);
   assert.match(dialogs, /Current usage/);
   assert.match(runtime, /memoryUsageBytes/);
   assert.match(runtime, /docker', \['stats'/);
@@ -357,7 +357,7 @@ test('branding follow-up keeps logo mode exclusive and propagates accent safely'
   assert.match(app, /\$\$\('\[data-brand-name\]'\)\.forEach/);
   assert.match(app, /--accent-contrast/);
   assert.match(app, /--accent-2/);
-  assert.match(app, /brandName: state\.overview\.appliance\.brandName/);
+  assert.match(app, /brandName: settingsForm.elements.brandName\?\.value \|\| state.overview.appliance.brandName/);
   assert.match(server, /input\.logoMode === undefined/);
   assert.match(styles, /\.primary \{[\s\S]*var\(--accent-contrast/);
   assert.match(styles, /color-mix\(in srgb, var\(--accent\) 14%/);
@@ -434,7 +434,7 @@ test('branding color preview preserves all current form colors and protects cont
 test('Files upload control renders as a single dropdown', async () => {
   const app = await read('public/app.js');
   assert.doesNotMatch(app, /<label class="file-toolbar-select">Upload\s*<select data-file-upload-select/);
-  assert.match(app, /<label class="file-toolbar-select upload-select-only">\s*<select data-file-upload-select aria-label="Upload">\s*<option value="">Choose…<\/option>/);
+  assert.match(app, /<label class="file-toolbar-select upload-select-only desktop-upload-select">\s*<select data-file-upload-select aria-label="Upload">\s*<option value="">Choose…<\/option>/);
   assert.match(app, /<option value="files">Upload files<\/option>/);
   assert.match(app, /<option value="folder">Upload folder<\/option>/);
 });
@@ -442,11 +442,11 @@ test('Files upload control renders as a single dropdown', async () => {
 
 test('compact Files toolbar combines library selector and removes Upload wording', async () => {
   const app = await read('public/app.js');
-  const css = await read('public/enhancements.css');
+  const css = await read('public/workspace-pages.css');
   assert.doesNotMatch(app, /<div class="library-selector-row">/);
-  assert.match(app, /file-toolbar-select select-only library-selector/);
+  assert.match(app, /ln-files-location/);
   assert.match(app, /<option value="">Choose…<\/option>/);
   assert.doesNotMatch(app, />Upload\s*<select data-file-upload-select/);
-  assert.match(css, /\.file-toolbar \{ padding:6px 0 8px; \}/);
-  assert.match(css, /\.library-selector \{\s*min-width: 138px;/);
+  assert.match(css, /grid-template-columns:minmax\(0,1fr\) auto/);
+  assert.match(css, /\.file-toolbar-actions \{[\s\S]*flex-wrap:wrap/);
 });

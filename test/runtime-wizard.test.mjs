@@ -21,10 +21,10 @@ test('nested VM provisioning disables unsupported libvirt ownership xattrs and c
     readFile(new URL('../src/runtimes-next.mjs', import.meta.url), 'utf8')
   ]);
   assert.match(provision, /remember_owner = 0/);
-  assert.match(provision, /trusted\.libvirt\.security\.dac/);
+  assert.match(provision, /dynamic_ownership = 0/);
   assert.match(runtime, /undefine.*--nvram/s);
   assert.match(runtime, /rm\(diskDirectory, \{ recursive: true, force: true \}\)/);
-  assert.match(runtime, /nested-libvirt ownership restriction/);
+  assert.match(runtime, /nested-LXC libvirt compatibility/);
 });
 
 test('VMs with selected ISO media automatically enter the installer', async () => {
@@ -39,7 +39,7 @@ test('VMs with selected ISO media automatically enter the installer', async () =
   assert.match(runtime, /if \(!hardwareChanged && \/running\/i\.test/);
   assert.match(runtime, /'reset', target/);
   assert.match(runtime, /uefi,cdrom,hd,menu=on/);
-  assert.match(runtime, /'--video', 'vga'/);
+  assert.match(runtime, /'--video', videoModel/);
   assert.match(runtime, /if \(isoEntry\) queueInstallerBootKey\(input\.name\)/);
   assert.match(runtime, /configureVmBootXml/);
   assert.match(runtime, /installationMediaId/);
@@ -126,8 +126,10 @@ test('files and media share one selectable library with sequential previews', as
 
 test('runtime wizard loading never leaves a stuck task or blocking overlay', async () => {
   const dialogs = await readFile(new URL('../public/dialog-controls.js', import.meta.url), 'utf8');
-  assert.match(dialogs, /Opening container wizard[\s\S]*\{ modal:false \}/);
-  assert.match(dialogs, /loading\.succeed\('Runtime choices loaded\.'\)/);
-  assert.match(dialogs, /loading\.fail\(problem\.message \|\| 'Runtime inventory could not be loaded\.'\)/);
-  assert.doesNotMatch(dialogs, /finally \{\s*loading\.close\(\);\s*\}/);
+  const beforeSubmit=dialogs.slice(dialogs.indexOf('async function showRuntimeWizard'),dialogs.indexOf("const progress = openProgressDialog(\n      isContainer"));
+  assert.match(beforeSubmit, /Unable to open/);
+  assert.match(beforeSubmit, /\/api\/vms\/create-options/);
+  assert.doesNotMatch(beforeSubmit, /openProgressDialog\(/);
+  assert.match(dialogs, /window\.LightNASToast\?\.show\?\.\(message\)/);
+
 });

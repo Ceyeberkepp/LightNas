@@ -4,6 +4,10 @@ import {inspectArchiveMemberTypes} from '../src/migration-lxc-preflight.mjs';
 test('accepts regular files and folders in archive listing',()=>{
  assert.equal(inspectArchiveMemberTypes('-rw-r--r-- user/group 4 2026-01-01 00:00 etc/os-release\ndrwxr-xr-x user/group 0 2026-01-01 00:00 etc/'),2);
 });
-for(const [name,code] of [['symlink','l'],['hardlink','h'],['character-device','c'],['block-device','b'],['fifo','p']]){
- test('rejects '+name,()=>assert.throws(()=>inspectArchiveMemberTypes(code+'rw-r--r-- owner/group 0 2026-01-01 00:00 unsafe'),/links, special files/));
+for(const [name,code] of [['hardlink','h'],['character-device','c'],['block-device','b'],['fifo','p']]){
+ test('rejects '+name,()=>assert.throws(()=>inspectArchiveMemberTypes(code+'rw-r--r-- owner/group 0 2026-01-01 00:00 unsafe'),/link|special|unsupported/i));
 }
+
+test('preflight permits symbolic links for isolated extraction target checks',()=>{
+ assert.equal(inspectArchiveMemberTypes('lrwxrwxrwx owner/group 7 2026-01-01 00:00 bin -> usr/bin'),1);
+});

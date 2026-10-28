@@ -40,7 +40,8 @@ test('node shell, profile pictures, expanded permissions and collapsible navigat
     readFile(new URL('../scripts/lightnas-host-agent.py', import.meta.url), 'utf8'),
     readFile(new URL('../public/node-shell.js', import.meta.url), 'utf8')
   ]);
-  assert.match(page, /#permissions/);
+  assert.match(page, /#admin/);
+  assert.match(app, /\['permissions', 'Permissions'\]/);
   assert.match(page, /id="node-shell-top"/);
   assert.match(page, /id="avatar"/);
   assert.match(app, /\/api\/profile\/avatar/);

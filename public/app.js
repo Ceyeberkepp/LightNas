@@ -1688,7 +1688,7 @@ function filesView() {
       ${state.overview.appliance.role === 'administrator' && state.overview.appliance.features?.phoneSync !== false ? '<button class="secondary phone-sync-button files-sync-trigger" type="button" data-phone-sync>Phone sync</button>' : ''}
     </div></div>
     ${canManageOwnFiles ? '<div class="file-drop-zone" data-file-drop tabindex="0"><b>Drop files here</b><span>Multiple files and ZIP archives are supported. Use “Upload folder” to preserve a whole folder tree.</span></div>' : '<div class="module-note"><b>View only.</b> You can browse and preview your private files. Upload, create, and delete actions are disabled for this account.</div>'}
-    <p class="muted">${foldersMode && state.folder === '' ? 'Folders shows your library folders in one place.' : allFiles ? 'All files shows files from Documents, Photos, Videos, and Audio.' : 'Open folders normally or use the library tabs to switch sections.'} ZIP and other file types are accepted, uploads have visible progress.${quota ? ` Your account can store up to ${bytes(quota.quotaBytes)}.` : ' Administrators are limited only by available storage unless a host upload limit is configured.'}</p>
+    <p class="muted">${foldersMode && state.folder === '' ? 'Folders shows your library folders in one place.' : allFiles ? 'All files shows only your Documents, Photos, Videos, and Audio libraries.' : 'Open folders normally or use the library tabs to switch sections.'} ZIP and other file types are accepted, uploads have visible progress.${quota ? ` Your account can store up to ${bytes(quota.quotaBytes)}.` : ' Administrators are limited only by available storage unless a host upload limit is configured.'}</p>
     ${state.fileTruncated && allFiles ? '<div class="module-note">Showing the newest 10,000 files. Open a category or folder to browse beyond that safety limit.</div>' : ''}
     <div class="${effectiveFileView === 'gallery' ? 'file-photo-gallery' : effectiveFileView === 'grid' ? 'file-browser-grid' : 'storage-list'}">${state.fileError ? `<div class="empty error-state"><p><b>Files could not be loaded.</b></p><p>${escapeHtml(state.fileError)}</p><button class="secondary refresh-icon-button" data-action="refresh-files" aria-label="Try again" title="Try again">↻</button></div>` : entries === null ? '<div class="empty"><p>Loading files…</p></div>' : entries.length ? entries.map(item).join('') : `<div class="empty"><p>${foldersMode && state.folder === '' ? 'No folders have been created yet.' : allFiles ? 'No files have been uploaded yet.' : 'This folder is empty.'}</p></div>`}</div>
     </div>
@@ -2836,7 +2836,7 @@ function openLogsModal() {
     dialog = document.createElement('dialog');
     dialog.id = 'lightnas-logs-dialog';
     dialog.className = 'lightnas-dialog runtime-dialog logs-dialog';
-    dialog.innerHTML = `<div class="dialog-body"><div class="dialog-head"><div><span class="eyebrow">AUDIT & ACTIVITY</span><h2>LightNAS logs</h2></div><button class="icon-button" type="button" data-logs-close>×</button></div><div data-logs-modal-body></div><div class="dialog-actions"><button class="secondary" type="button" data-logs-refresh>Refresh</button><button class="primary" type="button" data-logs-close>Close</button></div></div>`;
+    dialog.innerHTML = `<div class="dialog-body"><div class="dialog-head"><div><span class="eyebrow">AUDIT & ACTIVITY</span><h2>LightNAS logs</h2></div><button class="icon-button" type="button" data-logs-close>×</button></div><div data-logs-modal-body></div><div class="dialog-actions"><button class="secondary refresh-icon-button" type="button" data-logs-refresh aria-label="Refresh logs" title="Refresh logs">↻</button><button class="primary" type="button" data-logs-close>Close</button></div></div>`;
     document.body.append(dialog);
     dialog.addEventListener('click', event => { if (event.target.closest('[data-logs-close]')) dialog.close(); });
     dialog.querySelector('[data-logs-refresh]')?.addEventListener('click', async () => {
@@ -3269,6 +3269,8 @@ function bindViewActions() {
       if (state.view === 'apps') {
         await loadCommunityCatalog(true);
         loadRuntimes(true).catch(() => null);
+      } else if (state.view === 'containers') {
+        await Promise.all([loadContainers(), loadRuntimes(true)]);
       } else {
         await loadRuntimes(true);
       }
