@@ -77,7 +77,7 @@ The earlier browser blocker was resolved using a local Chromium executable. PR #
 - Fixed a single-element query followed by `forEach` in `render`, which threw on every route before action handlers could attach. A behavioral regression test now checks that navigation updates reach action binding.
 - Matched the default logo background and wordmark-mask alignment; kept Overview refresh as a properly sized icon control.
 - Replaced the legacy minimum-width dashboard grid with a workspace-container layout. This restores graph-control access at tablet widths with the sidebar visible.
-- Kept the current workspace section visible in its horizontally scrolling navigation.
+- Kept the current workspace section visible in its horizontally scrolling navigation. Mobile Admin Center tabs use compact widths and retain the selected section in view after rendering.
 - Restored access to mobile Files settings in gallery mode through a header control. Every matching settings control receives its click handler.
 - Added `scripts/qa-workspace-browser.mjs`. It uses disposable server state and requires Playwright plus Chromium. `LIGHTNAS_PLAYWRIGHT_MODULE` and `LIGHTNAS_CHROMIUM_EXECUTABLE` can point to externally installed tools; `LIGHTNAS_QA_SCREENSHOTS` enables captures, and `LIGHTNAS_QA_COMPACT=1` runs the two main desktop/mobile sizes.
 - The browser matrix covers 15 routes, both themes and all nine required sizes plus 844×390 landscape: 300 route/theme/viewport combinations. Checks include page overflow, visibility of the current workspace section, graph actions, and firewall editor open/revert/close. Admin Center's nine sections and mobile/desktop Files settings receive additional checks at 390px and 1280px.
