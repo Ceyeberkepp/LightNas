@@ -257,7 +257,7 @@ dialog.ln-management-editor .form-error:not(:empty) {margin-top:12px;overflow-wr
     max-height:none;
     gap:5px;
   }
-  #content[data-current-view="admin"] .admin-center-nav-item {flex:0 0 auto;white-space:nowrap;}
+  #content[data-current-view="admin"] .admin-center-nav-item {flex:0 0 auto;width:auto;white-space:nowrap;}
 }
 @container(max-width:740px) {
   #content[data-current-view="files"] .file-toolbar {grid-template-columns:1fr;}
