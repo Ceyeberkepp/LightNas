@@ -157,23 +157,18 @@
 #content[data-current-view="admin"] .admin-center-panel-head h2 {font-size:18px;}
 #content[data-current-view="admin"] .admin-center-section {padding:12px 16px;}
 #content[data-current-view="admin"] .admin-center-row {padding:10px 0;gap:10px;}
-/* Settings forms: balanced two-column cards on wide screens. */
-#content[data-current-view="settings"] .settings-dashboard,
-#content[data-current-view="admin"] .settings-dashboard {
-  display:grid!important;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:12px;
-  align-items:start;
+/* Settings: preserve the existing form flow while tightening spacing. */
+#content[data-current-view="settings"] .settings-dashboard > .panel,
+#content[data-current-view="admin"] .settings-dashboard > .panel {
+  min-width:0;
+  padding:14px;
+  margin-bottom:12px;
 }
-#content[data-current-view="settings"] .settings-dashboard > *,
-#content[data-current-view="admin"] .settings-dashboard > * {min-width:0;margin:0!important;}
 #content[data-current-view="settings"] .settings-general-grid,
 #content[data-current-view="admin"] .settings-general-grid {
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));
   gap:10px;
 }
-#content[data-current-view="settings"] .settings-general-card,
-#content[data-current-view="admin"] .settings-general-card {grid-column:1 / -1;}
 /* Network and backups: keep wide data tables scrollable within the workspace. */
 #content[data-current-view="network"] .network-table-panel,
 #content[data-current-view="backups"] .backup-console {min-width:0;overflow:hidden;}
@@ -198,8 +193,6 @@
   #content[data-current-view="files"] .file-toolbar {grid-template-columns:1fr;}
   #content[data-current-view="files"] .file-toolbar-actions {justify-content:flex-start;}
   #content[data-current-view="apps"] .app-filter-controls {justify-content:flex-start;}
-  #content[data-current-view="settings"] .settings-dashboard,
-  #content[data-current-view="admin"] .settings-dashboard {grid-template-columns:1fr;}
   #content[data-current-view="settings"] .settings-general-grid,
   #content[data-current-view="admin"] .settings-general-grid {grid-template-columns:1fr;}
 }
