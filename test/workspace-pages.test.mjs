@@ -25,5 +25,5 @@ test('all page-specific layout rules are loaded after legacy design layers', () 
 
 test('responsive page rules do not change routes, task dock, or API calls', () => {
   assert.doesNotMatch(css, /#task-dock|\.task-dock|\/api\//);
-  assert.match(app, /data-current-view/);
+  assert.match(app, /content\.dataset\.currentView\s*=\s*state\.view/);
 });
