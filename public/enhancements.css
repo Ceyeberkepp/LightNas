@@ -4490,3 +4490,153 @@ dialog.viewer-more-sheet.viewer-desktop-popover::backdrop { background: transpar
  #content .ai-workspace-v2 .ai-agent-form button{width:100%;justify-content:center}
  #content .admin-center-row-actions > button {max-width:100%}
 }
+
+
+/* Approved LightNAS green / macOS-inspired dashboard, October 2026.
+   Decorative changes are scoped; system monitoring and task behavior remain intact. */
+:root {
+  --lightnas-workspace: #f2f7f4;
+}
+:root[data-theme="light"] {
+  --lightnas-workspace: #f2f7f4;
+}
+:root:not([data-theme="light"]) {
+  --lightnas-workspace: #101a18;
+}
+/* The task dock belongs to the second grid column, never beneath the sidebar. */
+@media (min-width: 761px) {
+  .console:not(.sidebar-collapsed) .task-dock {
+    left: 250px;
+  }
+  .console.sidebar-collapsed .task-dock {
+    left: 86px;
+  }
+}
+.console .task-dock {
+  box-sizing: border-box;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  background: color-mix(in srgb,var(--panel) 95%,transparent);
+  box-shadow: 0 -5px 20px rgba(15,35,24,.05);
+}
+.console .task-dock-bar {
+  background: transparent;
+  min-height: 44px;
+  font-weight: 650;
+}
+.console .task-dock-bar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+@media (min-width: 761px) {
+  .console .content {
+    max-width: none;
+    min-width: 0;
+    padding: 22px clamp(16px,2vw,32px) 94px;
+    background:
+      radial-gradient(ellipse at 60% -30%, color-mix(in srgb,var(--accent) 9%,transparent), transparent 65%),
+      var(--lightnas-workspace);
+  }
+  .console .topbar {
+    background: color-mix(in srgb,var(--panel) 88%,transparent);
+    backdrop-filter: blur(16px) saturate(130%);
+  }
+  .console .sidebar {
+    background: color-mix(in srgb,var(--panel) 95%,var(--lightnas-workspace));
+  }
+}
+.console .sidebar nav a.active {
+  background: color-mix(in srgb,var(--accent) 15%,var(--panel));
+  color: var(--text);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.console .sidebar nav a:hover {
+  background: color-mix(in srgb,var(--accent) 7%,var(--panel));
+}
+.console .page-head h1 {
+  font-size: clamp(24px,2.4vw,32px);
+  letter-spacing: -.045em;
+  font-weight: 760;
+}
+.console .node-overview-grid {
+  grid-template-columns: minmax(300px,1fr) minmax(420px,1.08fr);
+  gap: 14px;
+}
+.console .node-overview-grid .panel,
+.console .overview-bottom-grid .panel,
+.console .overview-chart,
+.console .overview-graph-tabs {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(10,40,24,.035);
+  background: var(--panel);
+}
+.console .node-summary-card {
+  min-width: 0;
+}
+.console .node-summary-card .panel-head h2 {
+  font-size: 18px;
+  letter-spacing: -.025em;
+}
+.console .node-usage-row {
+  grid-template-columns: 90px minmax(75px,1fr) minmax(125px,auto);
+  gap: 12px;
+  padding: 11px 0;
+}
+.console .node-usage-row .track {
+  border-radius: 999px;
+  overflow: hidden;
+}
+.console .node-facts {
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 4px 16px;
+}
+.console .node-facts > div {
+  min-width: 0;
+  display: block;
+}
+.console .node-facts dd {
+  text-align: left;
+  margin-top: 5px;
+}
+.console .overview-graph-tabs {
+  padding: 5px;
+  gap: 6px;
+}
+.console .overview-graph-tabs button {
+  min-height: 40px;
+  border-radius: 10px;
+  font-weight: 650;
+}
+.console .overview-graph-tabs button.active {
+  background: var(--accent);
+  color: var(--primary-button-contrast);
+}
+.console .overview-chart {
+  min-height: 290px;
+}
+.console .overview-chart svg {
+  background-size: 20% 25%;
+}
+.console .overview-bottom-grid {
+  gap: 14px;
+  margin-top: 14px;
+}
+.console .overview-bottom-grid .panel-head h2 {
+  font-size: 17px;
+}
+.console .overview-bottom-grid .activity {
+  border-bottom-color: var(--line);
+}
+@media (max-width: 1050px) {
+  .console .node-overview-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .console .node-facts { grid-template-columns: 1fr 1fr; }
+  .console .node-usage-row { grid-template-columns: 1fr; }
+  .console .node-usage-row > b { text-align: left; }
+  /* Mobile has a bottom navigation bar, not a desktop task dock. */
+}
+@media (prefers-reduced-motion: reduce) {
+  .console .task-dock, .console .sidebar nav a { transition: none; }
+}
