@@ -446,7 +446,15 @@ setInterval(autoDetectStorage, 12000);
 addEventListener('focus', () => { if (['home', 'storage', 'pools'].includes(state.view)) autoDetectStorage(); });
 
 function pageHead(title, description, action = '') {
-  return `<div class="page-head"><div><span class="eyebrow">LIGHTNAS CONTROL CENTER</span><h1>${title}</h1><p>${description}</p></div>${action}</div>`;
+  const groups = {
+    storage:'Storage',pools:'Storage',files:'Storage',shares:'Storage',backups:'Storage',
+    apps:'Apps & compute',ai:'Apps & compute',containers:'Apps & compute',vms:'Apps & compute',kubernetes:'Apps & compute',
+    network:'Connectivity',firewall:'Connectivity',integrations:'Connectivity',
+    admin:'Administration',users:'Administration',permissions:'Administration',settings:'Administration',smtp:'Administration',
+    analytics:'System tools',logs:'System tools',shell:'System tools',capabilities:'System tools',hypervisor:'System tools'
+  };
+  const group = groups[state.view] || 'Control Center';
+  return `<header class="page-head ln-standard-hero"><div class="ln-standard-heading"><span class="eyebrow">LIGHTNAS / ${escapeHtml(group)}</span><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p></div>${action ? `<div class="ln-standard-actions">${action}</div>` : ''}</header>`;
 }
 
 function metric(label, value, percent, detail) {
