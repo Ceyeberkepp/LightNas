@@ -10,7 +10,7 @@ test('render updates every navigation item and reaches action binding', () => {
   const classes = () => ({values:new Map(), toggle(name, value) {this.values.set(name,value);}});
   const links = ['home','storage','files'].map(view=>({dataset:{view},classList:classes()}));
   const marker = {classList:classes(),closest:()=>({setAttribute(){}})};
-  const content = {dataset:{},classList:classes(),focus(){},querySelector(){return null;},innerHTML:''};
+  const content = {dataset:{},classList:classes(),focus(){},querySelectorAll(){return [];},innerHTML:''};
   let bound = 0;
   const sandbox = vm.createContext({
     state:{view:'home',uiMode:'nas',runtimes:{docker:{},virtualization:{},catalog:[]}},
