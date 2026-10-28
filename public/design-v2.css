@@ -567,3 +567,187 @@ label { font-size:13px;font-weight:550;gap:6px; }
 @media (max-width:760px) {
   .console .node-facts { grid-template-columns:1fr; }
 }
+
+
+/* LightNAS Unified UI — application-wide Apple HIG-inspired visual language.
+   Original LightNAS identity and green palette. No proprietary Apple assets.
+   Final cascade layer covers common components without changing app behavior. */
+:root {
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+  --bg:#151a19; --panel:#202725; --panel-2:#28302d;
+  --line:rgba(232,246,235,.10); --line-strong:rgba(232,246,235,.19);
+  --text:#f4f7f4; --muted:#abb8af;
+  --sidebar:#1d2421; --topbar:rgba(28,35,32,.93);
+  --input:#29312d; --button:#303a34;
+  --accent:#00b83f; --accent-2:#8fe56f;
+  --primary-button:#00b83f; --primary-button-contrast:#081c0e;
+  --performance-tabs-active:#00b83f;
+  --performance-tabs-active-text:#071b0c;
+  --radius:14px; --shadow:0 10px 32px rgba(0,0,0,.15);
+}
+:root[data-theme="light"] {
+  --bg:#f3f7f4; --panel:#ffffff; --panel-2:#f5f8f5;
+  --line:rgba(28,52,34,.10); --line-strong:rgba(28,52,34,.19);
+  --text:#202923; --muted:#65746a;
+  --sidebar:#f9fbf9; --topbar:rgba(255,255,255,.94);
+  --input:#fff; --button:#eef3ef;
+  --accent:#008d35; --accent-2:#65c747;
+  --primary-button:#00b83f; --primary-button-contrast:#071c0c;
+  --performance-tabs-active:#00b83f;
+  --performance-tabs-active-text:#071c0c;
+  --shadow:0 8px 26px rgba(24,51,31,.07);
+}
+body { font-size:14px; letter-spacing:-.008em; }
+.console { min-width:0; }
+.console .sidebar {
+  background:var(--sidebar);
+  border-right:1px solid var(--line);
+  padding:18px 11px;
+}
+.console .sidebar nav a,
+.console .foot-admin {
+  border-radius:10px; min-height:38px;
+  transition:background-color .15s ease,color .15s ease;
+}
+.console .sidebar nav a:hover,
+.console .foot-admin:hover {
+  background:color-mix(in srgb,var(--accent) 7%,var(--panel-2));
+}
+.console .sidebar nav a.active {
+  background:color-mix(in srgb,var(--accent) 13%,var(--panel));
+  box-shadow:inset 3px 0 0 var(--accent);
+  color:var(--text);
+}
+.console .nav-group summary {
+  font-size:11px; letter-spacing:.035em;
+  color:var(--muted);
+}
+.console .topbar {
+  background:var(--topbar);
+  -webkit-backdrop-filter:blur(18px) saturate(135%);
+  backdrop-filter:blur(18px) saturate(135%);
+  border-bottom:1px solid var(--line);
+}
+.console .content {
+  min-width:0;
+  max-width:none;
+  background:radial-gradient(ellipse at 70% -30%,color-mix(in srgb,var(--accent) 7%,transparent),transparent 60%),var(--bg);
+}
+.console .content .page-head { gap:16px; }
+.console .content .page-head h1 {
+  font-size:clamp(25px,2.1vw,32px);
+  font-weight:730;
+  letter-spacing:-.045em;
+}
+.console .content .page-head p { font-size:13px; }
+.console :is(.panel,.card,.stat-card,.metric-card,.info-card,.inventory-card,
+  .attached-storage-card,.monitor-card,.admin-tool-card,.storage-pool-card,
+  .admin-center-panel,.compute-table-wrap,.file-browser,.storage-workspace,
+  .settings-dashboard,.user-list-section,.capability-section) {
+  border-radius:15px;
+  border-color:var(--line);
+  box-shadow:var(--shadow);
+}
+.console :is(.panel,.card,.stat-card,.metric-card,.info-card,.inventory-card,
+  .attached-storage-card,.monitor-card,.admin-tool-card,.storage-pool-card,
+  .admin-center-panel) {
+  background:var(--panel);
+}
+.console :is(.panel-head,.card-head,.page-head,.inventory-heading) h2,
+.console :is(.panel-head,.card-head,.page-head,.inventory-heading) h3 {
+  letter-spacing:-.028em;
+  font-weight:700;
+}
+.console :is(.primary,.secondary,.icon-button,.top-shell-button,.nav-files-toggle),
+dialog :is(.primary,.secondary,.icon-button),
+button.profile-action {
+  border-radius:10px;
+  box-shadow:none;
+  font-weight:650;
+}
+.console .primary, dialog .primary {
+  background:var(--primary-button);
+  color:var(--primary-button-contrast);
+}
+.console .secondary, dialog .secondary {
+  background:var(--button);
+  border:1px solid var(--line);
+  color:var(--text);
+}
+.console :is(input,select,textarea),
+dialog :is(input,select,textarea) {
+  border-radius:10px;
+  border:1px solid var(--line-strong);
+  background:var(--input);
+  color:var(--text);
+}
+.console :is(input,select,textarea):focus-visible,
+dialog :is(input,select,textarea):focus-visible,
+.console :is(button,a,summary):focus-visible,
+dialog :is(button,a):focus-visible {
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+}
+.console :is(.compute-row,.file-row,.storage-table-row,.template-table-row,
+  .admin-center-row,.activity) {
+  border-color:var(--line);
+}
+.console :is(.compute-row,.file-row,.storage-table-row,.template-table-row):hover {
+  background:color-mix(in srgb,var(--accent) 5%,var(--panel));
+}
+.console :is(.compute-table-head,.storage-table-head,.template-table-head) {
+  background:var(--panel-2);
+  color:var(--muted);
+}
+.console :is(.file-browser,.compute-table-wrap) {
+  overflow:auto;
+  background:var(--panel);
+}
+.console :is(.library-tab,.files-library-tab,.node-tabs button,.vm-settings-tab) {
+  border-radius:9px;
+}
+.console :is(.library-tab.active,.files-library-tab.active,.node-tabs button.active) {
+  color:var(--text);
+  background:color-mix(in srgb,var(--accent) 12%,var(--panel-2));
+  border-color:var(--line);
+}
+.console .overview-graph-tabs button.active {
+  background:var(--accent);
+  color:var(--performance-tabs-active-text);
+}
+.console .node-facts { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.console .node-facts > div { display:block;min-width:0; }
+.console .node-facts dd { text-align:left;margin-top:4px; }
+dialog:not(.embedded-terminal-dialog) {
+  border-radius:18px;
+  background:var(--panel);
+  color:var(--text);
+  border:1px solid var(--line);
+  box-shadow:0 24px 70px rgba(0,0,0,.25);
+}
+dialog:not(.embedded-terminal-dialog) .dialog-head {
+  border-bottom-color:var(--line);
+}
+dialog:not(.embedded-terminal-dialog) .dialog-actions {
+  border-top-color:var(--line);
+}
+.console .task-dock {
+  background:var(--panel);
+  border-color:var(--line);
+}
+@media (min-width:761px) {
+  .console:not(.sidebar-collapsed) > .task-dock { left:232px;right:0; }
+  .console.sidebar-collapsed > .task-dock { left:86px;right:0; }
+}
+@media (max-width:1050px) {
+  .console .node-overview-grid { grid-template-columns:1fr; }
+}
+@media (max-width:760px) {
+  .console .content { padding-inline:14px; }
+  .console :is(.panel,.card,.inventory-card,.monitor-card,.admin-tool-card) { border-radius:13px; }
+  .console .node-facts { grid-template-columns:1fr; }
+  dialog:not(.embedded-terminal-dialog) { max-width:calc(100vw - 16px); }
+}
+@media (prefers-reduced-motion:reduce) {
+  .console *,dialog * { scroll-behavior:auto!important;transition-duration:.01ms!important; }
+}
