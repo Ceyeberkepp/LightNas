@@ -20,7 +20,7 @@ export async function recoverResumableImports(){
  const names=await readdir(ROOT);
  const recovered=[];
  for(const name of names){
-  if(!/^[0-9a-f-]{36}\\.json$/i.test(name))continue;
+  if(!/^[0-9a-f-]{36}\.json$/i.test(name))continue;
   const id=name.slice(0,-5);if(!UUID.test(id))continue;
   try {
    const j=JSON.parse(await readFile(receiptPath(id),'utf8'));
@@ -50,8 +50,14 @@ export async function createResumableImport({name,size,sha256}){
  if(!Number.isSafeInteger(size)||size<=0||size>2**50||!DIGEST.test(sha256))fail('Invalid size or SHA-256');
  if(jobs.size>=128)fail('Too many active transfers',503);
  const id=randomUUID();const job={id,name,size,sha256:sha256.toLowerCase(),offset:0,state:'receiving'};jobs.set(id,job);
- await mkdir(ROOT,{recursive:true,mode:0o700});
- await persist(job);
+ try {
+  await mkdir(ROOT,{recursive:true,mode:0o700});
+  await persist(job);
+ } catch (error) {
+  jobs.delete(id);
+  await rm(receiptPath(id)+'.tmp',{force:true}).catch(()=>{});
+  throw error;
+ }
  return {id,name,size,offset:0,state:job.state};
 }
 export function resumableImportStatus(id){const j=jobs.get(id);if(!j)fail('Transfer not found',404);return {id:j.id,name:j.name,size:j.size,offset:j.offset,state:j.state};}
