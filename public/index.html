@@ -4,12 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#15191d">
-  <title>Lightweight AI NAS OS</title>
+  <title>LightNAS — Control Center</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/enhancements.css">
   <link rel="stylesheet" href="/hypervisor.css">
   <link rel="stylesheet" href="/admin-security.css">
   <link rel="stylesheet" href="/design-v2.css">
+  <link rel="stylesheet" href="/workspace-navigation.css">
 </head>
 <body>
   <div id="boot" class="boot-screen">
@@ -130,6 +131,12 @@
 
     <header class="topbar">
       <button id="menu" class="icon-button menu-button" aria-label="Toggle navigation" title="Collapse / expand navigation">☰</button>
+      <div id="workspace-search-shell" class="workspace-search-shell" role="search">
+        <svg class="workspace-search-symbol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 5 5"></path></svg>
+        <input id="workspace-search" class="workspace-search-input" type="search" placeholder="Search pages and settings…" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search LightNAS pages and settings" aria-autocomplete="list" aria-controls="workspace-search-results" aria-expanded="false">
+        <span class="workspace-search-hint" aria-hidden="true">Ctrl K</span>
+        <div id="workspace-search-results" class="workspace-search-results" role="listbox" aria-label="Matching LightNAS pages" hidden></div>
+      </div>
       <div class="top-actions"><button id="node-shell-top" class="top-shell-button" type="button" aria-label="Open Bash shell" title="Open Bash shell"><span>›_</span><b>Shell</b></button><button id="theme-toggle" class="icon-button" type="button" aria-label="Change appearance" title="Appearance">◐</button><button class="avatar" id="avatar" type="button" aria-label="Open profile" title="Profile">A</button></div>
     </header>
 
@@ -177,6 +184,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/product-mode.js"></script>
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/workspace-navigation.js"></script>
   <script type="module" src="/container-presets.js"></script>
   <script type="module" src="/dialog-controls.js"></script>
   <script type="module" src="/enhancements.js"></script>
