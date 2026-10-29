@@ -1,0 +1,25 @@
+services:
+  lightnas-demo:
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile
+    restart: unless-stopped
+    environment:
+      LIGHTNAS_DEMO_HOST: 0.0.0.0
+      LIGHTNAS_DEMO_PORT: "3081"
+    ports:
+      - "127.0.0.1:3081:3081"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('node:http').get('http://127.0.0.1:3081/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
