@@ -1,74 +1,78 @@
-# LightNAS interactive demo
+# LightNAS public demo — actual NAS frontend, simulated data
 
-A **separate**, safe, browser-only preview of the LightNAS NAS edition. This is for visitors to explore navigation and sample workflows, **not** for managing NAS hardware. It has its own server and URL; it does not route through `src/server.mjs`.
+The visitor demo now serves **the same HTML, CSS, and browser modules that run the LightNAS NAS edition** directly from `public/`. It is not a separate redesign. Only its API is replaced with clearly marked sample data, and **every POST, PUT, PATCH and DELETE request is rejected**. This runs on Node.js 22+ with no root privileges, disks, privileged agents, containers, Docker or existing NAS data.
 
-## Included
-
-- Responsive LightNAS green/charcoal styling, light/dark appearance, mobile navigation and a bottom task dock.
-- Example system health, CPU, memory, networking, sample storage and sample device statuses.
-- Interactive file browsing and creation of session-only sample folders.
-- Interactive sample app installs, backup jobs and user enable/disable in the browser only.
-- Example catalog entries (not a verified support/compatibility list).
-- Clearly visible demo labeling, session reset and sample-data disclosures on every page.
-
-There are **no LightNAS API calls, system agents, actual file uploads, credentials, real installations, disk changes or hardware operations**. Browser changes are stored in `sessionStorage` and may disappear when the tab/session closes. The stand-alone HTTP server only responds to the five allowlisted static assets and `/healthz`. Mutation methods return HTTP 405.
-
-## Local development
-
-Requirements: Node.js 22 or newer.
+## Run it natively (Debian 13 / Ubuntu)
 
 ```bash
-git clone https://github.com/Ceyeberkepp/LightNas.git
-cd LightNas
-node demo/server.mjs
-# Open http://127.0.0.1:3081
+cd /root/lightnas-demo
+git pull --ff-only origin main
 node --test demo/demo.test.mjs
+node demo/server.mjs
 ```
 
-This demo does not require root access, NAS installation, a ZFS pool, Docker, or a physical disk.
-
-## Isolated Docker deployment
-
-From the repository root:
+Default address: `http://127.0.0.1:3081`. Health check:
 
 ```bash
-docker compose -f demo/compose.yaml up -d --build
+curl http://127.0.0.1:3081/healthz
+# {"status":"ok","mode":"native-frontend-demo","realFrontend":true,"simulated":true}
+```
+
+To make the site reachable on your LAN, set `LIGHTNAS_DEMO_HOST=0.0.0.0` only for internal testing. For public access, bind back to `127.0.0.1` and use an authenticated HTTPS reverse proxy or Cloudflare Tunnel on the same host.
+
+## Upgrade an existing LightNASDEMO Proxmox LXC service
+
+The previous imitation only copied `demo/` and the logo to `/opt/lightnas-demo`. **This version also requires all of `public/`**, since that directory is the actual frontend. On the **LightNASDEMO guest**, not the Proxmox host:
+
+```bash
+cd /root/lightnas-demo
+git pull --ff-only origin main
+node --test demo/demo.test.mjs
+mkdir -p /opt/lightnas-demo/demo /opt/lightnas-demo/public
+cp -a /root/lightnas-demo/demo/. /opt/lightnas-demo/demo/
+cp -a /root/lightnas-demo/public/. /opt/lightnas-demo/public/
+chmod -R a+rX /opt/lightnas-demo
+systemctl restart lightnas-demo
+systemctl status lightnas-demo --no-pager
 curl -fsS http://127.0.0.1:3081/healthz
 ```
 
-The published port is **loopback-only** on the Docker host. The image runs as an unprivileged Node user with a read-only filesystem and **no mounts for the NAS's data, disks, Docker socket, or host network**. Run the demo on a separate VM or isolated host for an additional layer of protection.
+The existing systemd `ExecStart=/usr/bin/node /opt/lightnas-demo/demo/server.mjs` remains valid. Existing LXC-compatible systemd drop-ins remain in effect; this update does not alter Proxmox permissions.
 
-To stop it:
+To verify the exact frontend instead of a mock, run:
 
 ```bash
-docker compose -f demo/compose.yaml down
+curl -fsS http://127.0.0.1:3081/ | grep -E 'workspace-pages.css|design-v2.css|app.js|_demo/native.css'
 ```
 
-## Publish behind HTTPS
+## What visitors see
 
-Choose a domain you control, such as `demo.your-domain.example`, and put a reverse proxy / Cloudflare Tunnel in front of `http://127.0.0.1:3081`. For example, with Caddy on the **same demo host**:
+- The **actual LightNAS sidebar, header, dashboard, Storage Manager, Files & media, App Store, Backups, networking and Admin Center presentation** from the current release.
+- Sample inventory: CPU, memory, disks, storage pools, files, virtual machines, containers, applications, backup jobs and users.
+- A persistent badge: **LIGHTNAS DEMO · Simulated data · Read only**.
+- Direct navigation, search, appearance controls, and other client-side features from the genuine app.
 
-```caddyfile
-demo.your-domain.example {
-    reverse_proxy 127.0.0.1:3081
-}
+This is a **read-only navigation preview**. Changes like installing apps, creating users, formatting drives, uploading files, running backups, changing passwords or modifying the network are **intentionally unavailable**. Buttons that attempt those operations will receive an HTTP 403 error; never present them as working or verified. The demonstration backend holds only hard-coded, non-sensitive fixtures and cannot connect to the NAS host.
+
+## Security boundaries
+
+- `src/server.mjs` is **never imported** or started by the demo; no privileged LightNAS host agent, ZFS, LXC, libvirt, Docker socket or storage is used.
+- Static files are served only from the repository's `public/` tree, with symlink/path traversal checks and permitted browser asset extensions.
+- The embedded sample API answers only specified `GET` endpoints. Every other `/api/*` path returns 404, and all non-GET/HEAD methods return 403.
+- No real login, session, account storage or credential collection occurs. Never supply real passwords to the demo.
+- A restrictive CSP prevents connections to external hosts from the demo frontend.
+- A different demo hostname and isolated VM/LXC are preferable to exposing an actual NAS.
+
+## Testing
+
+```bash
+node --check demo/server.mjs
+node --check demo/native-fixtures.mjs
+node --test demo/demo.test.mjs
 ```
 
-Replace the example domain with your own and configure DNS/TLS before announcing it publicly. Do not point the public demo URL to your actual NAS management service or to port 3080. Never mount the real LightNAS data directory into this container.
+Tests verify actual original asset equivalence, sample API behavior, no access to real management endpoints, the demo banner, and mutation rejection.
 
-For Cloudflare Tunnel, configure a **Public Hostname** with service URL `http://127.0.0.1:3081` (when cloudflared is on the same host) or use the demo container's private service address if the tunnel runs inside the same isolated Docker network. Do not use the production LightNAS origin.
+## Optional packaging
 
-## QA checklist
-
-1. `GET /` displays the "LIGHTNAS DEMO" banner.
-2. Navigate every section on desktop and mobile; task dock stays within the workspace and does not overlap the sidebar.
-3. Add a demo folder; create a demo user; disable and re-enable that user.
-4. Install a sample app; run a backup; confirm the sample tasks complete; reset the session.
-5. Confirm requests to `/api/*`, `/src/server.mjs`, and `/data/state.json` return HTTP 404.
-6. Confirm POST/PUT/PATCH/DELETE requests return HTTP 405.
-7. Run `node --test demo/demo.test.mjs` to test route isolation and security headers.
-8. Confirm the deployed demo has no host storage mounts, device mapping, privileged mode, host network, or Docker socket access.
-
-## Scope and important boundary
-
-The sample dashboard is a preview, not a genuine connected LightNAS instance. Actual performance, app deployment compatibility, disk provisioning, network changes, authentication and file transfers require a separate **private test VM** with expendable virtual disks and should not be enabled on a publicly accessible demonstration website.
+`demo/compose.yaml` is offered only for separate environments that already use Docker. **Docker is not required or used by the native LightNAS deployment.** The primary supported demo installation above is Node.js + systemd.
