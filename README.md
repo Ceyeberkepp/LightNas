@@ -6,10 +6,6 @@
 
 **[Open LightNAS Demo](https://demoln.cyverax.com/)** — explore the actual LightNAS interface with simulated system data in a safe, read-only environment. No installation required.
 
-For hosting details and demo limitations, see the [demo documentation](demo/README.md).
-
-New installations use the bundled LightNAS logo and its green/charcoal palette throughout setup, login, and the control center. The default palette follows system light/dark appearance; saved custom logos and colors remain supported. ISO builds include the same logo in the boot menu and local startup screen.
-
 LightNAS is an independent lightweight NAS and infrastructure operating environment with storage, files/media, networking, native system containers, virtual machines, applications, and administration in one interface. It is designed to run on bare metal or a standard Linux virtual machine without requiring any particular external hypervisor platform.
 
 ## Two installation editions, one repository
