@@ -35,13 +35,16 @@ const files=[
 ].map((f,i)=>({...f,supported:true,modifiedAt:timestamp(i*55),folder:f.path.includes('/')?f.path.substring(0,f.path.lastIndexOf('/')):''}));
 const backupJobs=[{id:'backup-daily',name:'Daily NAS backup',source:'Media Pool',destination:'Backup Vault',schedule:'0 2 * * *',enabled:true,lastRunAt:timestamp(160),status:'success',lastStatus:'success'},{id:'backup-photos',name:'Weekly photo archive',source:'Photos',destination:'Sample Remote',schedule:'0 3 * * 0',enabled:true,lastRunAt:timestamp(6000),status:'success',lastStatus:'success'}];
 const branding={...appliance};
-const overview=()=>({appliance,system:sampleSystem,filesystems:[{device:'/dev/demo-pool',mountPoint:'/demo/media',type:'zfs',totalBytes:12*TiB,usedBytes:4.7*TiB,availableBytes:7.3*TiB}],storage:sampleStorage,host:null,shares:[],activity:sampleActivity});
-const dataFor=(pathname,params)=>{
+const userAppliance=(role='administrator')=>role==='administrator'
+  ? {...appliance}
+  : {...appliance,username:'demo-user',displayName:'Regular Demo User',role:'user',permissions:['overview.view','files.view.own','files.read'],deviceNameVisible:false,deviceName:''};
+const overview=(role='administrator')=>({appliance:userAppliance(role),system:sampleSystem,filesystems:[{device:'/dev/demo-pool',mountPoint:'/demo/media',type:'zfs',totalBytes:12*TiB,usedBytes:4.7*TiB,availableBytes:7.3*TiB}],storage:sampleStorage,host:null,shares:[],activity:sampleActivity});
+const dataFor=(pathname,params,role='administrator')=>{
   switch(pathname){
     case '/api/status':return {version:'demo',setupRequired:false};
-    case '/api/overview':return overview();
+    case '/api/overview':return overview(role);
     case '/api/branding':return branding;
-    case '/api/profile':return {username:'demo-admin',displayName:'Demo Administrator',email:'',isAdmin:true,createdAt:timestamp(10000),avatar:false};
+    case '/api/profile':return {username:role==='administrator'?'demo-admin':'demo-user',displayName:role==='administrator'?'Demo Administrator':'Regular Demo User',email:'',isAdmin:role==='administrator',createdAt:timestamp(10000),avatar:false};
     case '/api/runtimes':return sampleRuntimes;
     case '/api/catalog/builtin':return {catalog:sampleApps,count:sampleApps.length};
     case '/api/catalog/community':return {apps:[],sources:[],count:0,refreshing:false};
