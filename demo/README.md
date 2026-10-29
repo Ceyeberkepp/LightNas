@@ -1,5 +1,9 @@
 # LightNAS public demo — actual NAS frontend, simulated data
 
+**Public demo:** [https://demoln.cyverax.com/](https://demoln.cyverax.com/)
+
+Visitors can open this address to explore the LightNAS NAS interface without installing LightNAS. The public demo uses sample data and disables all host-changing operations.
+
 The visitor demo now serves **the same HTML, CSS, and browser modules that run the LightNAS NAS edition** directly from `public/`. It is not a separate redesign. Only its API is replaced with clearly marked sample data, and **every POST, PUT, PATCH and DELETE request is rejected**. This runs on Node.js 22+ with no root privileges, disks, privileged agents, containers, Docker or existing NAS data.
 
 ## Run it natively (Debian 13 / Ubuntu)
