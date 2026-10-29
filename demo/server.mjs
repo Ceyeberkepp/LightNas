@@ -104,7 +104,7 @@ const server=createServer(async(req,res)=>{
     try{credentials=await consumeJson(req);}
     catch(e){return error(res,method,e.status||400,e.message||'Invalid sign-in request.');}
     const username=typeof credentials?.username==='string'?credentials.username:'';
-    const record=DEMO_ACCOUNTS[username];
+    const record=Object.hasOwn(DEMO_ACCOUNTS,username)?DEMO_ACCOUNTS[username]:null;
     if(!record||!passwordMatches(credentials?.password,record.password))return error(res,method,401,'Invalid demo username or password.');
     for(const [token,data] of sessions)if(data.expires<=Date.now())sessions.delete(token);
     if(sessions.size>=2048)sessions.delete(sessions.keys().next().value);
