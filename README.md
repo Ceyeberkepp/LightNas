@@ -8,7 +8,7 @@
 
 LightNAS is an independent lightweight NAS and infrastructure operating environment with storage, files/media, networking, native system containers, virtual machines, applications, and administration in one interface. It is designed to run on bare metal or a standard Linux virtual machine without requiring any particular external hypervisor platform.
 
-## Two installation editions, one repository
+## One installation, one repository
 
 LightNAS has two separate appliance installs maintained from this repository. They share backend/runtime code and updates, but an installed appliance has one dedicated interface rather than a NAS/Hypervisor runtime switch.
 
