@@ -1,72 +1,93 @@
-(async function demoTests() {
-  "use strict";
-  const { test, after, before } = await import("node:test");
-  const assert = (await import("node:assert/strict")).default;
-  const { spawn } = await import("node:child_process");
-  const { fileURLToPath } = await import("node:url");
-  const { dirname, join } = await import("node:path");
-  const { readFile } = await import("node:fs/promises");
-  const here = dirname(fileURLToPath(import.meta.url));
-  let child, base;
-  before(async () => {
-    child = spawn(process.execPath, [join(here, "server.mjs")], {
-      env: { ...process.env, LIGHTNAS_DEMO_HOST: "127.0.0.1", LIGHTNAS_DEMO_PORT: "0" },
-      stdio: ["ignore", "pipe", "pipe"]
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
+
+const root=dirname(fileURLToPath(import.meta.url));
+let child,base;
+before(async()=>{
+  child=spawn(process.execPath,[join(root,'server.mjs')],{
+    env:{...process.env,LIGHTNAS_DEMO_HOST:'127.0.0.1',LIGHTNAS_DEMO_PORT:'0'},
+    stdio:['ignore','pipe','pipe']
+  });
+  base=await new Promise((resolve,reject)=>{
+    const timeout=setTimeout(()=>reject(Error('Demo did not start')),10000);
+    let output='';
+    child.stdout.on('data',data=>{
+      output+=String(data);
+      const matched=output.match(/listening on (http:\/\/127\.0\.0\.1:\d+)/);
+      if(matched){clearTimeout(timeout);resolve(matched[1]);}
     });
-    base = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(Error("Demo server did not start")), 8000);
-      let output = "";
-      child.stdout.on("data", (chunk) => {
-        output += chunk.toString();
-        const match = output.match(/listening on (http:\/\/127\.0\.0\.1:\d+)/);
-        if (match) { clearTimeout(timeout); resolve(match[1]); }
-      });
-      child.on("error", (error) => { clearTimeout(timeout); reject(error); });
-      child.on("exit", (code) => { clearTimeout(timeout); reject(Error(`Demo process exited early: ${code}`)); });
-    });
+    child.on('error',err=>{clearTimeout(timeout);reject(err);});
+    child.on('exit',code=>{clearTimeout(timeout);reject(Error('Demo exited early: '+code));});
   });
-  after(() => { if (child && child.exitCode === null) child.kill(); });
-  test("Demo homepage serves branded, clearly labelled simulated UI", async () => {
-    const response = await fetch(base + "/");
-    const body = await response.text();
-    assert.equal(response.status, 200);
-    assert.match(body, /LIGHTNAS DEMO/);
-    assert.match(body, /No real hardware/);
-    assert.match(body, /Users & groups/);
-    assert.match(body, /Backups/);
-  });
-  test("Demo script is served without a live backend", async () => {
-    const response = await fetch(base + "/demo.js");
-    const body = await response.text();
-    assert.equal(response.status, 200);
-    assert.match(response.headers.get("content-type"), /javascript/);
-    assert.match(body, /sessionStorage/);
-    assert.doesNotMatch(body, /\bfetch\s*\(/);
-  });
-  test("Server only exposes allowlisted static assets and health", async () => {
-    assert.equal((await fetch(base + "/healthz")).status, 200);
-    assert.equal((await fetch(base + "/logo.png")).status, 200);
-    assert.equal((await fetch(base + "/api/system")).status, 404);
-    assert.equal((await fetch(base + "/src/server.mjs")).status, 404);
-    assert.equal((await fetch(base + "/../data/state.json")).status, 404);
-  });
-  test("Server refuses all mutation methods", async () => {
-    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
-      const response = await fetch(base + "/", { method });
-      assert.equal(response.status, 405);
-      assert.equal(response.headers.get("allow"), "GET, HEAD");
+});
+after(()=>{if(child && child.exitCode===null)child.kill();});
+
+test('Serves the actual LightNAS frontend instead of the old imitation',async()=>{
+  const response=await fetch(base+'/');
+  const html=await response.text();
+  const original=await readFile(join(root,'../public/index.html'),'utf8');
+  assert.equal(response.status,200);
+  for(const element of ['id="console"','id="sidebar-backdrop"','id="task-dock"','/design-v2.css','/workspace-pages.css','/app.js']){
+    assert.ok(original.includes(element),'Missing real UI marker in source: '+element);
+    assert.ok(html.includes(element),'Missing real UI marker in demo: '+element);
+  }
+  assert.match(html,/\/_demo\/native\.css/);
+  assert.match(html,/\/_demo\/native\.js/);
+  assert.doesNotMatch(html,/Sample NAS Control Center/);
+});
+test('Original frontend assets are served unchanged',async()=>{
+  for(const path of ['/app.js','/design-v2.css','/workspace-pages.css','/workspace-navigation.js']){
+    const response=await fetch(base+path);
+    assert.equal(response.status,200,path);
+    const original=await readFile(join(root,'../public',path),'utf8');
+    assert.equal(await response.text(),original);
+  }
+});
+test('Browser starts in demo with sample overview and without setup/login',async()=>{
+  const status=await(await fetch(base+'/api/status')).json();
+  assert.equal(status.setupRequired,false);
+  const body=await(await fetch(base+'/api/overview')).json();
+  assert.equal(body.appliance.role,'administrator');
+  assert.equal(body.appliance.deviceName,'lightnas-demo');
+  assert.equal(body.system.cpu.cores,8);
+  assert.ok(body.storage.configuredPools.length);
+  assert.equal((await(await fetch(base+'/api/users')).json()).users.length,3);
+  assert.equal((await(await fetch(base+'/api/catalog/builtin')).json()).catalog.length,6);
+});
+test('Original file browser receives documented sample inventory',async()=>{
+  const all=await(await fetch(base+'/api/files?all=1')).json();
+  const listing=await(await fetch(base+'/api/files?path=Documents')).json();
+  assert.ok(all.entries.some(f=>f.name==='Project Plan.pdf'&&f.supported));
+  assert.ok(listing.entries.some(f=>f.name==='Welcome to LightNAS.txt'));
+});
+test('All mutation methods are prohibited for all routes',async()=>{
+  for(const route of ['/api/network','/api/users','/api/files?path=Documents%2Fsecret','/api/catalog/jellyfin/install','/api/storage/pools','/api/logout','/']){
+    for(const method of ['POST','PUT','PATCH','DELETE']){
+      const response=await fetch(base+route,{method});
+      assert.equal(response.status,403,method+' '+route);
     }
-  });
-  test("Browser isolation security headers are present", async () => {
-    const response = await fetch(base + "/");
-    assert.match(response.headers.get("content-security-policy"), /connect-src 'none'/);
-    assert.equal(response.headers.get("x-frame-options"), "DENY");
-    assert.equal(response.headers.get("x-content-type-options"), "nosniff");
-    assert.equal(response.headers.get("cache-control"), "no-store");
-  });
-  test("Demo source uses only sample documentation addresses", async () => {
-    const app = await readFile(join(here, "app.js"), "utf8");
-    assert.match(app, /192\.0\.2\.10/);
-    assert.doesNotMatch(app, /localStorage|XMLHttpRequest|WebSocket/);
-  });
-})();
+  }
+});
+test('No host files or backend endpoints can be reached',async()=>{
+  for(const path of ['/src/server.mjs','/data/state.json','/.env','/api/login','/api/console/node','/api/storage/agent/format','/api/containers/exec']){
+    const response=await fetch(base+path);
+    assert.equal(response.status,404,path);
+  }
+});
+test('Demo label, browser policy, and health endpoint are present',async()=>{
+  const health=await(await fetch(base+'/healthz')).json();
+  assert.equal(health.mode,'native-frontend-demo');
+  assert.equal(health.realFrontend,true);
+  assert.equal(health.simulated,true);
+  const label=await(await fetch(base+'/_demo/native.js')).text();
+  assert.match(label,/LIGHTNAS DEMO/);
+  assert.match(label,/Simulated data/);
+  const response=await fetch(base+'/');
+  assert.match(response.headers.get('content-security-policy'),/connect-src 'self'/);
+  assert.equal(response.headers.get('x-frame-options'),'DENY');
+  assert.equal(response.headers.get('cache-control'),'no-store');
+});
