@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#15191d">
+  <meta name="description" content="Explore the LightNAS NAS control center in a safe, interactive sample environment. No real hardware is connected.">
+  <title>LightNAS — Interactive Demo</title>
+  <link rel="icon" href="/logo.png" type="image/png">
+  <link rel="stylesheet" href="/demo.css">
+  <script src="/demo.js" defer></script>
+</head>
+<body>
+  <div class="demo-banner" role="status"><span class="demo-dot"></span><strong>LIGHTNAS DEMO</strong><span>Sample data only · No real hardware, accounts, or files are connected</span></div>
+  <div class="shell">
+    <div id="mobile-backdrop" class="mobile-backdrop" hidden></div>
+    <aside id="sidebar" class="sidebar">
+      <div class="brand-row"><img src="/logo.png" alt="" class="brand-logo"><span class="brand-text">LightNAS<small>NAS Control Center</small></span><button id="close-menu" class="icon-btn close-menu" aria-label="Close menu">×</button></div>
+      <nav aria-label="Demo navigation">
+        <div class="nav-label">WORKSPACE</div>
+        <a href="#overview" data-page="overview" class="nav-link active"><span class="nav-icon">⌂</span>Overview</a>
+        <div class="nav-label">STORAGE & DATA</div>
+        <a href="#files" data-page="files" class="nav-link"><span class="nav-icon">▤</span>Files & media</a>
+        <a href="#storage" data-page="storage" class="nav-link"><span class="nav-icon">▱</span>Storage & pools</a>
+        <a href="#backups" data-page="backups" class="nav-link featured"><span class="nav-icon">↶</span>Backups</a>
+        <div class="nav-label">APPS & ACCESS</div>
+        <a href="#apps" data-page="apps" class="nav-link featured"><span class="nav-icon">✦</span>App Store</a>
+        <a href="#users" data-page="users" class="nav-link featured"><span class="nav-icon">♙</span>Users & groups</a>
+        <div class="nav-label">SYSTEM</div>
+        <a href="#network" data-page="network" class="nav-link"><span class="nav-icon">⌁</span>Networking</a>
+        <a href="#system" data-page="system" class="nav-link"><span class="nav-icon">⚙</span>System settings</a>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="device-status"><span class="status-dot"></span><div><b>lightnas-demo</b><small>Sample appliance · Online</small></div></div>
+        <a class="repo-link" href="https://github.com/Ceyeberkepp/LightNas" target="_blank" rel="noopener noreferrer">View LightNAS on GitHub ↗</a>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <div class="top-left"><button id="menu-toggle" class="icon-btn menu-btn" aria-label="Open menu" aria-expanded="false">☰</button><div class="breadcrumb">LightNAS <span>/</span> <b id="top-page">Overview</b></div></div>
+        <div class="top-actions"><span class="sample-pill">SIMULATED ENVIRONMENT</span><button id="theme-toggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">◐</button><button id="reset-demo" class="button secondary">Reset demo</button><div class="avatar" title="Demo administrator">D</div></div>
+      </header>
+      <main id="content" class="content" tabindex="-1" aria-live="polite"></main>
+      <section class="task-dock" aria-label="Demo background tasks">
+        <button id="task-toggle" class="task-toggle" aria-expanded="false"><span><strong>Tasks</strong><small id="task-summary">No active tasks</small></span><span id="task-count" class="task-count">0</span><span class="task-caret">⌃</span></button>
+        <div id="task-body" class="task-body" hidden><div class="task-heading"><b>Background activity</b><button id="clear-tasks" class="button secondary small">Clear completed</button></div><div id="task-list"></div></div>
+      </section>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="demo-dialog" class="dialog"><form method="dialog" id="demo-form"><h2 id="dialog-title"></h2><p id="dialog-desc" class="muted"></p><label id="dialog-label" for="dialog-input"></label><input id="dialog-input" maxlength="50" required autocomplete="off"><p id="dialog-error" class="error" hidden></p><div class="dialog-actions"><button class="button secondary" value="cancel">Cancel</button><button class="button primary" value="confirm" id="dialog-submit">Create</button></div></form></dialog>
+</body>
+</html>
