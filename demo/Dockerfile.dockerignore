@@ -1,8 +1,7 @@
-# Restrict the demo image build context to the standalone demo.
-# Never send the repository's .git, state, credentials, or NAS data to Docker.
+# Build only the public-facing interface and the demo's own code.
+# No runtime data, private keys, node_modules, .git or host configuration.
 **
 !demo/
 !demo/**
 !public/
-!public/assets/
-!public/assets/lightnas-logo.png
+!public/**
