@@ -27,12 +27,6 @@ For the NAS edition:
 - **[LightNAS Support Guide](docs/LIGHTNAS-SUPPORT-GUIDE.md)** — how the NAS edition works, services, storage, apps, LXC, VMs, noVNC, networking, updates, performance and support triage.
 - **[LightNAS Knowledge Base](docs/kb/lightnas/README.md)** — installation/update, slow UI, noVNC, Windows VM performance, storage visibility, App Store, container networking, service startup, backups, file performance and support-data collection.
 
-## LightVisor support and knowledge base
-
-For the dedicated Hypervisor edition:
-
-- **[LightVisor Support Guide](docs/LIGHTVISOR-SUPPORT-GUIDE.md)** — architecture, resource tree, services, updating, diagnostics, and support boundaries.
-- **[LightVisor Knowledge Base](docs/kb/lightvisor/README.md)** — installation/update, resource-tree behavior, VM/LXC/storage/network troubleshooting, stale UI recovery, and support-data collection.
 ## Platform design targets
 
 LightNAS is being designed around a **2 GB RAM / 35 GB system-storage minimum**
