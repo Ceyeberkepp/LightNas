@@ -77,7 +77,7 @@ test('support matrix never advertises unvalidated target architectures as suppor
 test('i386 CI runs real upload API and security regressions under native ia32 Node', async () => {
   const workflow = await read('.github/workflows/platform-matrix.yml');
   const i386 = workflow.slice(workflow.indexOf('  full-i386:'));
-  assert.match(i386, /docker run --rm --platform linux\\/386/);
+  assert.ok(i386.includes('docker run --rm --platform linux/386'), 'i386 must execute in a 32-bit container');
   assert.ok(i386.includes('process.arch') && i386.includes('ia32'),
     '32-bit CI must verify the native Node architecture');
   for (const file of [
