@@ -37,7 +37,10 @@ jobs:
             image: node:22-bookworm-slim
           - architecture: riscv64
             platform: linux/riscv64
-            image: debian:trixie-slim
+            # Trixie ships Node 20; source compilation under QEMU exceeds this
+            # runtime-test budget. Sid provides a maintained native Node 24.
+            # This qualifies the Sid runtime, not the Trixie source-build path.
+            image: debian:sid-slim
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-qemu-action@v3
