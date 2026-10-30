@@ -1892,6 +1892,15 @@ async function loadFiles(forceRefresh = false, target = null) {
   }
 }
 
+function uploadRetryDelay(xhr, fallback = 500) {
+  if (xhr.status !== 429) return fallback;
+  const value = xhr.getResponseHeader('Retry-After');
+  const seconds = value && /^\d+(?:\.\d+)?$/.test(value.trim()) ? Number(value) : NaN;
+  const deadline = value ? Date.parse(value) : NaN;
+  const delay = Number.isFinite(seconds) ? seconds * 1000 : Number.isFinite(deadline) ? deadline - Date.now() : 60000;
+  return Math.max(fallback, Math.min(300000, delay));
+}
+
 function uploadRequest(path, file, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -1906,7 +1915,7 @@ function uploadRequest(path, file, onProgress) {
       if (xhr.status >= 200 && xhr.status < 300) return resolve();
       let message = 'Upload failed.';
       try { message = JSON.parse(xhr.responseText || '{}').error || message; } catch {}
-      reject(Object.assign(new Error(message), { status: xhr.status }));
+      reject(Object.assign(new Error(message), { status: xhr.status, retryAfterMs: uploadRetryDelay(xhr) }));
     });
     xhr.addEventListener('error', () => reject(Object.assign(new Error('The upload connection failed.'), { status:0, retryable:true })));
     xhr.addEventListener('abort', () => reject(Object.assign(new Error('The upload was cancelled.'), { status:0 })));
@@ -1936,9 +1945,9 @@ function chunkUploadRequest(path, file, onProgress) {
       }
       let message = 'Upload failed.';
       try { message = JSON.parse(xhr.responseText || '{}').error || message; } catch {}
-      const error = Object.assign(new Error(message), { status:xhr.status });
+      const error = Object.assign(new Error(message), { status:xhr.status, retryAfterMs: uploadRetryDelay(xhr, 500 * (attempt + 1)) });
       if ((xhr.status === 0 || xhr.status === 408 || xhr.status === 429 || xhr.status >= 500) && attempt < 3) {
-        setTimeout(() => sendChunk(blob, offset, attempt + 1).then(resolve, reject), 500 * (attempt + 1));
+        setTimeout(() => sendChunk(blob, offset, attempt + 1).then(resolve, reject), error.retryAfterMs);
       } else reject(error);
     });
     xhr.addEventListener('error', () => {
@@ -2062,7 +2071,7 @@ async function uploadFilesWithProgress(fileList, folderMode = false) {
           const transient = error.retryable || error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500;
           if (transient && attempt < 2) {
             attempt += 1;
-            await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+            await new Promise(resolve => setTimeout(resolve, Math.max(500 * attempt, error.retryAfterMs || 0)));
             continue;
           }
           failures.push({ name:file.name, message:error.message || 'Upload failed.' });

@@ -184,7 +184,7 @@ test('mobile batches serialize and retry transient photo or video failures', asy
   const server = await readFile(new URL('../src/server.mjs', import.meta.url), 'utf8');
   assert.match(app, /const concurrency = Math\.min\(mobile \? 1 : 3, targets\.length\)/);
   assert.match(app, /error\.retryable \|\| error\.status === 0/);
-  assert.match(app, /setTimeout\(resolve, 500 \* attempt\)/);
+  assert.match(app, /setTimeout\(resolve, Math\.max\(500 \* attempt, error\.retryAfterMs \|\| 0\)\)/);
   assert.match(server, /server\.requestTimeout = 30 \* 60 \* 1000/);
 });
 
