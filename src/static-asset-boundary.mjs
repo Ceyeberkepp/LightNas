@@ -1,5 +1,5 @@
 import { realpath, stat } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 
 // A public request must never resolve to backend source, dotfiles, source maps,
 // configuration, or anything outside the explicitly approved asset root.
@@ -16,6 +16,9 @@ export async function resolveStaticAsset(assetRoot, requested) {
     canonicalRoot = await realpath(resolve(assetRoot));
     canonicalFile = await realpath(resolve(assetRoot, requested));
     if (canonicalFile === canonicalRoot || !canonicalFile.startsWith(`${canonicalRoot}${sep}`)) return null;
+    const resolvedName = relative(canonicalRoot, canonicalFile);
+    if (resolvedName.split(sep).some(part => part.startsWith('.')) ||
+        resolvedName.toLowerCase().endsWith('.map')) return null;
     if (!(await stat(canonicalFile)).isFile()) return null;
   } catch (error) {
     if (['ENOENT', 'EACCES', 'ELOOP', 'ENOTDIR'].includes(error?.code)) return null;
