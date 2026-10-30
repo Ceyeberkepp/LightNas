@@ -249,6 +249,7 @@ Current restrictions include:
 - no enterprise or organizational operational use without a separate paid license;
 - no commercial or hosted-service use without a separate paid license;
 - no public redistribution or repackaging except as allowed by the license;
+- no reverse engineering, decompilation, disassembly, or reconstruction of non-public LightNAS components without the copyright holder's prior express written permission, except where law requires otherwise (per Section 8 of the license);
 - community access is free for permitted non-enterprise development/testing use.
 
 Enterprise, commercial, production, OEM, hosting, managed-service, and similar organizational uses require a separate paid LightNAS license.
