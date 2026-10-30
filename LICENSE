@@ -1,5 +1,5 @@
 LightNAS Development and Community Evaluation License
-Version 0.1 — October 2026
+Version 0.2 — October 2026
 
 Copyright (c) 2026 LightNAS Project. All rights reserved.
 
@@ -44,7 +44,8 @@ non-exclusive, non-transferable, revocable license to:
 
 a. install and run LightNAS for personal development, evaluation, lab,
    demonstration, education, and early testing;
-b. inspect and modify the source code for those permitted purposes;
+b. inspect and modify source code made available by Licensor for those
+   permitted purposes, subject to Section 8 (Reverse Engineering);
 c. submit proposed changes, bug reports, documentation, and other
    contributions to the LightNAS project; and
 d. create temporary test instances needed for those permitted purposes.
@@ -115,7 +116,37 @@ b. with prior written permission from Licensor.
 
 Private copies used solely for permitted development and testing are allowed.
 
-8. Contributions
+8. Reverse Engineering and Written Permission
+
+Except for the express permission to inspect and modify source code made
+available by Licensor under Section 2(b), or to the extent a restriction is
+prohibited by applicable non-waivable law, you may not, without Licensor's
+prior express written permission:
+
+a. reverse engineer, decompile, disassemble, deobfuscate, or otherwise
+   attempt to derive or reconstruct non-public source code, algorithms,
+   implementation details, or proprietary internal designs from LightNAS
+   executable binaries, compiled assets, or non-public components;
+b. analyze LightNAS binaries or services for the purpose of reproducing
+   proprietary, non-public implementation details or creating an unauthorized
+   functional clone through reverse engineering;
+c. bypass technical protection measures or access controls to carry out any
+   prohibited reverse-engineering activity; or
+d. authorize or engage another person or organization to perform such acts
+   on your behalf.
+
+Permission must be specifically granted by Licensor in writing before the
+activity begins, and applies only to the persons, activities, and scope
+expressly authorized in that writing. Receiving a copy of LightNAS, using a
+public demo, obtaining evaluation access, or receiving a separate commercial
+license does not itself constitute permission to reverse engineer.
+
+This section does not revoke the permitted source-code inspection and
+modification expressly granted in Section 2(b), does not restrict rights in
+independently licensed Third-Party Components, and does not prohibit activity
+that applicable law does not permit Licensor to restrict by contract.
+
+9. Contributions
 
 Unless a separate contributor agreement applies, submitting a contribution to
 the LightNAS project grants Licensor a perpetual, worldwide, non-exclusive,
@@ -126,19 +157,19 @@ relicense that contribution as part of LightNAS.
 You represent that you have the right to submit your contribution under these
 terms.
 
-9. Third-Party Components
+10. Third-Party Components
 
 LightNAS may include, invoke, integrate with, or depend on third-party software.
 Third-Party Components remain governed by their own licenses. This license does
 not replace, restrict, or expand rights granted under those third-party
 licenses.
 
-10. No Trademark License
+11. No Trademark License
 
 This license does not grant rights to use LightNAS names, logos, marks, or
 branding except as necessary to identify an unmodified permitted test copy.
 
-11. No Warranty
+12. No Warranty
 
 LIGHTNAS IS EXPERIMENTAL AND IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT
 WARRANTIES OR CONDITIONS OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES
@@ -150,7 +181,7 @@ YOU ARE RESPONSIBLE FOR TEST ENVIRONMENTS, BACKUPS, SECURITY, NETWORK
 CONFIGURATION, THIRD-PARTY SOFTWARE, DATA, AND ANY SYSTEMS OR WORKLOADS YOU
 CREATE OR CONNECT.
 
-12. Limitation of Liability
+13. Limitation of Liability
 
 TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR AND CONTRIBUTORS WILL NOT BE
 LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR
@@ -162,7 +193,7 @@ TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR'S AGGREGATE LIABILITY ARISING
 FROM OR RELATED TO LIGHTNAS WILL NOT EXCEED THE AMOUNT YOU PAID TO LICENSOR FOR
 THE CURRENT DEVELOPMENT BUILD DURING THE TWELVE MONTHS BEFORE THE CLAIM.
 
-13. Termination
+14. Termination
 
 Your rights under this license terminate automatically if you materially breach
 these terms. Upon termination, you must stop using LightNAS and delete copies
@@ -173,13 +204,13 @@ Sections concerning ownership, third-party components, contributions,
 warranty, liability, and other provisions that by their nature should survive
 will survive termination.
 
-14. Separate Commercial and Enterprise Terms
+15. Separate Commercial and Enterprise Terms
 
 Licensor may offer paid commercial, production, Pro, OEM, hosting, support, or
 Enterprise licenses under separate terms. A paid license may grant rights not
 included in this Community Development and Testing License.
 
-15. Entire License
+16. Entire License
 
 This license is the complete license for the LightNAS code and materials to
 which it is attached, unless a separate written agreement signed or issued by
