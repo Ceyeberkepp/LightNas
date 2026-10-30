@@ -1,3 +1,4 @@
+import {setProfileImageSource} from './profile-image-source.js';
 import {STORAGE_PROVIDERS} from './storage-providers.js';
 import {approveStoragePreview} from './storage-mutation-client.js';
 if (window.LIGHTNAS_PRODUCT_MODE === 'hypervisor') document.body.classList.add('product-hypervisor');
@@ -4143,7 +4144,7 @@ async function openProfileDialog() {
     return new Promise((resolve, reject) => {
       image = new Image();
       image.onload = () => {
-        preview.src = src;
+        setProfileImageSource(preview, src);
         preview.hidden = false;
         placeholder.hidden = true;
         zoom.value = '1';
@@ -4153,7 +4154,7 @@ async function openProfileDialog() {
         resolve();
       };
       image.onerror = reject;
-      image.src = src;
+      setProfileImageSource(image, src);
     });
   }
 

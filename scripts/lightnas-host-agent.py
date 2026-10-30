@@ -641,11 +641,42 @@ def local_networks() -> list[str]:
 
 
 def append_unique(path: Path, line: str) -> None:
-    current = path.read_text(encoding="utf-8") if path.exists() else ""
-    key = line.split("=", 1)[0].strip()
-    kept = [row for row in current.splitlines() if row.split("=", 1)[0].strip() != key]
-    kept.append(line)
-    path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    """Update only non-secret LXC resource/network settings, in an owner-only file.
+
+    LXC requires readable configuration, not encrypted values. Passwords belong
+    to the guest account tools and must never be accepted by this writer.
+    """
+    if any(char in line for char in ("\r", "\n", "\x00")) or "=" not in line:
+        raise ValueError("invalid LXC setting")
+    key, value = (part.strip() for part in line.split("=", 1))
+    patterns = {
+        "lxc.start.auto": r"[01]",
+        "lxc.cgroup2.memory.max": r"[1-9][0-9]*",
+        "lxc.cgroup2.cpu.max": r"[1-9][0-9]* [1-9][0-9]*",
+        "lxc.apparmor.profile": r"unconfined",
+    }
+    network = re.fullmatch(r"lxc\.net\.[0-9]+\.(type|link|macvlan.mode|ipvlan.mode|flags|name|vlan.id|hwaddr)", key)
+    if network:
+        patterns[key] = {
+            "type": r"veth|macvlan|ipvlan", "link": IFACE_RE.pattern,
+            "macvlan.mode": r"bridge", "ipvlan.mode": r"l2", "flags": r"up",
+            "name": r"eth[0-9]+", "vlan.id": r"[1-9][0-9]{0,3}",
+            "hwaddr": r"(?:[A-Fa-f0-9]{2}:){5}[A-Fa-f0-9]{2}",
+        }[network.group(1)]
+    if key not in patterns or not re.fullmatch(patterns[key], value):
+        raise ValueError("unsupported LXC setting or value")
+    if key.endswith(".vlan.id") and not 1 <= int(value) <= 4094:
+        raise ValueError("invalid VLAN tag")
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "r+", encoding="utf-8") as output:
+        fcntl.flock(output, fcntl.LOCK_EX)
+        os.fchmod(output.fileno(), 0o600)
+        current = output.read()
+        kept = [row for row in current.splitlines() if row.split("=", 1)[0].strip() != key]
+        kept.append(f"{key} = {value}")
+        output.seek(0)
+        output.write("\n".join(kept) + "\n")
+        output.truncate()
 
 
 def unique_container_mac() -> str:
