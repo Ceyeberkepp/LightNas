@@ -25,7 +25,7 @@ function harness({prepareFailure,transferFailure}={}) {
       body:{append(value){dock=value;}}
     },
     state:{folder:'',view:'home'},
-    isSystemImageFile:name=>/\\.iso$/i.test(name),
+    isSystemImageFile:name=>/\.iso$/i.test(name),
     libraryCategoryForName:()=> 'Documents',
     ensureUploadDirectories:async()=>{ if(prepareFailure) throw Error('Folder preparation denied'); },
     uploadRequest:async(_path,file,progress)=>{
