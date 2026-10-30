@@ -993,10 +993,13 @@ async function api(req, res, url) {
     const input = await bodyJson(req);
     const problem = validateSetup(input);
     if (problem) return send(res, 400, { error: problem });
+    const passwordHash = await hashPassword(input.password);
+    // Hashing yields: another setup request may have claimed ownership.
+    if (store.state.config) return send(res, 409, { error: 'This appliance is already configured.' });
     store.state.config = {
       deviceName: input.deviceName,
       username: input.username,
-      passwordHash: await hashPassword(input.password),
+      passwordHash,
       timezone: input.timezone || 'UTC',
       createdAt: new Date().toISOString(),
       instanceId: randomUUID(),
@@ -1713,9 +1716,19 @@ async function api(req, res, url) {
     if (input.username === store.state.config.username || store.state.users.some(user => user.username === input.username)) return send(res, 409, { error: 'Username already exists.' });
     const requestedQuotaGiB = input.storageQuotaGiB === undefined || input.storageQuotaGiB === '' ? 5 : Number(input.storageQuotaGiB);
     if (!Number.isFinite(requestedQuotaGiB) || requestedQuotaGiB <= 0 || requestedQuotaGiB > 1048576) return send(res, 400, { error: 'Storage quota must be greater than 0 and no more than 1,048,576 GiB.' });
+    const passwordHash = await hashPassword(input.password);
+    // Initialize the user's private library immediately so their first visit
+    // to Files & media never fails because Users/<username> does not exist yet.
+    await createFolder('Users');
+    await createFolder(`Users/${input.username}`);
+    await Promise.all(['Documents','Photos','Videos','Audio'].map(folder =>
+      createFolder(`Users/${input.username}/${folder}`)
+    ));
+    // Recheck after asynchronous hashing and folder creation before insertion.
+    if (input.username === store.state.config.username || store.state.users.some(user => user.username === input.username)) return send(res, 409, { error: 'Username already exists.' });
     const user = {
       username: input.username,
-      passwordHash: await hashPassword(input.password),
+      passwordHash,
       permissions: normalizePermissions(input.permissions, PERMISSIONS, []),
       storageQuotaBytes: Math.round(requestedQuotaGiB * 1024 * 1024 * 1024),
       showDeviceName: false,
@@ -1723,11 +1736,6 @@ async function api(req, res, url) {
       totpEnabled: false
     };
     store.state.users.push(user);
-    // Initialize the user's private library immediately so their first visit
-    // to Files & media never fails because Users/<username> does not exist yet.
-    await Promise.all(['Documents','Photos','Videos','Audio'].map(folder =>
-      createFolder(`Users/${input.username}/${folder}`).catch(() => null)
-    ));
     applyUserGroups(input.username, input.groups);
     store.addActivity('user', `User ${input.username} was created.`);
     await store.save();

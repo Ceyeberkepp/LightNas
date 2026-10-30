@@ -1,0 +1,37 @@
+name: Concurrent API qualification
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: concurrent-api-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  qualification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm install --omit=dev --no-audit --no-fund
+      - name: Full regression suite
+        run: npm test
+      - name: Repeat isolated live-instance and upload retry tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for round in {1..10}; do
+            echo "Qualification round $round"
+            node --test test/concurrent-live-api.test.mjs test/upload-rate-limit-retry.test.mjs
+          done
+      - run: python3 -m unittest discover -s test -p '*test*.py'
+      - run: npm run check:platform

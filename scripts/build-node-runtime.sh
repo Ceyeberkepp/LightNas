@@ -31,6 +31,12 @@ if [[ "${architecture}" == armel ]]; then options+=(--with-arm-float-abi=soft --
 # assembly can reject the toolchain or require instructions absent on old CPUs.
 # This retains cryptography/features; it only trades acceleration for portability.
 if [[ "${architecture}" == i386 || "${architecture}" == armel ]]; then options+=(--openssl-no-asm); fi
+# V8's ia32 target already requires SSE2. Its bundled zlib C sources need
+# the same baseline explicitly; Debian i386 GCC otherwise omits SSE2 for C.
+if [[ "${architecture}" == i386 ]]; then
+  export CFLAGS="${CFLAGS:-} -msse2"
+  export CXXFLAGS="${CXXFLAGS:-} -msse2"
+fi
 # No -march=native: never silently raise the CPU baseline to the build machine.
 python3 configure "${options[@]}"
 jobs="${LIGHTNAS_RUNTIME_BUILD_JOBS:-1}"
