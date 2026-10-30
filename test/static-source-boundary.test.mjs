@@ -20,12 +20,14 @@ test('browser assets are limited to ordinary files inside approved static root',
   await writeFile(join(root, 'server.mjs'), 'backend source');
   await symlink(join(root, 'server.mjs'), join(publicRoot, 'leak.js'));
   await symlink(join(publicRoot, 'app.js'), join(publicRoot, 'valid.js'));
+  await symlink(join(publicRoot, '.env'), join(publicRoot, 'config.js'));
+  await symlink(join(publicRoot, 'app.js.map'), join(publicRoot, 'map-alias.js'));
 
   assert.equal(await readFile(await resolveStaticAsset(publicRoot, 'app.js'), 'utf8'), 'browser code');
   assert.ok(await resolveStaticAsset(publicRoot, 'assets/style.css'));
   assert.ok(await resolveStaticAsset(publicRoot, 'valid.js'));
   for (const requested of [
-    '.git/config', '.env', 'app.js.map', 'leak.js', '../server.mjs',
+    '.git/config', '.env', 'app.js.map', 'leak.js', 'config.js', 'map-alias.js', '../server.mjs',
     'assets/../../server.mjs', 'assets//style.css', 'assets/./style.css',
     '/etc/passwd', 'assets\\\\style.css', 'missing.js', '', '.', 'assets'
   ]) {
