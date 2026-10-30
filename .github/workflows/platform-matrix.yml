@@ -78,7 +78,7 @@ jobs:
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v5
-      - name: Build maintained 32-bit runtime and execute the full backend
+      - name: Build native 32-bit runtime and test live API and security regressions
         run: |
           docker run --rm --platform linux/386 -v "$PWD:/source:ro" debian:bookworm-slim bash -ec '
             apt-get update
@@ -88,6 +88,16 @@ jobs:
             LIGHTNAS_ARCH=i386 LIGHTNAS_RUNTIME_BUILD_JOBS=2 bash scripts/install-node-runtime.sh
             node -e "if(process.arch!==\"ia32\")process.exit(1)"
             npm install --omit=dev --no-audit --no-fund
-            node --test test/platform-qualification.test.mjs test/kubernetes.test.mjs
+            # Exercise the actual ia32 runtime against the live upload route and
+            # regressions introduced by the security/upload fixes in #390-#392.
+            node --test \
+              test/platform-qualification.test.mjs \
+              test/kubernetes.test.mjs \
+              test/api-rate-limit.test.mjs \
+              test/upload-rate-budget-live.test.mjs \
+              test/mobile-upload-dock-cleanup.test.mjs \
+              test/profile-image-source.test.mjs \
+              test/remote-storage-entities.test.mjs
             PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s test -p platform_preflight_test.py
+            PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s test -p host_config_writer_test.py
           '
