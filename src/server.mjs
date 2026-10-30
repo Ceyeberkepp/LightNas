@@ -7,6 +7,7 @@ import {previewNetworkMigration} from './migration-network-preflight.mjs';
 import {evaluateMigrationAcceptance} from './migration-acceptance.mjs';
 import {inspectMigrationCertificate} from './migration-certificate-inspect.mjs';
 import {createApiRateLimiter} from './api-rate-limit.mjs';
+import { resolveStaticAsset } from './static-asset-boundary.mjs';
 import http from 'node:http';
 import {normalizeRedHatInventory,buildSourceExportManifest} from './migration-redhat-local.mjs';
 import {reviewVerifiedLxcRestore} from './migration-lxc-approval.mjs';
@@ -2979,10 +2980,11 @@ async function staticAsset(req, res, url) {
       : isXtermFit
         ? url.pathname.slice('/xterm-addon-fit/'.length)
         : (url.pathname === '/' ? 'index.html' : url.pathname.slice(1));
-  const safePath = normalize(requested).replace(/^(\.\.[/\\])+/, '');
-  const path = resolve(base, safePath);
-  if (path !== base && !path.startsWith(`${base}/`)) return send(res, 403, 'Forbidden');
   try {
+    // Resolve symlinks and reject dotfiles, hidden metadata, source maps and
+    // static content escaping the approved browser asset root.
+    const path = await resolveStaticAsset(base, requested);
+    if (!path) return send(res, 404, 'Not found');
     const content = await readFile(path);
     res.writeHead(200, {
       'Content-Type': mimeTypes[extname(path).toLowerCase()] || 'application/octet-stream',
