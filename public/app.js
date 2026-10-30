@@ -2009,11 +2009,18 @@ function updateMobileUploadTask(patch={}){
  node.querySelector('[data-mobile-upload-text]').textContent=mobileUploadTask.text;
  node.querySelector('[data-mobile-upload-meter]').value=mobileUploadTask.percent;
 }
+function showUploadFailure(error) {
+  const message = error?.message || 'Upload failed.';
+  updateMobileUploadTask({active:false,title:'Upload failed',text:message});
+  toast(message);
+}
 async function uploadFilesWithProgress(fileList, folderMode = false) {
   const files = [...fileList];
   if (!files.length) return;
   updateMobileUploadTask({active:true,percent:0,title:folderMode?'Uploading folder':'Uploading photos & files',text:files.length+' selected · preparing uploads'});
-  const targets = files.map(file => {
+  let targets;
+  try {
+    targets = files.map(file => {
     const relative = folderMode ? (file.webkitRelativePath || file.name) : file.name;
     const clean = relative.split('/').filter(part => part && part !== '.' && part !== '..').join('/');
     if (!folderMode && state.folder === '' && isSystemImageFile(file.name)) {
@@ -2021,9 +2028,12 @@ async function uploadFilesWithProgress(fileList, folderMode = false) {
     }
     const destination = !folderMode && state.folder === '' ? libraryCategoryForName(file.name) : state.folder;
     return { file, path: [destination, clean].filter(Boolean).join('/') };
-  });
-  try { await ensureUploadDirectories([...new Set(targets.map(item => item.path))]); }
-  catch(error){updateMobileUploadTask({active:true,title:'Upload could not start',text:error.message||'Unable to prepare folders'});throw error;}
+    });
+    await ensureUploadDirectories([...new Set(targets.map(item => item.path))]);
+  } catch (error) {
+    updateMobileUploadTask({active:false,title:'Upload could not start',text:error.message||'Unable to prepare folders'});
+    throw error;
+  }
 
   const totalBytes = targets.reduce((sum, item) => sum + Number(item.file.size || 0), 0);
   const loadedByFile = new Array(targets.length).fill(0);
@@ -2109,7 +2119,7 @@ async function uploadFilesWithProgress(fileList, folderMode = false) {
       toast(message);
     }
   } finally {
-    updateMobileUploadTask(failures.length ? {active:true,title:'Upload needs attention',text:failures.length+' failed — check Files & Media'} : {active:false,percent:100,title:'Upload complete',text:targets.length+' files uploaded'});
+    updateMobileUploadTask(failures.length ? {active:false,title:'Upload finished with errors',text:failures.length+' failed — check Files & Media'} : {active:false,percent:100,title:'Upload complete',text:targets.length+' files uploaded'});
     if(state.view==='files')await loadFiles();
   }
 }
@@ -3842,7 +3852,7 @@ function bindViewActions() {
     event.target.value = '';
     if (!files.length) return;
     toast(`Preparing ${files.length} item${files.length === 1 ? '' : 's'} for upload…`);
-    await uploadFilesWithProgress(files, false);
+    uploadFilesWithProgress(files, false).catch(showUploadFailure);
   });
   $('[data-file-view-select]', content)?.addEventListener('change', event => {
     state.fileView = event.target.value;
@@ -3861,23 +3871,23 @@ function bindViewActions() {
   $('#file-upload', content)?.addEventListener('change', async event => {
     const files = [...event.target.files];
     event.target.value = '';
-    await uploadFilesWithProgress(files, false);
+    uploadFilesWithProgress(files, false).catch(showUploadFailure);
   });
   $('#mobile-native-upload', content)?.addEventListener('change', event => {
     const files = [...event.target.files];
     event.target.value = '';
     if(!files.length)return;
-    uploadFilesWithProgress(files, false).catch(error=>{updateMobileUploadTask({active:true,title:'Upload failed',text:error.message});toast(error.message);});
+    uploadFilesWithProgress(files, false).catch(showUploadFailure);
   });
   $('#mobile-folder-upload', content)?.addEventListener('change', async event => {
     const files = [...event.target.files];
     event.target.value = '';
-    await uploadFilesWithProgress(files, true);
+    uploadFilesWithProgress(files, true).catch(showUploadFailure);
   });
   $('#folder-upload', content)?.addEventListener('change', async event => {
     const files = [...event.target.files];
     event.target.value = '';
-    await uploadFilesWithProgress(files, true);
+    uploadFilesWithProgress(files, true).catch(showUploadFailure);
   });
   const dropZone = $('[data-file-drop]', content);
   if (dropZone) {
@@ -3892,7 +3902,7 @@ function bindViewActions() {
     });
     dropZone.addEventListener('drop', async event => {
       const files = [...(event.dataTransfer?.files || [])];
-      await uploadFilesWithProgress(files, false);
+      uploadFilesWithProgress(files, false).catch(showUploadFailure);
     });
   }
   $$('[data-delete-file]', content).forEach(button => button.addEventListener('click', async () => {
