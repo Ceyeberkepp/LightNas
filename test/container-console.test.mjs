@@ -138,7 +138,9 @@ test('embedded terminal page may be framed only by the same LightNAS origin', as
   const {createServer}=await import('../src/server.mjs');
   const server=createServer();
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});});
+  // Import-time inventory warmup can finish creating folders after HTTP shutdown.
+  // Retry transient ENOTEMPTY during teardown; all page/CSP assertions still run.
+  t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true,maxRetries:5,retryDelay:100});});
   const base=`http://127.0.0.1:${server.address().port}`;
   for(const path of ['/container-console.html','/migration-wizard.html']){
     const response=await fetch(base+path);
