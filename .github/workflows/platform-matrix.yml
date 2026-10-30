@@ -73,7 +73,9 @@ jobs:
           '
   full-i386:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    # A serial Node 22 source build exceeded three hours on the hosted runner.
+    # Keep the complete build and runtime checks, with a larger CI-only budget.
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v5
       - name: Build maintained 32-bit runtime and execute the full backend
@@ -83,7 +85,7 @@ jobs:
             apt-get install -y --no-install-recommends python3 curl ca-certificates
             cp -a /source /work
             cd /work
-            LIGHTNAS_ARCH=i386 bash scripts/install-node-runtime.sh
+            LIGHTNAS_ARCH=i386 LIGHTNAS_RUNTIME_BUILD_JOBS=2 bash scripts/install-node-runtime.sh
             node -e "if(process.arch!==\"ia32\")process.exit(1)"
             npm install --omit=dev --no-audit --no-fund
             node --test test/platform-qualification.test.mjs test/kubernetes.test.mjs
