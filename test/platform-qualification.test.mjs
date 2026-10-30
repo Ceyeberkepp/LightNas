@@ -73,3 +73,23 @@ test('support matrix never advertises unvalidated target architectures as suppor
   assert.match(doc, /i386 \/ i686 \| Target/);
   assert.match(doc, /not advertised as supported until/);
 });
+
+test('i386 CI runs real upload API and security regressions under native ia32 Node', async () => {
+  const workflow = await read('.github/workflows/platform-matrix.yml');
+  const i386 = workflow.slice(workflow.indexOf('  full-i386:'));
+  assert.ok(i386.includes('docker run --rm --platform linux/386'), 'i386 must execute in a 32-bit container');
+  assert.ok(i386.includes('process.arch') && i386.includes('ia32'),
+    '32-bit CI must verify the native Node architecture');
+  for (const file of [
+    'test/platform-qualification.test.mjs',
+    'test/kubernetes.test.mjs',
+    'test/api-rate-limit.test.mjs',
+    'test/upload-rate-budget-live.test.mjs',
+    'test/mobile-upload-dock-cleanup.test.mjs',
+    'test/profile-image-source.test.mjs',
+    'test/remote-storage-entities.test.mjs',
+    'host_config_writer_test.py'
+  ]) {
+    assert.ok(i386.includes(file), 'Missing i386 regression coverage: ' + file);
+  }
+});
