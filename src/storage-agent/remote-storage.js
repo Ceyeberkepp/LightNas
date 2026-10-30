@@ -12,7 +12,9 @@ export function remoteRequest(url,{headers={},method='GET',body,pin,certificateP
   const request=https.request(url,{method,headers,agent,minVersion:'TLSv1.2'},response=>{let text='';response.setEncoding('utf8');response.on('data',chunk=>{text+=chunk;if(Buffer.byteLength(text)>4*1024*1024)request.destroy(Error('Remote storage response too large'));});response.on('error',reject);response.on('end',()=>{agent.destroy();if(response.statusCode<200||response.statusCode>=300){reject(Error('Remote storage returned HTTP '+response.statusCode+'. Check endpoint, credentials and datastore permissions.'));return;}resolve(text);});});const timer=setTimeout(()=>request.destroy(Error('Remote storage connection timed out')),15000);request.once('close',()=>clearTimeout(timer));request.setTimeout(15000,()=>request.destroy(Error('Remote storage connection timed out')));request.on('error',error=>{agent.destroy();reject(error);});request.end(body);
  });
 }
-const unescape=value=>value.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+// Decode one entity layer: replacement text must never be decoded again.
+const entities = Object.freeze({ amp: '&', quot: '"', lt: '<', gt: '>', apos: "'" });
+const unescape = value => value.replace(/&(amp|quot|lt|gt|apos);/g, (_, name) => entities[name]);
 const extensions={iso:/\.iso$/i,images:/\.(qcow2|raw|vmdk|vhdx?)$/i,backup:/\.(vma(?:\.zst|\.gz)?|tar(?:\.zst|\.gz)?)$/i,snippets:/\.(txt|conf|cfg|yaml|yml|json|sh)$/i,files:/./};
 export class RemoteStorage{
  constructor(request=remoteRequest){this.request=request;}

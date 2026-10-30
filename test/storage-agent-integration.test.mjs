@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,rm,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {assertStorageScripts} from '../test-support/storage-script-policy.mjs';
 import {storageAgentRoute} from '../src/storage-agent-client.mjs';
 test('storage broker allows only its typed endpoint surface',()=>{
  assert.equal(storageAgentRoute('/api/storage/agent/inventory','GET'),true);
@@ -18,7 +19,7 @@ test('storage broker allows only its typed endpoint surface',()=>{
 test('storage console uses the existing session and complies with script CSP',async()=>{
  const html=await readFile(new URL('../public/storage-operations.html',import.meta.url),'utf8');
  const js=await readFile(new URL('../public/storage-operations.js',import.meta.url),'utf8');
- assert.match(html,/src="\/storage-operations.js"/);assert.doesNotMatch(html,/<script>/);
+ assertStorageScripts(html);
  assert.match(js,/X-LightNAS-Request/);assert.doesNotMatch(js,/Bearer|localStorage|sessionStorage/);
 });
 test('existing LightNAS login gates root storage API and fails closed without installed agent',async t=>{
