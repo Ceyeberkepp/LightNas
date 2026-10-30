@@ -6,6 +6,7 @@ import {reviewGuestDependencies} from './migration-guest-dependencies.mjs';
 import {previewNetworkMigration} from './migration-network-preflight.mjs';
 import {evaluateMigrationAcceptance} from './migration-acceptance.mjs';
 import {inspectMigrationCertificate} from './migration-certificate-inspect.mjs';
+import {createApiRateLimiter} from './api-rate-limit.mjs';
 import http from 'node:http';
 import {normalizeRedHatInventory,buildSourceExportManifest} from './migration-redhat-local.mjs';
 import {reviewVerifiedLxcRestore} from './migration-lxc-approval.mjs';
@@ -3059,31 +3060,18 @@ function bridgeWebSocketToProcess(ws, process) {
 }
 
 export function createServer(options = {}) {
-  // Per-peer API request budget. Avoid unbounded memory use under hostile load.
-  // This is a single-process safety guard; deployments with multiple workers
-  // must additionally rate-limit at their trusted ingress proxy.
-  const apiRateBuckets = new Map();
-  function apiRateAllowed(req) {
-    const now = Date.now();
-    const peer = String(req.socket?.remoteAddress || 'unknown');
-    if (apiRateBuckets.size > 10000) {
-      for (const [key, value] of apiRateBuckets) {
-        if (value.expiresAt <= now) apiRateBuckets.delete(key);
-      }
-      if (apiRateBuckets.size > 10000) return false;
-    }
-    const bucket = apiRateBuckets.get(peer);
-    if (!bucket || bucket.expiresAt <= now) {
-      apiRateBuckets.set(peer, { count: 1, expiresAt: now + 60000 });
-      return true;
-    }
-    bucket.count += 1;
-    return bucket.count <= 240;
-  }
+  // Authenticated 2 MiB file chunks have their own bounded per-peer budget;
+  // normal API calls remain capped at 240/min and cannot be starved by uploads.
+  const apiRateAllowed = createApiRateLimiter();
   const server = (options.tls ? https.createServer.bind(https, options.tls) : http.createServer.bind(http))(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-      if (url.pathname.startsWith('/api/') && !apiRateAllowed(req)) {
+      // The upload lane is reserved for an authenticated local session with
+      // file-write permission; a forged header or invalid cookie does not qualify.
+      // API-token traffic keeps the normal request budget.
+      const uploadContext = req.method === 'PUT' && url.pathname === '/api/files/chunk' ? localContext(req) : null;
+      const authorizedChunk = Boolean(uploadContext && ['files.own', 'files.write'].some(permission => hasPermission(uploadContext.permissions, permission)));
+      if (url.pathname.startsWith('/api/') && !apiRateAllowed(req, authorizedChunk)) {
         return send(res, 429, { error: 'API request rate limit exceeded. Retry shortly.' },
           { 'Retry-After': '60' });
       }
