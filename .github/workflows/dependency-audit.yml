@@ -1,0 +1,37 @@
+name: Production dependency vulnerability gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/dependency-audit.yml'
+      - 'test/dependency-audit-workflow.test.mjs'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up maintained Node runtime
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      # No package lifecycle scripts are needed to produce the dependency
+      # graph. Resolve from the same manifest used by the appliance; scan the
+      # exact resolved tree rather than an empty or incomplete package list.
+      - name: Resolve production dependency graph without running scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Fail closed for high or critical production vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
