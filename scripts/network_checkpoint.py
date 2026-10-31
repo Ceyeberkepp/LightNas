@@ -27,8 +27,10 @@ TOKEN_RE = re.compile(r"^[0-9a-f]{64}$")
 
 class NetworkCheckpoint:
     def __init__(self, journal=Path("/var/lib/lightnas/network-pending.json"),
-                 call=None, now=None, timeout=120):
+                 call=None, now=None, timeout=120,
+                 profile_root=Path("/etc/NetworkManager/system-connections")):
         self.journal = Path(journal)
+        self.profile_root = Path(profile_root)
         self.call = call or self._busctl
         self.now = now or time.time
         self.timeout = timeout
@@ -45,7 +47,7 @@ class NetworkCheckpoint:
     def _backup_profiles(self, transaction_id):
         # Protect persistent NetworkManager profiles if the manager or machine
         # restarts before its D-Bus checkpoint timeout can take effect.
-        source = Path("/etc/NetworkManager/system-connections")
+        source = self.profile_root
         if source.is_symlink() or not source.is_dir():
             raise RuntimeError("A local NetworkManager keyfile directory is required for safe rollback")
         if any(path.is_symlink() for path in source.rglob("*")):
@@ -71,7 +73,7 @@ class NetworkCheckpoint:
         if not re.fullmatch(r"[0-9a-f]{32}", str(record.get("id", ""))):
             raise RuntimeError("Invalid network recovery transaction ID")
         backup = self.journal.parent / "network-backups" / record["id"] / "profiles"
-        dest = Path("/etc/NetworkManager/system-connections")
+        dest = self.profile_root
         if backup.is_symlink() or dest.is_symlink() or not backup.is_dir():
             raise RuntimeError("Missing or unsafe NetworkManager recovery backup")
         if any(path.is_symlink() for path in backup.rglob("*")):
