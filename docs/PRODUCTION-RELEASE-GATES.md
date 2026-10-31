@@ -30,3 +30,35 @@ This gate **does not implement** off-host disaster recovery, signed update publi
 ## Safety
 
 Do not format or initialize disks, assign unknown block devices to LightNAS, import or alter a customer's storage pool, restart a production host, or cut over management networking as part of release-readiness checks. Use temporary state, isolated virtual disks, nonproduction fixtures, and real hardware explicitly set aside for testing.
+
+## NetworkManager apply / confirm / rollback implementation
+
+The privileged host agent now stages NetworkManager-managed route, profile,
+device and uplink changes using the NetworkManager D-Bus Checkpoint API. It
+snapshots the local persistent NetworkManager connection profiles before
+creating a short-lived checkpoint, then applies the requested change. The
+browser receives a one-time confirmation token and has **120 seconds** to
+confirm successful continued management access. Otherwise, NetworkManager
+owns the automatic timeout-based rollback; an explicit Cancel requests
+rollback immediately. The token is required for confirm and cancel.
+
+The root-owned `lightnas-network-recovery.service` runs before
+NetworkManager during startup and before the LightNAS privileged host daemon.
+If an unconfirmed change survived a restart, it attempts the checkpoint
+rollback and restores saved persistent connection profiles before the network
+service starts. A failed recovery blocks NetworkManager startup rather than
+assuming an unsafe change is valid.
+
+This is a real code path with isolated test coverage, **not** proof of
+production readiness. Before marking the network release gate verified, test
+actual hardware and network equipment with DHCP, static-IP changes, wrong
+gateway, VLANs, bonds/bridges, dropped management sessions, NetworkManager
+restart, abrupt power loss, browser cancellation, timed expiry and recovery.
+
+**Known limitations to close before the gate is approved:** NetworkManager
+checkpoints do not cover raw `ip route` commands or UFW firewall mutations;
+these remain rejected when they could sever management access. Changes to
+external or non-keyfile network configuration outside
+`/etc/NetworkManager/system-connections` require their own backup and
+recovery adapter. A certificate identifying an old IP address will not
+automatically remain valid after switching the appliance to a new IP.
