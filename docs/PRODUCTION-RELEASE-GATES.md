@@ -30,3 +30,27 @@ This gate **does not implement** off-host disaster recovery, signed update publi
 ## Safety
 
 Do not format or initialize disks, assign unknown block devices to LightNAS, import or alter a customer's storage pool, restart a production host, or cut over management networking as part of release-readiness checks. Use temporary state, isolated virtual disks, nonproduction fixtures, and real hardware explicitly set aside for testing.
+
+## Temporary fail-closed management-network guard
+
+Until a host-owned crash-safe network transaction and timed rollback pass
+real-hardware acceptance, the privileged network agent **rejects**:
+- Immediate live route replacements (`route-runtime-update`).
+- Arbitrary device disconnections, uplink priority changes and connection
+  profile deletion.
+- Immediate activation of persistent route/profile modifications.
+
+In all cases the caller receives an explicit operation error. Passing a
+`force`, `confirm` or non-boolean `activate` flag cannot bypass the guard.
+Draft route/connection edits with explicit `activate: false` remain available
+as administrative definitions, **but they are not certified safe on reboot**:
+review each profile from a local console before permitting startup changes.
+This is a temporary limitation of network management, not delivery of the
+management-network rollback release gate. Other network and firewall actions
+remain to be assessed for connectivity impact. Do not mark the gate verified.
+
+The required replacement is a privileged transaction which snapshots current
+routes and NetworkManager profiles, uses a watchdog that survives an interrupted
+browser request and process restarts, requires confirmed management reachability,
+and reverts the exact changed network state on failure. Validate DHCP, static,
+VLAN, bridges, bonds, loss of gateway and NIC renaming on isolated hardware.
