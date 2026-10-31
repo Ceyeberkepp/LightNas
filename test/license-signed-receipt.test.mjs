@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -78,6 +78,7 @@ test('verifyLicense persists signature and rejects tampered server response with
   const result=await ctx.verifyLicense({licenseKey:'example-license-key',instanceId:'appliance-a',version:'0.12.0'});
   assert.equal(result.productionAllowed,true);
   assert.equal(JSON.parse(await readFile(ctx.receiptFile,'utf8')).signature,receipt.signature);
+  assert.deepEqual(await readdir(ctx.receiptFile.slice(0,ctx.receiptFile.lastIndexOf('/'))), ['receipt.json']);
   const forged={...receipt,payload:Buffer.from(JSON.stringify({instanceId:'appliance-a',edition:'enterprise'})).toString('base64url')};
   globalThis.fetch=async()=>new Response(JSON.stringify(forged),{status:200});
   await assert.rejects(ctx.verifyLicense({licenseKey:'example-license-key',instanceId:'appliance-a',version:'0.12.0'}),/signature/);
