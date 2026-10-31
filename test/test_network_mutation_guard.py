@@ -1,11 +1,15 @@
 """Regression checks: unsafe management cutovers never run unguarded."""
-import sys
+import importlib.util
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-from network_mutation_guard import require_safe_network_mutation, ACTIVATION_ACTIONS, PROTECTED_LIVE_ACTIONS
+spec = importlib.util.spec_from_file_location("lightnas_host_guard_test", ROOT / "scripts" / "lightnas-host-agent.py")
+agent = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(agent)
+require_safe_network_mutation = agent.require_safe_network_mutation
+ACTIVATION_ACTIONS = agent.PROTECTED_NETWORK_ACTIVATION_ACTIONS
+PROTECTED_LIVE_ACTIONS = agent.PROTECTED_LIVE_NETWORK_ACTIONS
 
 
 class NetworkMutationGuardTests(unittest.TestCase):
@@ -32,7 +36,7 @@ class NetworkMutationGuardTests(unittest.TestCase):
 
     def test_privileged_agent_enforces_guard_before_any_host_action(self):
         source = (ROOT / "scripts" / "lightnas-host-agent.py").read_text()
-        self.assertIn("from network_mutation_guard import require_safe_network_mutation", source)
+        self.assertIn("def require_safe_network_mutation(action: str, data: dict)", source)
         function = source.split("def network_action(data: dict) -> dict:", 1)[1]
         start = function.split("if action == \"firewall-add\":", 1)[0]
         self.assertIn("require_safe_network_mutation(action, data)", start)
