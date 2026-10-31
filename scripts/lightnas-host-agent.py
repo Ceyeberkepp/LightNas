@@ -26,6 +26,8 @@ import threading
 import time
 from pathlib import Path
 
+from network_mutation_guard import require_safe_network_mutation
+
 SOCKET_PATH = Path(os.environ.get("LIGHTNAS_HOST_SOCKET", "/run/lightnas/host-agent.sock"))
 LOCAL_STORAGE_ROOT = Path(os.environ.get("LIGHTNAS_LOCAL_STORAGE_ROOT", "/var/lib/lightnas/storage/local")).resolve()
 INSTALL_ROOT = Path(os.environ.get("LIGHTNAS_INSTALL_ROOT", "/opt/lightnas")).resolve()
@@ -2722,6 +2724,9 @@ def require_nmcli() -> None:
 
 def network_action(data: dict) -> dict:
     action = str(data.get("action") or "")
+    # Fail before any privileged command is run. A client-supplied override or
+    # UI confirmation cannot stand in for a host-owned timed rollback.
+    require_safe_network_mutation(action, data)
     if action == "firewall-add":
         if not available("ufw"):
             return {"action": action, "status": "unmanaged", "backend": "none", "message": "UFW is not installed; existing host firewall policy is unchanged."}
