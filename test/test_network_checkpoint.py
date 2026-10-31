@@ -272,6 +272,92 @@ class CheckpointTests(unittest.TestCase):
                 self.assertEqual(len(self.restores), 1, "Persistent profiles must be restored")
                 self.assertFalse(self.cp.journal.exists(), "Recovered failure must clear the pending journal")
 
+    def _use_real_profile_snapshot(self):
+        network_dir = Path(self.temp.name) / "config" / "system-connections"
+        network_dir.mkdir(parents=True)
+        profile = network_dir / "uplink.nmconnection"
+        profile.write_text("[connection]\\nid=known-good\\n")
+        self.cp.profile_root = network_dir
+        self.cp._backup_profiles = checkpoint.NetworkCheckpoint._backup_profiles.__get__(self.cp)
+        self.cp._restore_profiles = checkpoint.NetworkCheckpoint._restore_profiles.__get__(self.cp)
+        self.cp._remove_backup = checkpoint.NetworkCheckpoint._remove_backup.__get__(self.cp)
+        return profile
+
+    def test_profile_backup_is_synced_before_checkpoint_and_network_write(self):
+        profile = self._use_real_profile_snapshot()
+        flushed = []
+        original_sync = self.cp._fsync_tree
+
+        def recorded_sync(path):
+            original_sync(path)
+            flushed.append(str(path))
+
+        self.cp._fsync_tree = recorded_sync
+        original_bus = self.cp.call
+
+        def checkpoint_after_sync(method, signature="", *args):
+            if method == "CheckpointCreate":
+                self.assertTrue(flushed, "A checkpoint must not precede durable recovery files")
+                self.assertEqual(profile.read_text(), "[connection]\\nid=known-good\\n")
+            return original_bus(method, signature, *args)
+
+        self.cp.call = checkpoint_after_sync
+        self.cp.begin("connection-update", lambda: profile.write_text("changed"))
+        self.assertTrue(flushed)
+        self.assertEqual(profile.read_text(), "changed")
+
+    def test_backup_sync_failure_prevents_checkpoint_and_network_mutation(self):
+        profile = self._use_real_profile_snapshot()
+        self.cp._fsync_tree = lambda path: (_ for _ in ()).throw(OSError("injected disk sync failure"))
+        changed = []
+        with self.assertRaisesRegex(OSError, "injected disk sync failure"):
+            self.cp.begin("connection-update", lambda: changed.append(True))
+        self.assertFalse(changed, "Never modify a network without a durable rollback copy")
+        self.assertEqual(self.calls, [], "NetworkManager checkpoint must not be created")
+        self.assertFalse(self.cp.journal.exists())
+        backup_root = self.cp.journal.parent / "network-backups"
+        self.assertEqual(list(backup_root.iterdir()), [], "Discard incomplete backup")
+
+    def test_restore_sync_failure_keeps_journal_and_retries_from_backup(self):
+        profile = self._use_real_profile_snapshot()
+        pending = self.cp.begin("connection-update", lambda: profile.write_text("bad-profile"))
+        original_sync = self.cp._fsync_tree
+
+        def failed_stage_sync(path):
+            if Path(path).name.startswith(".lightnas-recovered-"):
+                raise OSError("injected staged restore sync failure")
+            return original_sync(path)
+
+        self.cp._fsync_tree = failed_stage_sync
+        with self.assertRaisesRegex(OSError, "injected staged restore sync failure"):
+            self.cp.recover_pending()
+        self.assertTrue(self.cp.journal.exists(), "Keep durable recovery state on failed restore")
+        backup = self.cp.journal.parent / "network-backups" / pending["transactionId"]
+        self.assertTrue(backup.exists())
+        self.cp._fsync_tree = original_sync
+        self.cp.recover_pending()
+        self.assertEqual(profile.read_text(), "[connection]\\nid=known-good\\n")
+        self.assertFalse(self.cp.journal.exists())
+        self.assertFalse(backup.exists())
+
+    def test_journal_unlink_sync_failure_never_discards_recovery_backup(self):
+        profile = self._use_real_profile_snapshot()
+        pending = self.cp.begin("connection-update", lambda: profile.write_text("bad-profile"))
+        backup = self.cp.journal.parent / "network-backups" / pending["transactionId"]
+        original_sync = self.cp._fsync_directory
+
+        def failed_journal_unlink_sync(path):
+            if Path(path) == self.cp.journal.parent and not self.cp.journal.exists():
+                raise OSError("injected journal directory sync failure")
+            return original_sync(path)
+
+        self.cp._fsync_directory = failed_journal_unlink_sync
+        with self.assertRaisesRegex(OSError, "injected journal directory sync failure"):
+            self.cp.resolve({"transactionId": pending["transactionId"],
+                             "confirmationToken": pending["confirmationToken"]}, commit=False)
+        self.assertTrue(backup.exists(), "Never discard backup before durable journal deletion")
+        self.assertEqual(profile.read_text(), "[connection]\\nid=known-good\\n")
+
     def test_no_management_writes_in_source_api_without_checkpoint(self):
         source=(ROOT/"scripts"/"lightnas-host-agent.py").read_text()
         self.assertIn("NETWORK_CHECKPOINT.begin(action, lambda: network_action(data, _checkpointed=True))",source)
