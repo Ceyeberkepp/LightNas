@@ -239,7 +239,17 @@ class NetworkCheckpoint:
             if commit:
                 self._destroy(record["checkpoint"])
             else:
+                if self.now() >= record["deadline"]:
+                    # The NetworkManager timer may already have destroyed its
+                    # checkpoint. Recover the durable profile snapshot even
+                    # when the in-memory checkpoint no longer exists.
+                    self.recover_pending()
+                    return {"action": "network-rollback", "confirmed": False, "rolledBack": True}
                 self._rollback(record["checkpoint"])
+                # NM checkpoint rollback alone does not prove that keyfiles
+                # changed by nmcli have their original persistent bytes.
+                # Keep the journal and snapshot if this restore fails.
+                self._restore_profiles(record)
             self._clear()
             self._remove_backup(record)
             return {"action": "network-confirm" if commit else "network-rollback",
