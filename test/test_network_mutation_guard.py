@@ -27,6 +27,19 @@ class NetworkMutationGuardTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "timed rollback"):
                         require_safe_network_mutation(action, {"activate": flag})
 
+    def test_firewall_deny_rule_is_blocked_but_allow_rule_can_be_prepared(self):
+        with self.assertRaisesRegex(ValueError, "timed network rollback"):
+            require_safe_network_mutation("firewall-add", {
+                "decision": "deny", "protocol": "tcp", "port": 3080
+            })
+        with self.assertRaisesRegex(ValueError, "timed network rollback"):
+            require_safe_network_mutation("firewall-add", {
+                "decision": "DENY", "protocol": "udp", "port": 5353, "force": True
+            })
+        require_safe_network_mutation("firewall-add", {
+            "decision": "allow", "protocol": "tcp", "port": 443
+        })
+
     def test_nonactivating_profile_drafts_and_safe_queries_still_work(self):
         for action in sorted(ACTIVATION_ACTIONS):
             require_safe_network_mutation(action, {"activate": False})
