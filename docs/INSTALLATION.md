@@ -129,11 +129,52 @@ systemctl status lightnas-host-agent --no-pager --full
 cat /var/lib/lightnas/runtime-status.txt
 ```
 
-The web control center should be available at:
+On a new installation, the web control center uses local HTTPS:
 
 ```text
-http://<LIGHTNAS-IP>:3080
+https://<LIGHTNAS-IP>:3080
 ```
+
+An existing installation can be migrated to **the same port**, without
+rerunning the whole installer:
+
+```bash
+cd /opt/lightnas
+# First update your checkout to include the script, after reviewing changes:
+git pull --ff-only
+sudo bash scripts/enable-local-https.sh
+```
+
+The migration tool creates a **unique appliance certificate** covering the
+machine's current IPv4 addresses, preserves an existing complete certificate
+instead of replacing it, installs a systemd override, restarts **only** the
+LightNAS management service, and verifies HTTPS with the certificate. If
+validation fails it restores the prior service configuration and tries to
+restore HTTP. It does **not** modify disks, pools, guest networks, VMs or app
+containers. It refuses an unhealthy service or an existing certificate that
+does not cover the current address rather than silently breaking access.
+
+To inspect the listener after migration:
+
+```bash
+sudo systemctl status lightnas --no-pager
+sudo curl --fail --show-error --cacert /etc/lightnas/tls/nas.crt https://127.0.0.1:3080/api/status
+```
+
+The default certificate is **self-signed**. HTTPS encrypts connections, but
+browsers will warn until the operator establishes trust. For a warning-free
+and authenticated URL, trust the individual appliance's certificate on each
+client, provision a trusted internal CA certificate that includes the IP
+address as a subject alternative name, or use an operator-owned HTTPS hostname
+with an appropriate trusted certificate. Never distribute a shared private
+key or tell users to disable browser certificate checking.
+
+Existing customer tunnels and proxies may currently forward **HTTP** to
+port 3080. After migration they must explicitly change their upstream to
+HTTPS and validate the local certificate. If doing so would disconnect
+remote management, migrate from a local console or during an approved
+maintenance window. No automatic plaintext HTTP fallback is exposed on the
+same port. The override persists when the installer is rerun.
 
 ## 8. Optional external integrations
 
