@@ -13,3 +13,25 @@ This checklist reports observed code controls, NOT a penetration-test certificat
 | CSRF / origin | Same-origin / fetch-metadata checks and custom request header on state-changing cookie-auth APIs | Validate origin behavior across proxies and legacy clients; test websocket upgrade auth and origin |
 
 Do not interpret this document or a successful source test as confirmation that a deployed LightNAS instance is secure. Avoid using an untrusted forwarded header to determine transport/client identity.
+
+## Trusted HTTPS proxy headers
+
+By default LightNAS accepts HTTPS as authenticated only when the TCP connection
+to the Node listener is itself encrypted. Client-supplied
+`X-Forwarded-Proto: https` does **not** indicate a secure connection and must
+never set a Secure session cookie without a trusted transport boundary.
+
+For an **operator-controlled** TLS-terminating proxy which connects to the
+LightNAS service over a protected local connection, configure
+`LIGHTNAS_TRUSTED_PROXY_IPS` with a comma-separated list of the proxy's
+exact TCP source IP addresses (for example `127.0.0.1,::1` for a same-host
+proxy). The proxy must overwrite/remove any client-supplied
+`X-Forwarded-Proto` header, set exactly `https` for authenticated HTTPS
+sessions, and prohibit direct client access to the HTTP backend listener.
+Wildcard trust, CIDR trust and DNS names are deliberately unsupported.
+TLS on each appliance at `https://<appliance-IP>:3080` does not need
+this setting and is preferred.
+
+This flag governs session cookie Secure attribution. It does not secure an
+exposed HTTP backend, authenticate reverse-proxy identities, or replace
+transport-layer firewall policies or certificate validation.
