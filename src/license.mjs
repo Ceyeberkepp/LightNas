@@ -20,25 +20,68 @@ async function configuredPublicKey() {
   try { return (await readFile(publicKeyFile, 'utf8')).trim(); } catch { return ''; }
 }
 
+
+/**
+ * Persist and recheck the original signed bytes, not decoded JSON. Otherwise
+ * a modified receipt can grant paid privileges after restart without proof
+ * that the license server signed those privileges.
+ * Legacy unsigned receipts fail closed and require reactivation.
+ */
+function signedReceiptPayload(receipt, instanceId, verificationKey) {
+  if (!verificationKey || typeof receipt?.payload !== 'string' || typeof receipt.signature !== 'string') {
+    throw new Error('A signed license receipt and verification key are required.');
+  }
+  const encodedPayload = receipt.payload;
+  const encodedSignature = receipt.signature;
+  if (!encodedPayload || encodedPayload.length > 65536 || !/^[A-Za-z0-9_-]+$/.test(encodedPayload) ||
+      !encodedSignature || encodedSignature.length > 128 || !/^[A-Za-z0-9_-]+$/.test(encodedSignature)) {
+    throw new Error('Invalid license receipt encoding.');
+  }
+  const payloadBytes = Buffer.from(encodedPayload, 'base64url');
+  const signature = Buffer.from(encodedSignature, 'base64url');
+  if (payloadBytes.toString('base64url') !== encodedPayload || signature.toString('base64url') !== encodedSignature || signature.length !== 64) {
+    throw new Error('Invalid license receipt encoding.');
+  }
+  const key = createPublicKey(verificationKey);
+  if (key.asymmetricKeyType !== 'ed25519' || !verifySignature(null, payloadBytes, key, signature)) {
+    throw new Error('The license signature could not be verified.');
+  }
+  let payload;
+  try { payload = JSON.parse(payloadBytes.toString('utf8')); }
+  catch { throw new Error('The license server returned an invalid payload.'); }
+  if (!validReceiptPayload(payload, instanceId)) {
+    throw new Error('The license response does not match this LightNAS appliance.');
+  }
+  if (payload.expiresAt && Date.parse(payload.expiresAt) <= Date.now()) {
+    throw new Error('The license has expired.');
+  }
+  return payload;
+}
+
 export async function licenseStatus({ instanceId, version }) {
-  let receipt = null;
-  try { receipt = JSON.parse(await readFile(receiptFile, 'utf8')); } catch {}
-  const payload = receipt?.payload && validReceiptPayload(receipt.payload, instanceId) ? receipt.payload : null;
-  const expired = payload?.expiresAt ? Date.parse(payload.expiresAt) <= Date.now() : false;
-  const edition = payload && !expired ? payload.edition : 'community';
-  const paidProduction = Boolean(payload && !expired && ['pro', 'enterprise'].includes(edition));
+  const verificationKey = await configuredPublicKey();
+  let payload = null;
+  try {
+    const receipt = JSON.parse(await readFile(receiptFile, 'utf8'));
+    payload = signedReceiptPayload(receipt, instanceId, verificationKey);
+  } catch {
+    // Missing, legacy unsigned, malformed, expired or tampered receipts
+    // are never evidence of production entitlement.
+  }
+  const edition = payload ? payload.edition : 'community';
+  const paidProduction = Boolean(payload && ['pro', 'enterprise'].includes(edition));
   return {
     edition,
-    verified: Boolean(payload && !expired),
+    verified: Boolean(payload),
     expiresAt: payload?.expiresAt || null,
-    features: payload && !expired && payload.features && typeof payload.features === 'object' ? payload.features : {},
-    serverConfigured: Boolean(licenseServer && await configuredPublicKey()),
+    features: payload && payload.features && typeof payload.features === 'object' ? payload.features : {},
+    serverConfigured: Boolean(licenseServer && verificationKey),
     instanceId,
     version,
     licenseName: 'LightNAS Development and Community Evaluation License',
     developmentOnly: !paidProduction,
     productionAllowed: paidProduction,
-    enterpriseUseAllowed: edition === 'enterprise' && Boolean(payload && !expired),
+    enterpriseUseAllowed: edition === 'enterprise' && Boolean(payload),
     communityUse: edition === 'community' && !paidProduction
   };
 }
@@ -71,30 +114,11 @@ export async function verifyLicense({ licenseKey, instanceId, version }) {
   if (!response.ok) throw Object.assign(new Error(`License verification failed with HTTP ${response.status}.`), { status: 409 });
 
   const body = await response.json();
-  const encodedPayload = String(body?.payload || '');
-  const encodedSignature = String(body?.signature || '');
-  if (!encodedPayload || !encodedSignature) throw Object.assign(new Error('The license server returned an incomplete signed response.'), { status: 409 });
-
-  let payload;
-  let payloadBytes;
-  try {
-    payloadBytes = Buffer.from(encodedPayload, 'base64url');
-    payload = JSON.parse(payloadBytes.toString('utf8'));
-  } catch {
-    throw Object.assign(new Error('The license server returned an invalid payload.'), { status: 409 });
-  }
-  if (!validReceiptPayload(payload, instanceId)) throw Object.assign(new Error('The license response does not match this LightNAS appliance.'), { status: 409 });
-
-  const publicKey = createPublicKey(verificationKey);
-  const signature = Buffer.from(encodedSignature, 'base64url');
-  if (!verifySignature(null, payloadBytes, publicKey, signature)) {
-    throw Object.assign(new Error('The license signature could not be verified.'), { status: 409 });
-  }
-  if (payload.expiresAt && Date.parse(payload.expiresAt) <= Date.now()) {
-    throw Object.assign(new Error('The license has expired.'), { status: 409 });
-  }
+  const receipt = { payload: body?.payload, signature: body?.signature };
+  try { signedReceiptPayload(receipt, instanceId, verificationKey); }
+  catch (error) { throw Object.assign(error, { status: 409 }); }
 
   await mkdir(dirname(receiptFile), { recursive: true, mode: 0o700 });
-  await writeFile(receiptFile, JSON.stringify({ payload, verifiedAt: new Date().toISOString() }, null, 2), { mode: 0o600 });
+  await writeFile(receiptFile, JSON.stringify({ ...receipt, verifiedAt: new Date().toISOString() }, null, 2), { mode: 0o600 });
   return await licenseStatus({ instanceId, version });
 }
