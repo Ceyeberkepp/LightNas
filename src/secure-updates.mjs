@@ -10,6 +10,37 @@ function configError(message) {
   return { updateAvailable: false, updateEnabled: false, checkStatus: 'not_configured', message };
 }
 
+/**
+ * Read the *decoded* HTTP response with a hard byte cap. Response.text()
+ * buffers the entire payload before a size check and permits a compromised
+ * update endpoint to exhaust the appliance's memory.
+ */
+export async function readBoundedManifest(response) {
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    throw new Error('Manifest response body is unavailable.');
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!(value instanceof Uint8Array)) throw new Error('Invalid manifest response chunk.');
+      total += value.byteLength;
+      if (total > MAX_MANIFEST_BYTES) throw new Error('Manifest exceeds size limit.');
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks, total).toString('utf8');
+  } catch (error) {
+    // Stop downloading after a limit violation or broken stream.
+    await reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export async function checkSignedUpdates({ currentVersion, edition = 'community', channel = 'stable' }) {
   const endpoint = String(process.env.LIGHTNAS_UPDATE_MANIFEST_URL || '').trim();
   const keyPath = String(process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE || '').trim();
@@ -30,8 +61,7 @@ export async function checkSignedUpdates({ currentVersion, edition = 'community'
   try {
     response = await fetch(requestUrl, { redirect: 'error', signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json' } });
     if (!response.ok) throw new Error('HTTP ' + response.status);
-    const body = await response.text();
-    if (Buffer.byteLength(body) > MAX_MANIFEST_BYTES) throw new Error('Manifest exceeds size limit.');
+    const body = await readBoundedManifest(response);
     const envelope = JSON.parse(body);
     if (!envelope || !envelope.payload || typeof envelope.signature !== 'string') throw new Error('Missing signed manifest.');
     const pem = await readFile(keyPath, 'utf8');
