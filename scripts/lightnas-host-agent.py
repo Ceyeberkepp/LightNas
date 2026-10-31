@@ -2725,8 +2725,10 @@ def require_nmcli() -> None:
 # crash-safe timed rollback. Keep this guard inside the host agent so both
 # direct service execution and file-based test/tool imports enforce it.
 PROTECTED_LIVE_NETWORK_ACTIONS = frozenset({
-    "route-runtime-update", "device-disconnect", "connection-delete",
-    "uplink-prefer",
+    "route-runtime-update", "device-disconnect", "device-connect",
+    "connection-delete", "uplink-prefer", "wifi-connect",
+    "firewall-delete", "firewall-remove-port", "firewall-enable",
+    "firewall-disable", "firewall-defaults", "firewall-reset",
 })
 PROTECTED_NETWORK_ACTIVATION_ACTIONS = frozenset({
     "connection-update", "route-create", "route-delete", "route-update",
@@ -2738,6 +2740,12 @@ def require_safe_network_mutation(action: str, data: dict) -> None:
         raise ValueError(
             f"{action} cannot be applied without verified timed network rollback; "
             "use a local console and an externally approved maintenance process."
+        )
+    # Deny rules take effect immediately and may sever current SSH/HTTPS access.
+    # Ordinary allow rules retain their existing path for app publication.
+    if action == "firewall-add" and str(data.get("decision") or "").lower() == "deny":
+        raise ValueError(
+            "firewall-add deny cannot be applied without verified timed network rollback"
         )
     # A false string, 0 or null is not an authenticated boolean opt-out.
     if action in PROTECTED_NETWORK_ACTIVATION_ACTIONS and "activate" in data and data["activate"] is not False:
