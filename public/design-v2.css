@@ -1353,3 +1353,133 @@ dialog:not(.embedded-terminal-dialog) .dialog-actions {padding-top:9px;}
   #content .ln-workspace-nav {margin-bottom:10px;}
   #content .ln-workspace-nav-item {padding:7px 10px;}
 }
+
+/* AI conversation: prefer the workspace width/height to a cramped card.
+   These view-scoped rules override the older generic AI sizing rules. */
+#content[data-current-view="ai"] .ai-workspace-v2 {
+  display:grid;
+  grid-template-columns:minmax(190px,220px) minmax(0,1fr);
+  gap:0;
+  width:100%;
+  max-width:100%;
+  height:clamp(540px,calc(100dvh - 230px),900px);
+  min-height:540px;
+  overflow:hidden;
+}
+#content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-chat {
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+  height:100%;
+  overflow:hidden;
+}
+#content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-messages {
+  flex:1 1 auto;
+  min-width:0;
+  min-height:0;
+  max-height:none;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overflow-wrap:anywhere;
+  overscroll-behavior-y:contain;
+  padding:24px clamp(16px,4vw,48px);
+}
+#content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-form {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:end;
+  gap:12px;
+  flex-wrap:nowrap;
+  margin:0;
+  min-width:0;
+  width:100%;
+  padding:15px clamp(12px,2.5vw,28px);
+}
+#content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-form textarea {
+  display:block;
+  box-sizing:border-box;
+  width:100%;
+  min-width:0;
+  min-height:86px;
+  max-height:180px;
+  padding:12px 14px;
+  resize:vertical;
+  overflow-y:auto;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--input);
+  color:var(--text);
+  font:inherit;
+  font-size:16px;
+  line-height:1.45;
+}
+#content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-form textarea:focus-visible {
+  outline:2px solid var(--accent);
+  outline-offset:1px;
+}
+#content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-form button {
+  width:auto;
+  min-width:84px;
+  min-height:44px;
+  flex:0 0 auto;
+  justify-content:center;
+  white-space:nowrap;
+}
+#content[data-current-view="ai"] .ai-workspace-v2 .ai-message {
+  max-width:min(760px,100%);
+}
+@container (max-width:820px) {
+  #content[data-current-view="ai"] .ai-workspace-v2 {
+    grid-template-columns:minmax(0,1fr);
+    height:auto;
+    min-height:0;
+    overflow:visible;
+  }
+  #content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-context {
+    width:100%;
+    min-width:0;
+    padding:14px;
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+  #content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-chat {
+    height:auto;
+    overflow:visible;
+  }
+  #content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-messages {
+    flex:0 1 auto;
+    min-height:clamp(320px,42dvh,560px);
+    max-height:min(62dvh,620px);
+    padding:18px 16px;
+  }
+  #content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-form {
+    gap:8px;
+    padding:12px;
+    padding-bottom:max(12px,env(safe-area-inset-bottom));
+  }
+  #content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-form button {
+    min-width:72px;
+    width:auto;
+  }
+}
+@media (max-width:800px) {
+  #content[data-current-view="ai"] .ai-workspace-v2 {
+    grid-template-columns:minmax(0,1fr);
+    height:auto;
+    min-height:0;
+    overflow:visible;
+  }
+  #content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-messages {
+    min-height:clamp(300px,40dvh,520px);
+    max-height:min(60dvh,600px);
+  }
+  #content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-form {
+    grid-template-columns:minmax(0,1fr) auto;
+    flex-wrap:nowrap;
+  }
+  #content[data-current-view="ai"] .ai-workspace-v2 .ai-agent-form button {
+    width:auto;
+    min-width:72px;
+  }
+}
