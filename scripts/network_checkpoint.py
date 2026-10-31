@@ -61,6 +61,8 @@ class NetworkCheckpoint:
         return str(backup)
 
     def _remove_backup(self, record):
+        if not re.fullmatch(r"[0-9a-f]{32}", str(record.get("id", ""))):
+            raise RuntimeError("Invalid network recovery transaction ID")
         backup = self.journal.parent / "network-backups" / record["id"]
         if backup.is_dir() and not backup.is_symlink():
             shutil.rmtree(backup)
@@ -161,7 +163,13 @@ class NetworkCheckpoint:
 
     def begin(self, action, execute):
         with self.lock:
-            if self._read() is not None:
+            previous = self._read()
+            if previous and self.now() >= previous["deadline"]:
+                # The NM checkpoint timer already expired. Never assume its
+                # in-memory rollback also restored persistent keyfiles.
+                self.recover_pending()
+                previous = self._read()
+            if previous is not None:
                 raise RuntimeError("Another network change is awaiting confirmation or recovery")
             transaction_id = secrets.token_hex(16)
             secret = secrets.token_hex(32)
@@ -238,6 +246,7 @@ class NetworkCheckpoint:
     def status(self):
         record = self._read()
         return {"pending": bool(record),
+                "expired": self.now() >= record["deadline"] if record else False,
                 "deadline": record["deadline"] if record else None,
                 "action": record["action"] if record else None}
 
