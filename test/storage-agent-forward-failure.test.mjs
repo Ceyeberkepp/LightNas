@@ -76,13 +76,13 @@ test('upstream unavailable before headers returns 503',async t=>{
 test('SSE keeps streaming past JSON deadline while heartbeat continues',async t=>{
  const {base}=await fixture(t,(req,res)=>{
   res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8'});
-  const interval=setInterval(()=>res.write('data: heartbeat\\n\\n'),20);
+  const interval=setInterval(()=>res.write('data: heartbeat\n\n'),20);
   res.on('close',()=>clearInterval(interval));
  },90);
  const abort=new AbortController();
  const response=await fetch(base+'/api/storage/agent/jobs/00000000-0000-0000-0000-000000000000/stream',{signal:abort.signal});
  assert.equal(response.status,200);
- assert.match(response.headers.get('content-type'),/text\\/event-stream/);
+ assert.match(response.headers.get('content-type'),/text\/event-stream/);
  const reader=response.body.getReader();
  const first=await reader.read();assert.match(new TextDecoder().decode(first.value),/heartbeat/);
  await new Promise(resolve=>setTimeout(resolve,160));
