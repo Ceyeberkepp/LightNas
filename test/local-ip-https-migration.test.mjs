@@ -97,3 +97,48 @@ test('failed certificate issuance deletes temporary private key material', t => 
   assert.equal(existsSync(join(certDir, 'nas.crt')), false);
   assert.doesNotMatch(migration, /trap ['"]rm -rf[^]*?RETURN/);
 });
+
+test('failed certificate installation removes both incomplete keypair files', t => {
+  const start = migration.indexOf('  (\n    tmp="$(mktemp -d "$cert_dir/.issue.XXXXXX")"');
+  const end = migration.indexOf('\n  )\nfi', start);
+  assert.ok(start >= 0 && end > start, 'locate actual issuance subshell');
+  const issuance = migration.slice(start, end + '\n  )'.length);
+  const fixture = mkdtempSync(join(tmpdir(), 'lightnas-tls-install-failure-'));
+  t.after(() => rmSync(fixture, {recursive: true, force: true}));
+  const certDir = join(fixture, 'tls');
+  const binDir = join(fixture, 'bin');
+  mkdirSync(certDir);
+  mkdirSync(binDir);
+  writeFileSync(join(binDir, 'openssl'), [
+    '#!/usr/bin/env bash',
+    'while [[ "$#" -gt 0 ]]; do',
+    '  case "$1" in',
+    '    -keyout) shift; printf "private key" > "$1" ;;',
+    '    -out) shift; printf "certificate" > "$1" ;;',
+    '  esac',
+    '  shift',
+    'done',
+  ].join('\n') + '\n', {mode: 0o755});
+  writeFileSync(join(binDir, 'install'), [
+    '#!/usr/bin/env bash',
+    'args=("$@")',
+    'src="${args[${#args[@]}-2]}"',
+    'dst="${args[${#args[@]}-1]}"',
+    'if [[ "$dst" == */nas.crt ]]; then exit 42; fi',
+    'cp "$src" "$dst"',
+  ].join('\n') + '\n', {mode: 0o755});
+  const shell = [
+    'set -Eeuo pipefail',
+    'cert_dir="$1"',
+    'key="$cert_dir/nas.key"',
+    'cert="$cert_dir/nas.crt"',
+    'current_ips=(192.0.2.15)',
+    issuance,
+  ].join('\n');
+  const run = spawnSync('bash', ['-c', shell, 'bash', certDir], {
+    encoding: 'utf8',
+    env: {...process.env, PATH: binDir + ':' + process.env.PATH},
+  });
+  assert.equal(run.status, 42, run.stderr);
+  assert.deepEqual(readdirSync(certDir), [], 'no temporary or partial certificate files remain');
+});
