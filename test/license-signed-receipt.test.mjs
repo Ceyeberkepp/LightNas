@@ -74,12 +74,62 @@ test('valid signature bound to another instance or expired entitlement fails clo
 
 test('verifyLicense persists signature and rejects tampered server response without replacing receipt', async () => fixture(async ctx => {
   const receipt=ctx.makeReceipt();
-  globalThis.fetch=async()=>({ok:true,json:async()=>receipt});
+  globalThis.fetch=async()=>new Response(JSON.stringify(receipt),{status:200});
   const result=await ctx.verifyLicense({licenseKey:'example-license-key',instanceId:'appliance-a',version:'0.12.0'});
   assert.equal(result.productionAllowed,true);
   assert.equal(JSON.parse(await readFile(ctx.receiptFile,'utf8')).signature,receipt.signature);
   const forged={...receipt,payload:Buffer.from(JSON.stringify({instanceId:'appliance-a',edition:'enterprise'})).toString('base64url')};
-  globalThis.fetch=async()=>({ok:true,json:async()=>forged});
+  globalThis.fetch=async()=>new Response(JSON.stringify(forged),{status:200});
   await assert.rejects(ctx.verifyLicense({licenseKey:'example-license-key',instanceId:'appliance-a',version:'0.12.0'}),/signature/);
   assert.equal((await status(ctx)).edition,'pro');
+}));
+
+test('oversized streamed license response cancels reading and preserves the prior entitlement', async () => fixture(async ctx => {
+  const receipt = ctx.makeReceipt();
+  await writeFile(ctx.receiptFile, JSON.stringify(receipt));
+  let cancelled = false;
+  const stream = new ReadableStream({
+    pull(controller) { controller.enqueue(new Uint8Array(32768)); },
+    cancel() { cancelled = true; }
+  });
+  globalThis.fetch = async () => ({ ok:true, headers:new Headers(), body:stream });
+  await assert.rejects(ctx.verifyLicense({licenseKey:'example-license-key',instanceId:'appliance-a',version:'0.12.0'}), /maximum allowed size/);
+  assert.equal(cancelled, true);
+  assert.equal((await status(ctx)).productionAllowed, true);
+}));
+
+test('oversized declared response is rejected before consuming the stream', async () => fixture(async ctx => {
+  let reads = 0;
+  let cancelled = false;
+  const stream = new ReadableStream({
+    pull(controller) { reads++; controller.enqueue(new Uint8Array([123])); },
+    cancel() { cancelled = true; }
+  }, { highWaterMark: 0 });
+  globalThis.fetch = async () => ({ ok:true, headers:new Headers({'content-length':'1000000'}), body:stream });
+  await assert.rejects(ctx.verifyLicense({licenseKey:'example-license-key',instanceId:'appliance-a',version:'0.12.0'}), /maximum allowed size/);
+  assert.equal(reads, 0);
+  assert.equal(cancelled, true);
+  assert.equal((await status(ctx)).productionAllowed, false);
+}));
+
+test('malformed streamed JSON does not create a paid receipt', async () => fixture(async ctx => {
+  globalThis.fetch = async () => new Response('{"payload":', {status:200});
+  await assert.rejects(ctx.verifyLicense({licenseKey:'example-license-key',instanceId:'appliance-a',version:'0.12.0'}), /invalid JSON/);
+  assert.equal((await status(ctx)).productionAllowed, false);
+}));
+
+test('deadline remains active while the license response body stalls', async () => fixture(async ctx => {
+  let cancelled = false;
+  const stream = new ReadableStream({
+    pull() { return new Promise(() => {}); },
+    cancel() { cancelled = true; }
+  });
+  globalThis.fetch = async () => ({ ok:true, headers:new Headers(), body:stream });
+  const originalSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (callback, delay, ...args) => originalSetTimeout(callback, delay === 15000 ? 20 : delay, ...args);
+  try {
+    await assert.rejects(ctx.verifyLicense({licenseKey:'example-license-key',instanceId:'appliance-a',version:'0.12.0'}), /deadline exceeded/);
+    assert.equal(cancelled, true);
+    assert.equal((await status(ctx)).productionAllowed, false);
+  } finally { globalThis.setTimeout = originalSetTimeout; }
 }));
