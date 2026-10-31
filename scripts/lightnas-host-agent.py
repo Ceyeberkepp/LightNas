@@ -26,7 +26,6 @@ import threading
 import time
 from pathlib import Path
 
-from network_mutation_guard import require_safe_network_mutation
 
 SOCKET_PATH = Path(os.environ.get("LIGHTNAS_HOST_SOCKET", "/run/lightnas/host-agent.sock"))
 LOCAL_STORAGE_ROOT = Path(os.environ.get("LIGHTNAS_LOCAL_STORAGE_ROOT", "/var/lib/lightnas/storage/local")).resolve()
@@ -2720,6 +2719,32 @@ def time_set(data: dict) -> dict:
 def require_nmcli() -> None:
     if not available("nmcli"):
         raise RuntimeError("NetworkManager is not installed on this LightNAS host")
+
+
+# Live management-network cutovers are unsafe without a host-owned,
+# crash-safe timed rollback. Keep this guard inside the host agent so both
+# direct service execution and file-based test/tool imports enforce it.
+PROTECTED_LIVE_NETWORK_ACTIONS = frozenset({
+    "route-runtime-update", "device-disconnect", "connection-delete",
+    "uplink-prefer",
+})
+PROTECTED_NETWORK_ACTIVATION_ACTIONS = frozenset({
+    "connection-update", "route-create", "route-delete", "route-update",
+})
+
+
+def require_safe_network_mutation(action: str, data: dict) -> None:
+    if action in PROTECTED_LIVE_NETWORK_ACTIONS:
+        raise ValueError(
+            f"{action} cannot be applied without verified timed network rollback; "
+            "use a local console and an externally approved maintenance process."
+        )
+    # A false string, 0 or null is not an authenticated boolean opt-out.
+    if action in PROTECTED_NETWORK_ACTIVATION_ACTIONS and "activate" in data and data["activate"] is not False:
+        raise ValueError(
+            f"{action} with immediate activation is unavailable until "
+            "management connectivity verification and timed rollback exist."
+        )
 
 
 def network_action(data: dict) -> dict:
