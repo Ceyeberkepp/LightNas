@@ -49,5 +49,5 @@ test('upgrades preserve deliberately enabled HTTPS and installation guide includ
   assert.match(docs, /https:\/\/<LIGHTNAS-IP>:3080/);
   assert.match(docs, /sudo bash scripts\/enable-local-https\.sh/);
   assert.match(docs, /self-signed/i);
-  assert.match(docs, /reverse proxy\/tunnel upstream/i);
+  assert.match(docs, /Existing customer tunnels and proxies/);
 });
