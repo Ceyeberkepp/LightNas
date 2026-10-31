@@ -2729,7 +2729,7 @@ NETWORK_CHECKPOINT = NetworkCheckpoint()
 NETWORK_CHECKPOINT_ACTIONS = frozenset({
     "connection-update", "connection-delete", "route-create", "route-update",
     "route-delete", "device-connect", "device-disconnect", "uplink-prefer",
-    "wifi-connect",
+    "wifi-connect", "bond-create", "bridge-create", "vlan-create",
 })
 # Non-NM kernel route mutations and firewall changes are *not* covered by a
 # NetworkManager checkpoint and require their own verified rollback transaction.
