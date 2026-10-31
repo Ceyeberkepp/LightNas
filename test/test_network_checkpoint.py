@@ -121,6 +121,51 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(profile.read_text(), "[connection]\\nid=safe\\n")
         self.assertFalse(self.cp.journal.exists())
 
+    def test_explicit_cancel_restores_actual_persistent_profile_bytes(self):
+        # Simulate an nmcli profile edit: the mocked D-Bus rollback does not
+        # rewrite keyfiles, so cancellation must restore the saved snapshot.
+        network_dir = Path(self.temp.name) / "config" / "system-connections"
+        network_dir.mkdir(parents=True)
+        profile = network_dir / "uplink.nmconnection"
+        profile.write_text("[connection]\\nid=working-uplink\\n")
+        self.cp.profile_root = network_dir
+        self.cp._backup_profiles = checkpoint.NetworkCheckpoint._backup_profiles.__get__(self.cp)
+        self.cp._restore_profiles = checkpoint.NetworkCheckpoint._restore_profiles.__get__(self.cp)
+        self.cp._remove_backup = checkpoint.NetworkCheckpoint._remove_backup.__get__(self.cp)
+        pending = self.cp.begin("connection-update", lambda: profile.write_text("[connection]\\nid=bad-uplink\\n"))
+        self.assertEqual(profile.read_text(), "[connection]\\nid=bad-uplink\\n")
+        result = self.cp.resolve({"transactionId": pending["transactionId"],
+                                  "confirmationToken": pending["confirmationToken"]}, commit=False)
+        self.assertTrue(result["rolledBack"])
+        self.assertEqual(profile.read_text(), "[connection]\\nid=working-uplink\\n")
+        self.assertFalse(self.cp.journal.exists())
+        self.assertFalse((self.cp.journal.parent / "network-backups" / pending["transactionId"]).exists())
+
+    def test_cancel_restore_failure_preserves_journal_for_recovery(self):
+        pending = self.cp.begin("connection-update", lambda: {"changed": True})
+        def failed_restore(record):
+            raise OSError("injected profile restore failure")
+        self.cp._restore_profiles = failed_restore
+        with self.assertRaisesRegex(OSError, "injected profile restore failure"):
+            self.cp.resolve({"transactionId": pending["transactionId"],
+                             "confirmationToken": pending["confirmationToken"]}, commit=False)
+        self.assertTrue(self.cp.journal.exists(), "Must retain recovery state when profile restore fails")
+        self.cp._restore_profiles = lambda record: self.restores.append(record["id"])
+        recovered = self.cp.recover_pending()
+        self.assertTrue(recovered["recovered"])
+        self.assertEqual(self.restores, [pending["transactionId"]])
+        self.assertFalse(self.cp.journal.exists())
+
+    def test_expired_cancel_recovers_when_nm_checkpoint_has_disappeared(self):
+        pending = self.cp.begin("connection-update", lambda: {"changed": True})
+        self.current += 121
+        self.fail_rollback = True
+        result = self.cp.resolve({"transactionId": pending["transactionId"],
+                                  "confirmationToken": pending["confirmationToken"]}, commit=False)
+        self.assertTrue(result["rolledBack"])
+        self.assertEqual(self.restores, [pending["transactionId"]])
+        self.assertFalse(self.cp.journal.exists())
+
     def test_profile_symlinks_fail_closed_before_checkpoint_create(self):
         network_dir = Path(self.temp.name) / "config" / "system-connections"
         network_dir.mkdir(parents=True)
