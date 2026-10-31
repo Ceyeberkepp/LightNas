@@ -7,6 +7,24 @@ const dialogApi = async (path, options = {}) => {
   if(response.status===428)return approveStoragePreview((await response.json()).preview);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || 'Request failed.');
+  if (path === '/api/network' && body.pendingConfirmation) {
+    const confirmed = window.confirm(
+      'NetworkManager applied the change under a rollback checkpoint. ' +
+      'Confirm ONLY if you can still access this LightNAS management session. ' +
+      'If you cancel or lose connectivity, the previous network settings will be restored automatically. ' +
+      'Remaining confirmation window: ' + body.secondsToConfirm + ' seconds.'
+    );
+    const resolved = await dialogApi('/api/network', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: confirmed ? 'network-confirm' : 'network-rollback',
+        transactionId: body.transactionId,
+        confirmationToken: body.confirmationToken
+      })
+    });
+    if (!confirmed) throw new Error('The network change was rolled back.');
+    return resolved;
+  }
   return body;
 };
 
