@@ -62,7 +62,12 @@ class NetworkCheckpoint:
         A durable journal is useless after a power loss if its recovery files
         were still only in the page cache. Reject non-regular files and symlinks.
         """
-        for directory, dirs, files in os.walk(root, topdown=False, followlinks=False):
+        if Path(root).is_symlink() or not Path(root).is_dir():
+            raise RuntimeError("NetworkManager recovery backup tree is unavailable")
+        def fail_walk(error):
+            raise error
+        for directory, dirs, files in os.walk(root, topdown=False, followlinks=False,
+                                              onerror=fail_walk):
             for name in files:
                 path = Path(directory) / name
                 fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
