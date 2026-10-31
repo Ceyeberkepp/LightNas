@@ -21,10 +21,15 @@ import shutil
 import socket
 import socketserver
 import subprocess
+import sys
 import termios
 import threading
 import time
 from pathlib import Path
+
+# Fixed root-owned scripts directory also works for file-based test imports.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from network_checkpoint import NetworkCheckpoint
 
 SOCKET_PATH = Path(os.environ.get("LIGHTNAS_HOST_SOCKET", "/run/lightnas/host-agent.sock"))
 LOCAL_STORAGE_ROOT = Path(os.environ.get("LIGHTNAS_LOCAL_STORAGE_ROOT", "/var/lib/lightnas/storage/local")).resolve()
@@ -2720,8 +2725,33 @@ def require_nmcli() -> None:
         raise RuntimeError("NetworkManager is not installed on this LightNAS host")
 
 
-def network_action(data: dict) -> dict:
+NETWORK_CHECKPOINT = NetworkCheckpoint()
+NETWORK_CHECKPOINT_ACTIONS = frozenset({
+    "connection-update", "connection-delete", "route-create", "route-update",
+    "route-delete", "device-connect", "device-disconnect", "uplink-prefer",
+    "wifi-connect",
+})
+# Non-NM kernel route mutations and firewall changes are *not* covered by a
+# NetworkManager checkpoint and require their own verified rollback transaction.
+UNPROTECTED_MUTATIONS = frozenset({
+    "route-runtime-update", "firewall-reset", "firewall-defaults",
+    "firewall-enable", "firewall-disable", "firewall-delete",
+    "firewall-remove-port",
+})
+
+
+def network_action(data: dict, *, _checkpointed: bool = False) -> dict:
     action = str(data.get("action") or "")
+    if action == "network-transaction-status":
+        return NETWORK_CHECKPOINT.status()
+    if action in {"network-confirm", "network-rollback"}:
+        return NETWORK_CHECKPOINT.resolve(data, commit=action == "network-confirm")
+    if action in UNPROTECTED_MUTATIONS:
+        raise ValueError(f"{action} requires a verified host-owned rollback transaction")
+    if action == "firewall-add" and str(data.get("decision") or "").lower() != "allow":
+        raise ValueError("Only non-blocking firewall allow rules are supported until firewall rollback is implemented")
+    if action in NETWORK_CHECKPOINT_ACTIONS and not _checkpointed:
+        return NETWORK_CHECKPOINT.begin(action, lambda: network_action(data, _checkpointed=True))
     if action == "firewall-add":
         if not available("ufw"):
             return {"action": action, "status": "unmanaged", "backend": "none", "message": "UFW is not installed; existing host firewall policy is unchanged."}
