@@ -36,11 +36,39 @@ export function classifyStorageMutation(path,method,input={}){
  if(['/api/zfs/datasets','/api/proxmox/disk-clean','/api/proxmox/storage','/api/shares'].includes(path)||/^\/api\/shares\/[0-9a-f-]{36}$/.test(path))return {unsupported:true};
  return null;
 }
+const MAX_AGENT_RESPONSE_BYTES = 4 * 1024 * 1024;
 export async function storageAgentJson(path,input,timeout=120000){
  const token=(await readFile(process.env.LIGHTNAS_STORAGE_AGENT_TOKEN_FILE||'/etc/lightnas/storage-agent.token','utf8')).trim();
+ const body=input===undefined?undefined:JSON.stringify(input);
  return new Promise((resolve,reject)=>{
-  const request=http.request({socketPath:process.env.LIGHTNAS_STORAGE_AGENT_SOCKET||'/run/lightnas-storage/storage.sock',path,method:input===undefined?'GET':'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'}},response=>{
-   let text='';response.on('data',chunk=>{text+=chunk;if(Buffer.byteLength(text)>4*1024*1024)request.destroy(new Error('Agent response too large'));});response.on('end',()=>{try{const value=JSON.parse(text);if(response.statusCode>=400)reject(Object.assign(new Error(value.error||'Storage agent rejected request'),{status:response.statusCode}));else resolve(value);}catch(e){reject(e);}});
-  });request.setTimeout(timeout,()=>request.destroy(new Error('Storage agent timed out')));request.on('error',e=>reject(Object.assign(e,{status:503})));request.end(input===undefined?undefined:JSON.stringify(input));
+  let settled=false;
+  let request;
+  let deadline;
+  const fail=error=>{if(settled)return;settled=true;clearTimeout(deadline);reject(error);};
+  request=http.request({socketPath:process.env.LIGHTNAS_STORAGE_AGENT_SOCKET||'/run/lightnas-storage/storage.sock',path,method:input===undefined?'GET':'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'}},response=>{
+   const chunks=[];let bytes=0;
+   const interrupted=()=>fail(Object.assign(new Error('Storage agent response interrupted'),{status:503}));
+   response.on('data',chunk=>{
+    bytes+=chunk.length;
+    if(bytes>MAX_AGENT_RESPONSE_BYTES){request.destroy(new Error('Agent response too large'));return;}
+    chunks.push(chunk);
+   });
+   response.on('error',interrupted);
+   response.on('aborted',interrupted);
+   response.on('close',()=>{if(!response.complete)interrupted();});
+   response.on('end',()=>{
+    if(settled)return;
+    try{
+     const value=JSON.parse(Buffer.concat(chunks,bytes).toString('utf8'));
+     if(response.statusCode>=400)fail(Object.assign(new Error(value.error||'Storage agent rejected request'),{status:response.statusCode}));
+     else{settled=true;clearTimeout(deadline);resolve(value);}
+    }catch(error){fail(error);}
+   });
+  });
+  // This is a wall-clock deadline, not an inactivity timeout: a compromised
+  // agent cannot keep a privileged request alive by trickling response bytes.
+  deadline=setTimeout(()=>request.destroy(new Error('Storage agent timed out')),timeout);
+  request.on('error',error=>fail(Object.assign(error,{status:503})));
+  request.end(body);
  });
 }
