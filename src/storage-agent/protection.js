@@ -38,7 +38,7 @@ export class ProtectionAdapter{
   if(!Number.isInteger(task.retention)||task.retention<1||task.retention>1000)throw Error('Snapshot retention must be 1–1000');
   let source,target;
   if(['snapshot','replication'].includes(kind)){datasetName(task.source);const inv=await this.datasets.inventory();source=inv.datasets.find(d=>d.name===task.source);if(!source)throw Error('Source dataset not found');source={name:source.name,guid:source.guid};if(kind==='replication'){datasetName(task.target);task.profile=name(input.profile);if(!registry.replicationProfiles.some(p=>p.name===task.profile))throw Error('Select an SSH replication profile');}}
-  else{source=await this.directory(task.source);if(kind==='rsync'){target=await this.directory(task.target);if(source.path===target.path||source.path.startsWith(target.path+'/')||target.path.startsWith(source.path+'/'))throw Error('Source and destination must be separate directory trees');const check=await this.run('/usr/bin/rsync',['--version']);if(!check.ok)throw Error('rsync is not installed');}
+  else{source=await this.directory(task.source);if(kind==='rsync'){target=await this.directory(task.target);if(source.path===target.path||source.path.startsWith(target.path+'/')||target.path.startsWith(source.path+'/')||(source.dev===target.dev&&source.ino===target.ino))throw Error('Source and destination must be separate directory trees, including bind-mounted aliases');const check=await this.run('/usr/bin/rsync',['--version']);if(!check.ok)throw Error('rsync is not installed');}
    else{if(!/^[A-Za-z][A-Za-z0-9_-]{1,47}:[A-Za-z0-9_./-]*$/.test(task.target)||task.target.split('/').some(p=>p==='..'||p==='.')||!registry.cloudRemotes.some(r=>r.name===task.target.split(':')[0]))throw Error('Choose a configured remote:path without traversal');const check=await this.run('/usr/bin/rclone',['version']);if(!check.ok)throw Error('rclone is not installed');}}
   return {task,source,target};
  }
@@ -76,6 +76,17 @@ export class ProtectionAdapter{
  async validate(impact){if(digest(await this.plan(impact.input))!==digest(impact))throw Error('Protection policy or data source changed; request another preview');}
  async apply(impact){await this.init();
   if(impact.type==='protection.run'){
+   if(impact.context?.task?.kind==='rsync'){
+    // A bind mount can alias one directory through unrelated absolute paths.
+    // Recheck both inodes immediately before a destructive mirror command,
+    // not only at preview time; never run rsync against a changed target.
+    const source=await this.directory(impact.context.task.source);
+    const target=await this.directory(impact.context.task.target);
+    const priorSource=impact.context.source,priorTarget=impact.context.target;
+    if(source.dev===target.dev&&source.ino===target.ino)throw Error('Backup source and target resolve to the same directory; refusing to run');
+    if(!priorSource||!priorTarget||source.dev!==priorSource.dev||source.ino!==priorSource.ino||target.dev!==priorTarget.dev||target.ino!==priorTarget.ino)
+     throw Error('Backup source or target changed since preview; refusing to run');
+   }
    for(const c of impact.commands){const result=await this.run(c.bin,c.args,1800000);if(!result.ok)throw Error('Protection command failed; inspect task destination and operation history');}
    if(impact.context.pipeline)await this.pipeline(impact.context.pipeline);
    for(const snap of impact.context.prune||[]){const result=await this.run('/usr/sbin/zfs',['destroy',snap],120000);if(!result.ok)throw Error('Task completed, but snapshot retention failed; inspect the snapshot list');}
