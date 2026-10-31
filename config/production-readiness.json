@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "candidateTag": null,
+  "note": "All release gates are blocked pending real test evidence and review. This file is not permission to operate production infrastructure.",
+  "gates": [
+    {
+      "id": "installer-full-cycle",
+      "description": "Fresh AMD64 installation, BIOS/UEFI boot, reboot, state-preserving reinstall",
+      "status": "blocked",
+      "reviewer": null,
+      "verifiedAt": null,
+      "evidence": []
+    },
+    {
+      "id": "storage-ownership-recovery",
+      "description": "Real disk identity/exclusion and failed storage operation recovery",
+      "status": "blocked",
+      "reviewer": null,
+      "verifiedAt": null,
+      "evidence": []
+    },
+    {
+      "id": "off-host-backup-restore",
+      "description": "Encrypted off-host backup and complete verified disaster recovery restore",
+      "status": "blocked",
+      "reviewer": null,
+      "verifiedAt": null,
+      "evidence": []
+    },
+    {
+      "id": "management-network-rollback",
+      "description": "Lost-network and changed-interface automatic management rollback",
+      "status": "blocked",
+      "reviewer": null,
+      "verifiedAt": null,
+      "evidence": []
+    },
+    {
+      "id": "signed-update-recovery",
+      "description": "Signed isolated update source, staged upgrade, failure rollback and recovery",
+      "status": "blocked",
+      "reviewer": null,
+      "verifiedAt": null,
+      "evidence": []
+    },
+    {
+      "id": "security-independent-review",
+      "description": "Least-privilege authorization, vulnerability scan and independent penetration review",
+      "status": "blocked",
+      "reviewer": null,
+      "verifiedAt": null,
+      "evidence": []
+    },
+    {
+      "id": "multiuser-mobile-stress",
+      "description": "Concurrent users, sustained uploads and real mobile/browser acceptance",
+      "status": "blocked",
+      "reviewer": null,
+      "verifiedAt": null,
+      "evidence": []
+    },
+    {
+      "id": "release-licensing-support",
+      "description": "Production licensing, support ownership, incident response and release documentation",
+      "status": "blocked",
+      "reviewer": null,
+      "verifiedAt": null,
+      "evidence": []
+    }
+  ]
+}
