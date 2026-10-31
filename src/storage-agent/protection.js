@@ -4,6 +4,7 @@ import {spawn} from 'node:child_process';
 import {atomic} from './persistence.js';
 import {command,digest} from './storage.js';
 import {dataPath,datasetName,snapshotName} from './datasets.js';
+import {assertSeparateRsyncTrees} from './mount-identity.js';
 export const PROTECTION_TYPES=['protection.task.save','protection.task.delete','protection.run','cloud.remote.save','replication.profile.save'];
 const name=value=>{if(typeof value!=='string'||!/^[A-Za-z][A-Za-z0-9_-]{1,47}$/.test(value))throw Error('Use a 2–48 character task/profile name');return value;};
 const remoteFields={s3:['provider','access_key_id','secret_access_key','region','endpoint'],drive:['token','root_folder_id','service_account_credentials','client_id','client_secret'],googlephotos:['token','client_id','client_secret','read_only'],dropbox:['token'],azureblob:['account','key','sas_url'],b2:['account','key'],tardigrade:['access_grant']};
@@ -25,7 +26,8 @@ export async function replicate(commands,timeout=1800000){
  });
 }
 export class ProtectionAdapter{
- constructor({dir='/var/lib/lightnas-storage',datasets,run=command,pipeline=replicate}={}){this.dir=join(dir,'protection');this.dataDir=dirname(resolve(process.env.NAS_DATA_FILE||'/var/lib/lightnas/state.json'));this.datasets=datasets;this.run=run;this.pipeline=pipeline;}
+ constructor({dir='/var/lib/lightnas-storage',datasets,run=command,pipeline=replicate,mountInfo=()=>readFile('/proc/self/mountinfo','utf8')}={}){this.dir=join(dir,'protection');this.dataDir=dirname(resolve(process.env.NAS_DATA_FILE||'/var/lib/lightnas/state.json'));this.datasets=datasets;this.run=run;this.pipeline=pipeline;this.mountInfo=mountInfo;}
+ async rsyncTopology(source,target){return assertSeparateRsyncTrees(source,target,await this.mountInfo());}
  async init(){await mkdir(this.dir,{recursive:true,mode:0o700});}
  async registry(){return json(join(this.dir,'registry.json'),{tasks:[],cloudRemotes:[],replicationProfiles:[]});}
  async liveRemotes(){let text;try{text=await readFile(join(this.dir,'rclone.conf'),'utf8');}catch(error){if(error.code==='ENOENT')return json(join(this.dir,'remotes.json'),{});throw error;}const remotes={};let current;for(const raw of text.split('\n')){const line=raw.trim();if(!line||line.startsWith('#')||line.startsWith(';'))continue;const section=line.match(/^\[([^\]]+)\]$/);if(section){current=name(section[1]);remotes[current]={};continue;}const field=line.match(/^([a-z_]+)\s*=\s*(.*)$/);if(!current||!field)throw Error('Cloud configuration cannot be safely parsed');remotes[current][field[1]]=field[2];}for(const fields of Object.values(remotes)){const provider=fields.type==='google photos'?'googlephotos':fields.type;const allowed=remoteFields[provider];if(!allowed||Object.keys(fields).some(k=>k!=='type'&&!allowed.includes(k)))throw Error('Cloud configuration contains unsupported options');}return remotes;}
@@ -36,11 +38,11 @@ export class ProtectionAdapter{
  async normalizeTask(input,registry){
   if(input.enabled!==undefined&&typeof input.enabled!=='boolean')throw Error('Task enabled state must be a boolean');const id=name(input.id),kind=String(input.kind||'');if(!['snapshot','rsync','cloud','replication'].includes(kind))throw Error('Choose snapshot, rsync, cloud or ZFS replication');const schedule=input.schedule||{frequency:'on-demand'};nextRun(schedule);const task={id,kind,schedule,enabled:input.enabled!==false,source:String(input.source||''),target:String(input.target||''),retention:input.retention===undefined?7:Number(input.retention),mode:input.mode||'copy',direction:input.direction||'push'};if(!['copy','mirror'].includes(task.mode)||!['push','pull'].includes(task.direction))throw Error('Choose copy/mirror and push/pull');if(kind!=='cloud'&&task.direction!=='push')throw Error('Download direction is available only for cloud tasks');if(['snapshot','replication'].includes(kind)&&(task.mode!=='copy'||task.direction!=='push'))throw Error('Snapshot/replication jobs do not use copy direction or mirror mode');
   if(!Number.isInteger(task.retention)||task.retention<1||task.retention>1000)throw Error('Snapshot retention must be 1–1000');
-  let source,target;
+  let source,target,mountTopology;
   if(['snapshot','replication'].includes(kind)){datasetName(task.source);const inv=await this.datasets.inventory();source=inv.datasets.find(d=>d.name===task.source);if(!source)throw Error('Source dataset not found');source={name:source.name,guid:source.guid};if(kind==='replication'){datasetName(task.target);task.profile=name(input.profile);if(!registry.replicationProfiles.some(p=>p.name===task.profile))throw Error('Select an SSH replication profile');}}
-  else{source=await this.directory(task.source);if(kind==='rsync'){target=await this.directory(task.target);if(source.path===target.path||source.path.startsWith(target.path+'/')||target.path.startsWith(source.path+'/')||(source.dev===target.dev&&source.ino===target.ino))throw Error('Source and destination must be separate directory trees, including bind-mounted aliases');const check=await this.run('/usr/bin/rsync',['--version']);if(!check.ok)throw Error('rsync is not installed');}
+  else{source=await this.directory(task.source);if(kind==='rsync'){target=await this.directory(task.target);if(source.path===target.path||source.path.startsWith(target.path+'/')||target.path.startsWith(source.path+'/')||(source.dev===target.dev&&source.ino===target.ino))throw Error('Source and destination must be separate directory trees, including bind-mounted aliases');mountTopology=await this.rsyncTopology(source.path,target.path);const check=await this.run('/usr/bin/rsync',['--version']);if(!check.ok)throw Error('rsync is not installed');}
    else{if(!/^[A-Za-z][A-Za-z0-9_-]{1,47}:[A-Za-z0-9_./-]*$/.test(task.target)||task.target.split('/').some(p=>p==='..'||p==='.')||!registry.cloudRemotes.some(r=>r.name===task.target.split(':')[0]))throw Error('Choose a configured remote:path without traversal');const check=await this.run('/usr/bin/rclone',['version']);if(!check.ok)throw Error('rclone is not installed');}}
-  return {task,source,target};
+  return {task,source,target,mountTopology};
  }
  async plan(raw){
   const input=this.prepare(raw),{type}=input;if(!PROTECTION_TYPES.includes(type))throw Error('Unsupported protection operation');const before=await this.registry(),after=structuredClone(before),commands=[];let context={},result,privateValues={},files=[];
@@ -51,11 +53,11 @@ export class ProtectionAdapter{
    const profile=name(input.name),host=String(input.host||''),user=String(input.user||'');if(!/^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/.test(host)||! /^[A-Za-z_][A-Za-z0-9_-]{0,31}$/.test(user))throw Error('Enter a hostname/IP and Unix SSH user');const port=Number(input.port||22);if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid SSH port');const key=String(input.private?.privateKey||''),hostKey=String(input.private?.hostKey||'').trim();if(!key.includes('PRIVATE KEY')||key.length>20000||! /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256) [A-Za-z0-9+/=]{40,2048}$/.test(hostKey))throw Error('Provide an unencrypted SSH private key and pinned host public key (algorithm base64)');
    privateValues={privateKey:key,hostKey};result={name:profile,host,user,port,keyFingerprint:digest(key),hostKeyFingerprint:digest(hostKey)};after.replicationProfiles=after.replicationProfiles.filter(p=>p.name!==profile).concat(result);files=[join(this.dir,profile+'.key'),join(this.dir,profile+'.known_hosts')];
   }else if(type==='protection.task.save'){
-   const normalized=await this.normalizeTask(input,before);context={source:normalized.source,target:normalized.target};result=normalized.task;after.tasks=after.tasks.filter(t=>t.id!==result.id).concat(result);
+   const normalized=await this.normalizeTask(input,before);context={source:normalized.source,target:normalized.target,mountTopology:normalized.mountTopology};result=normalized.task;after.tasks=after.tasks.filter(t=>t.id!==result.id).concat(result);
   }else if(type==='protection.task.delete'){
    const id=name(input.id);if(!before.tasks.some(t=>t.id===id))throw Error('Task not found');after.tasks=after.tasks.filter(t=>t.id!==id);result={id,removed:true};
   }else{
-   const task=before.tasks.find(t=>t.id===name(input.id));if(!task)throw Error('Task not found');const normalized=await this.normalizeTask(task,before);context={source:normalized.source,target:normalized.target,task};result={id:task.id,kind:task.kind};
+   const task=before.tasks.find(t=>t.id===name(input.id));if(!task)throw Error('Task not found');const normalized=await this.normalizeTask(task,before);context={source:normalized.source,target:normalized.target,mountTopology:normalized.mountTopology,task};result={id:task.id,kind:task.kind};
    if(['snapshot','replication'].includes(task.kind)){
     if(!Number.isSafeInteger(input.runStamp)||input.runStamp<1)throw Error('Invalid task run stamp');const snap=snapshotName(task.source+'@lightnas-'+task.id+'-'+input.runStamp);const inv=await this.datasets.inventory();if(inv.snapshots.some(s=>s.name===snap))throw Error('Task snapshot already exists');context.snapshot=snap;
     commands.push({bin:'/usr/sbin/zfs',args:['snapshot',snap]});
@@ -84,6 +86,9 @@ export class ProtectionAdapter{
     const target=await this.directory(impact.context.task.target);
     const priorSource=impact.context.source,priorTarget=impact.context.target;
     if(source.dev===target.dev&&source.ino===target.ino)throw Error('Backup source and target resolve to the same directory; refusing to run');
+    const topology=await this.rsyncTopology(source.path,target.path);
+    if(!impact.context.mountTopology||digest(topology)!==digest(impact.context.mountTopology))
+     throw Error('Backup mount topology changed since preview; refusing to run');
     if(!priorSource||!priorTarget||source.dev!==priorSource.dev||source.ino!==priorSource.ino||target.dev!==priorTarget.dev||target.ino!==priorTarget.ino)
      throw Error('Backup source or target changed since preview; refusing to run');
    }
