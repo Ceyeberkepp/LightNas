@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import secrets
 import subprocess
 import threading
@@ -40,6 +41,72 @@ class NetworkCheckpoint:
             cmd.extend([signature, *[str(arg) for arg in args]])
         result = subprocess.run(cmd, text=True, capture_output=True, timeout=15, check=True)
         return result.stdout.strip()
+
+    def _backup_profiles(self, transaction_id):
+        # Protect persistent NetworkManager profiles if the manager or machine
+        # restarts before its D-Bus checkpoint timeout can take effect.
+        source = Path("/etc/NetworkManager/system-connections")
+        if source.is_symlink() or not source.is_dir():
+            raise RuntimeError("A local NetworkManager keyfile directory is required for safe rollback")
+        if any(path.is_symlink() for path in source.rglob("*")):
+            raise RuntimeError("NetworkManager configuration symlinks cannot be checkpointed safely")
+        backup = self.journal.parent / "network-backups" / transaction_id
+        backup.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        backup.mkdir(mode=0o700)
+        try:
+            shutil.copytree(source, backup / "profiles", copy_function=shutil.copy2)
+        except Exception:
+            shutil.rmtree(backup, ignore_errors=True)
+            raise
+        return str(backup)
+
+    def _remove_backup(self, record):
+        backup = self.journal.parent / "network-backups" / record["id"]
+        if backup.is_dir() and not backup.is_symlink():
+            shutil.rmtree(backup)
+
+    def _restore_profiles(self, record):
+        if not re.fullmatch(r"[0-9a-f]{32}", str(record.get("id", ""))):
+            raise RuntimeError("Invalid network recovery transaction ID")
+        backup = self.journal.parent / "network-backups" / record["id"] / "profiles"
+        dest = Path("/etc/NetworkManager/system-connections")
+        if backup.is_symlink() or dest.is_symlink() or not backup.is_dir():
+            raise RuntimeError("Missing or unsafe NetworkManager recovery backup")
+        if any(path.is_symlink() for path in backup.rglob("*")):
+            raise RuntimeError("NetworkManager recovery backup contains symlinks")
+        staged = dest.parent / (".lightnas-recovered-" + record["id"])
+        previous = dest.parent / (".lightnas-pending-" + record["id"])
+        if staged.exists() or previous.exists():
+            raise RuntimeError("Conflicting NetworkManager recovery directory")
+        shutil.copytree(backup, staged, copy_function=shutil.copy2)
+        try:
+            if dest.exists():
+                dest.rename(previous)
+            staged.rename(dest)
+        except Exception:
+            if previous.exists() and not dest.exists():
+                previous.rename(dest)
+            raise
+        if previous.exists():
+            shutil.rmtree(previous)
+
+    def recover_pending(self):
+        # Called before NetworkManager starts on reboot, and on host-agent
+        # restart. Never commit an unconfirmed change.
+        with self.lock:
+            record = self._read()
+            if not record:
+                return {"recovered": False}
+            try:
+                self._rollback(record["checkpoint"])
+            except Exception:
+                # Manager restart can destroy its in-memory checkpoint. Fall
+                # back to the saved on-disk profiles before the service starts.
+                pass
+            self._restore_profiles(record)
+            self._clear()
+            self._remove_backup(record)
+            return {"recovered": True}
 
     def _create(self):
         # The empty device array snapshots all NetworkManager-managed devices.
@@ -98,18 +165,25 @@ class NetworkCheckpoint:
                 raise RuntimeError("Another network change is awaiting confirmation or recovery")
             transaction_id = secrets.token_hex(16)
             secret = secrets.token_hex(32)
-            checkpoint = self._create()
+            backup = self._backup_profiles(transaction_id)
+            try:
+                checkpoint = self._create()
+            except Exception:
+                shutil.rmtree(backup, ignore_errors=True)
+                raise
             record = {
                 "id": transaction_id,
                 "hash": hashlib.sha256(secret.encode()).hexdigest(),
                 "checkpoint": checkpoint,
                 "deadline": self.now() + self.timeout,
-                "action": action
+                "action": action,
+                "backup": backup
             }
             try:
                 self._write(record)
             except Exception:
                 self._rollback(checkpoint)
+                shutil.rmtree(backup, ignore_errors=True)
                 raise
             try:
                 result = execute()
@@ -122,7 +196,9 @@ class NetworkCheckpoint:
                         "NetworkManager's timeout must recover it; inspect the host console."
                     ) from rollback
                 else:
+                    self._restore_profiles(record)
                     self._clear()
+                    self._remove_backup(record)
                     raise original
             return {
                 "action": action,
@@ -155,6 +231,7 @@ class NetworkCheckpoint:
             else:
                 self._rollback(record["checkpoint"])
             self._clear()
+            self._remove_backup(record)
             return {"action": "network-confirm" if commit else "network-rollback",
                     "confirmed": bool(commit), "rolledBack": not commit}
 
@@ -163,4 +240,10 @@ class NetworkCheckpoint:
         return {"pending": bool(record),
                 "deadline": record["deadline"] if record else None,
                 "action": record["action"] if record else None}
+
+if __name__ == "__main__":
+    import sys
+    if sys.argv[1:] != ["--recover-pending"]:
+        raise SystemExit("Usage: network_checkpoint.py --recover-pending")
+    NetworkCheckpoint().recover_pending()
 
