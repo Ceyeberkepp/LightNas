@@ -87,3 +87,39 @@ test('load stops after repeated 5xx rather than pounding an unhealthy instance',
   assert.ok(report.failures>=10);
   assert.ok(report.requests<=20,'Runner should abort promptly');
 });
+
+test('rate limits cannot masquerade as successful unauthenticated access checks', {timeout:10000},async()=>{
+  const request=async(base,probe)=>{
+    if(probe.type==='protected')return {
+      status:429,headers:new Headers({'retry-after':'2'}),body:'',ms:1
+    };
+    return mockRequest(base,probe);
+  };
+  const report=await runStress({...parseOptions([]),seconds:0.6,rps:35,concurrency:3},
+    {request,logger:{log(){}}});
+  assert.ok(report.throttled>0,'rate limits should be recorded');
+  assert.equal(report.transportErrors,0);
+  assert.equal(report.passed,false,'a throttled protected endpoint has not proven 401 enforcement');
+  for(const probe of probes.filter(p=>p.type==='protected')){
+    assert.equal(report.verifiedPaths[probe.path],undefined);
+    assert.ok(report.problems.some(problem=>problem.includes('No verified HTTP 401 response for '+probe.path)));
+  }
+});
+
+test('intermittent throttling passes only after every route returns its expected status', {timeout:10000},async()=>{
+  const seen=new Map();
+  const request=async(base,probe)=>{
+    const count=(seen.get(probe.path)||0)+1;
+    seen.set(probe.path,count);
+    if(count===1&&probe.type==='protected')return {
+      status:429,headers:new Headers({'retry-after':'1'}),body:'',ms:1
+    };
+    return mockRequest(base,probe);
+  };
+  const report=await runStress({...parseOptions([]),seconds:0.8,rps:35,concurrency:3},
+    {request,logger:{log(){}}});
+  assert.ok(report.throttled>0);
+  assert.equal(report.passed,true);
+  assert.equal(report.failures,0);
+  for(const probe of probes)assert.ok(report.verifiedPaths[probe.path]>=1,probe.path);
+});
