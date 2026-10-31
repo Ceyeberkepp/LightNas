@@ -131,6 +131,44 @@ class CheckpointTests(unittest.TestCase):
             self.cp.begin("connection-update", lambda: None)
         self.assertEqual(self.calls, [], "No checkpoint or network action may run on unsafe profiles")
 
+    def test_new_bond_bridge_vlan_profiles_are_checkpointed_and_recovered_on_failure(self):
+        # All three operations write persistent NetworkManager profiles and
+        # may change the management uplink after a hotplug or reboot. A failure
+        # must never leave a partially created profile outside a checkpoint.
+        host_spec = importlib.util.spec_from_file_location(
+            "lightnas_host_agent_checkpoint_test", ROOT / "scripts" / "lightnas-host-agent.py"
+        )
+        host = importlib.util.module_from_spec(host_spec)
+        host_spec.loader.exec_module(host)
+        host.NETWORK_CHECKPOINT = self.cp
+        cases = (
+            ("bond-create", {"name": "bond0", "members": ["eth1"]}, 2),
+            ("bridge-create", {"name": "br0", "uplink": "eth1"}, 2),
+            ("vlan-create", {"name": "vlan42", "parent": "eth1", "vlanId": 42}, 1),
+        )
+        for action, options, fail_at in cases:
+            with self.subTest(action=action):
+                self.calls.clear()
+                self.restores.clear()
+                added = [0]
+
+                def fail_run(args, timeout=30, check=True):
+                    self.assertTrue(self.cp.journal.is_file(), "Network profile changed before durable checkpoint")
+                    self.assertEqual(self.calls[0][0], "CheckpointCreate")
+                    if args[:3] == ["nmcli", "connection", "add"]:
+                        added[0] += 1
+                        if added[0] == fail_at:
+                            raise RuntimeError("injected NetworkManager profile failure")
+                    return ""
+
+                host.run = fail_run
+                with self.assertRaisesRegex(RuntimeError, "injected NetworkManager profile failure"):
+                    host.network_action({"action": action, **options})
+                self.assertEqual(added[0], fail_at)
+                self.assertTrue(any(call[0] == "CheckpointRollback" for call in self.calls))
+                self.assertEqual(len(self.restores), 1, "Persistent profiles must be restored")
+                self.assertFalse(self.cp.journal.exists(), "Recovered failure must clear the pending journal")
+
     def test_no_management_writes_in_source_api_without_checkpoint(self):
         source=(ROOT/"scripts"/"lightnas-host-agent.py").read_text()
         self.assertIn("NETWORK_CHECKPOINT.begin(action, lambda: network_action(data, _checkpointed=True))",source)
