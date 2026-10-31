@@ -399,12 +399,33 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
 
+# A root-owned recovery unit runs before NetworkManager comes online.
+# It restores pre-change profiles after a reboot or daemon crash so unconfirmed
+# changes cannot be mistaken for successfully committed network settings.
+cat >/etc/systemd/system/lightnas-network-recovery.service <<EOF
+[Unit]
+Description=Recover unconfirmed LightNAS network configuration
+DefaultDependencies=no
+After=local-fs.target
+Before=NetworkManager.service lightnas-host-agent.service
+RequiresMountsFor=/var/lib/lightnas
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 ${INSTALL_DIRECTORY}/scripts/network_checkpoint.py --recover-pending
+
+[Install]
+RequiredBy=NetworkManager.service
+WantedBy=lightnas-host-agent.service
+EOF
+
 cat >/etc/systemd/system/lightnas-host-agent.service <<EOF
 [Unit]
 Description=LightNAS Privileged Local Host Agent
-# Local inventory must be available even without DHCP or external networking.
-After=local-fs.target
+# Recover any unconfirmed network cutover before running the host agent.
+After=local-fs.target lightnas-network-recovery.service
 Wants=local-fs.target
+Requires=lightnas-network-recovery.service
 
 [Service]
 Type=simple
@@ -574,6 +595,8 @@ else
 fi
 systemctl enable lightnas-storage-agent.service
 systemctl restart lightnas-storage-agent.service
+systemctl enable lightnas-network-recovery.service
+systemctl start lightnas-network-recovery.service
 systemctl enable lightnas-host-agent.service
 systemctl restart lightnas-host-agent.service
 systemctl enable "${SERVICE_NAME}"

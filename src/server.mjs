@@ -2546,17 +2546,14 @@ async function api(req, res, url) {
     if (networkActionName.startsWith('firewall-')) {
       if (!requireAnyPermission(res, permissions, ['firewall.manage', 'network.manage'])) return;
     } else if (!requirePermission(res, permissions, 'network.manage')) return;
-    let result;
-    try { result = await localNetworkAction(input); }
-    catch (error) {
-      // Keep the old read-only helper compatible for installations that have
-      // not yet upgraded the local host daemon.
-      if (!['firewall-add', 'firewall-delete', 'wifi-connect', 'wifi-disconnect'].includes(String(input.action || ''))) throw error;
-      result = await networkAction(input);
-    }
-    store.addActivity('network', `Network action ${result.action} completed.`);
+    // Never fall back to an uncheckpointed local implementation on an older
+    // host-agent: its network/firewall actions can disconnect management.
+    const result = await localNetworkAction(input);
+    store.addActivity('network', result.pendingConfirmation
+      ? `Network action ${result.action} awaiting connectivity confirmation.`
+      : `Network action ${result.action} completed.`);
     await store.save();
-    return send(res, 200, result);
+    return send(res, result.pendingConfirmation ? 202 : 200, result);
   }
   if (req.method === 'GET' && url.pathname === '/api/appliance/health') {
     if (!isAdmin && !permissions.includes('system.view') && !permissions.includes('monitoring.view')) return send(res, 403, { error: 'System health access is required.' });
