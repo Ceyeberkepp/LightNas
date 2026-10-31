@@ -68,7 +68,9 @@ else
   # or an install step fails. A top-level RETURN trap does not run on exit.
   (
     tmp="$(mktemp -d "$cert_dir/.issue.XXXXXX")"
-    trap 'rm -rf -- "$tmp"' EXIT
+    complete=0
+    # If either install step fails, leave neither half of the certificate pair.
+    trap 'if [[ "$complete" -ne 1 ]]; then rm -f -- "$key" "$cert"; fi; rm -rf -- "$tmp"' EXIT
     san="DNS:localhost,IP:127.0.0.1"
     for ip in "${current_ips[@]}"; do san+=",IP:$ip"; done
     openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 397 \
@@ -77,6 +79,7 @@ else
       -addext "subjectAltName=$san" -addext "extendedKeyUsage=serverAuth" >/dev/null 2>&1
     install -o root -g lightnas -m 0640 "$tmp/nas.key" "$key"
     install -o root -g lightnas -m 0644 "$tmp/nas.crt" "$cert"
+    complete=1
   )
 fi
 
