@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 
 [[ "${EUID}" -eq 0 ]] || { echo "Run as root: sudo bash scripts/enable-local-https.sh" >&2; exit 1; }
-for binary in systemctl openssl curl python3 hostname; do
+for binary in systemctl openssl curl python3 hostname runuser; do
   command -v "$binary" >/dev/null 2>&1 || { echo "Missing prerequisite: $binary" >&2; exit 1; }
 done
 id -g lightnas >/dev/null 2>&1 || { echo "The lightnas service group is missing." >&2; exit 1; }
