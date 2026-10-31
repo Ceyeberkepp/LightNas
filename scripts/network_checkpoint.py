@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import secrets
+import stat
 import subprocess
 import threading
 import time
@@ -45,6 +46,42 @@ class NetworkCheckpoint:
         result = subprocess.run(cmd, text=True, capture_output=True, timeout=15, check=True)
         return result.stdout.strip()
 
+    @staticmethod
+    def _fsync_directory(path):
+        """Make directory-entry changes durable before dropping recovery state."""
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    @classmethod
+    def _fsync_tree(cls, root):
+        """Flush every copied profile and directory before creating a checkpoint.
+
+        A durable journal is useless after a power loss if its recovery files
+        were still only in the page cache. Reject non-regular files and symlinks.
+        """
+        if Path(root).is_symlink() or not Path(root).is_dir():
+            raise RuntimeError("NetworkManager recovery backup tree is unavailable")
+        def fail_walk(error):
+            raise error
+        for directory, dirs, files in os.walk(root, topdown=False, followlinks=False,
+                                              onerror=fail_walk):
+            for name in files:
+                path = Path(directory) / name
+                fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+                try:
+                    if not stat.S_ISREG(os.fstat(fd).st_mode):
+                        raise RuntimeError("Unsafe NetworkManager recovery backup entry")
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+            for name in dirs:
+                if (Path(directory) / name).is_symlink():
+                    raise RuntimeError("Unsafe NetworkManager recovery backup symlink")
+            cls._fsync_directory(directory)
+
     def _backup_profiles(self, transaction_id):
         # Protect persistent NetworkManager profiles if the manager or machine
         # restarts before its D-Bus checkpoint timeout can take effect.
@@ -58,6 +95,9 @@ class NetworkCheckpoint:
         backup.mkdir(mode=0o700)
         try:
             shutil.copytree(source, backup / "profiles", copy_function=shutil.copy2)
+            self._fsync_tree(backup / "profiles")
+            self._fsync_directory(backup)
+            self._fsync_directory(backup.parent)
         except Exception:
             shutil.rmtree(backup, ignore_errors=True)
             raise
@@ -69,6 +109,7 @@ class NetworkCheckpoint:
         backup = self.journal.parent / "network-backups" / record["id"]
         if backup.is_dir() and not backup.is_symlink():
             shutil.rmtree(backup)
+            self._fsync_directory(backup.parent)
 
     @staticmethod
     def _same_profile_tree(expected, actual):
@@ -114,14 +155,19 @@ class NetworkCheckpoint:
                 if staged.exists():
                     raise RuntimeError("Unexpected NetworkManager recovery staging conflict")
                 shutil.rmtree(previous)
+                self._fsync_directory(previous.parent)
                 return
             if staged.exists():
                 if not staged.is_dir():
                     raise RuntimeError("Unsafe NetworkManager recovery staging directory")
                 shutil.rmtree(staged)
             shutil.copytree(backup, staged, copy_function=shutil.copy2)
+            self._fsync_tree(staged)
+            self._fsync_directory(staged.parent)
             staged.rename(dest)
+            self._fsync_directory(dest.parent)
             shutil.rmtree(previous)
+            self._fsync_directory(previous.parent)
             return
         if staged.exists():
             # The live tree has not yet been renamed. Discard an incomplete
@@ -130,16 +176,20 @@ class NetworkCheckpoint:
                 raise RuntimeError("Unsafe NetworkManager recovery staging directory")
             shutil.rmtree(staged)
         shutil.copytree(backup, staged, copy_function=shutil.copy2)
+        self._fsync_tree(staged)
+        self._fsync_directory(staged.parent)
         try:
             if dest.exists():
                 dest.rename(previous)
             staged.rename(dest)
+            self._fsync_directory(dest.parent)
         except Exception:
             if previous.exists() and not dest.exists():
                 previous.rename(dest)
             raise
         if previous.exists():
             shutil.rmtree(previous)
+            self._fsync_directory(previous.parent)
 
     def recover_pending(self):
         # Called before NetworkManager starts on reboot, and on host-agent
@@ -209,6 +259,10 @@ class NetworkCheckpoint:
 
     def _clear(self):
         self.journal.unlink(missing_ok=True)
+        # Persist the journal deletion *before* removing the only recovery
+        # snapshot. Otherwise a power loss may resurrect a journal whose
+        # backup directory was already deleted.
+        self._fsync_directory(self.journal.parent)
 
     def begin(self, action, execute):
         with self.lock:
