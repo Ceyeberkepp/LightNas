@@ -103,7 +103,7 @@ export async function runStress(options,{request=standardRequest,logger=console}
     url:options.url, mode:'read-only', secondsRequested:options.seconds,
     rpsRequested:options.rps, concurrency:options.concurrency,
     startedAt:new Date().toISOString(), requests:0, ok:0,
-    throttled:0, failures:0, transportErrors:0, statuses:{}, paths:{},
+    throttled:0, failures:0, transportErrors:0, statuses:{}, paths:{}, verifiedPaths:{},
     samples:[], problems:[], aborted:false
   };
   const maxProblems=20;
@@ -121,7 +121,10 @@ export async function runStress(options,{request=standardRequest,logger=console}
       report.statuses[result.status]=(report.statuses[result.status]||0)+1;
       if(assessment.ok){
         if(assessment.kind==='throttled')report.throttled++;
-        else report.ok++;
+        else {
+          report.ok++;
+          report.verifiedPaths[probe.path]=(report.verifiedPaths[probe.path]||0)+1;
+        }
       }else{report.failures++;addProblem(assessment.reason);}
     }catch(error){
       report.transportErrors++;
@@ -165,6 +168,16 @@ export async function runStress(options,{request=standardRequest,logger=console}
   }finally{
     process.removeListener('SIGINT',stop);
     process.removeListener('SIGTERM',stop);
+  }
+  // A 429 is evidence of throttling, not evidence that a protected route
+  // rejects unauthenticated access. Never report a passing security probe
+  // unless each route returned its expected, unthrottled status at least once.
+  for(const probe of probes){
+    if(!report.verifiedPaths[probe.path]){
+      report.failures++;
+      addProblem('No verified HTTP '+probe.expected+' response for '+probe.path+
+        '; throttling or insufficient coverage cannot establish the expected behavior');
+    }
   }
   report.aborted=stopped;
   report.durationSeconds=Number(((performance.now()-started)/1000).toFixed(2));
