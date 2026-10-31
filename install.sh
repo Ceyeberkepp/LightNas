@@ -486,6 +486,13 @@ EOF
 # On new installs serve the NAS UI over HTTPS on its IP and port 3080.
 # Existing tunnel deployments require explicit opt-in to avoid interrupting access.
 LIGHTNAS_LOCAL_TLS="${LIGHTNAS_LOCAL_TLS:-$([[ "${EXISTING_INSTALL}" == "0" ]] && echo 1 || echo 0)}"
+# Keep an explicitly migrated appliance on HTTPS across subsequent updates.
+# An existing customer HTTP tunnel is never migrated by the installer alone.
+if [[ -f /etc/systemd/system/lightnas.service.d/20-local-https.conf ]] && \
+   grep -Fxq "# Managed by LightNAS local HTTPS migration; do not edit manually." \
+   /etc/systemd/system/lightnas.service.d/20-local-https.conf; then
+  LIGHTNAS_LOCAL_TLS=1
+fi
 TLS_SERVICE_ENV=""
 if [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]]; then
   install -d -m 0750 -o root -g lightnas /etc/lightnas/tls
