@@ -44,3 +44,13 @@ test('successful atomic replacement durably replaces the complete receipt withou
  assert.equal(await readFile(ctx.file,'utf8'),'new-signed-receipt');
  assert.deepEqual(await readdir(ctx.dir),['license-receipt.json']);
 }));
+
+test('directory fsync failure after rename reports uncertain durability instead of claiming rollback',()=>fixture(async ctx=>{
+ await assert.rejects(atomic(ctx.file,'new-signed-receipt',{openFile:async(...args)=>{
+  const fd=await open(...args);
+  if(args[1]==='r')return {sync:async()=>{throw Error('injected directory fsync failure');},close:()=>fd.close()};
+  return fd;
+ }}),/injected directory fsync failure/);
+ assert.equal(await readFile(ctx.file,'utf8'),'new-signed-receipt');
+ assert.deepEqual(await readdir(ctx.dir),['license-receipt.json']);
+}));
