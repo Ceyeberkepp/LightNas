@@ -2270,7 +2270,7 @@ function aiView() {
         <div class="ai-chat-heading"><div><span class="ai-chat-presence" aria-hidden="true"></span><strong>LightNAS Assistant</strong><small>Appliance diagnostics</small></div></div>
         <div class="ai-agent-messages">${messages.map(message => `<article class="ai-message ${message.role === 'user' ? 'user' : 'agent'}"><span>${message.role === 'user' ? 'YOU' : 'LIGHTNAS'}</span><p>${escapeHtml(message.text)}</p>${message.action ? `<button class="secondary" type="button" data-ai-action="${escapeHtml(message.action)}">${escapeHtml(message.actionLabel || 'Run action')}</button>` : ''}</article>`).join('')}</div>
         <form class="ai-agent-form" data-ai-form>
-          <input name="message" autocomplete="off" maxlength="500" placeholder="Ask about your NAS, storage, network, or applications…" required>
+          <textarea name="message" rows="3" autocomplete="off" maxlength="500" aria-label="Message LightNAS Assistant" placeholder="Ask about your NAS, storage, network, or applications…" required></textarea>
           <button class="primary" type="submit">Send <span aria-hidden="true">↗</span></button>
         </form>
       </section>
@@ -3044,7 +3044,25 @@ function bindViewActions() {
     state.aiMessages.push({ role:'agent', ...lightnasAgentReply(question) });
     render('ai');
   }));
-  $('[data-ai-form]', $('#content'))?.addEventListener('submit', event => {
+  const aiForm = $('[data-ai-form]', $('#content'));
+  const aiComposer = aiForm?.elements.message;
+  if (aiComposer) {
+    // Expand short prompts naturally while keeping long prompts scrollable;
+    // keyboard submission leaves plain Enter available for multiline questions.
+    const resizeAiComposer = () => {
+      aiComposer.style.height = 'auto';
+      aiComposer.style.height = `${Math.min(aiComposer.scrollHeight, 180)}px`;
+    };
+    aiComposer.addEventListener('input', resizeAiComposer);
+    aiComposer.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) {
+        event.preventDefault();
+        aiForm.requestSubmit();
+      }
+    });
+    resizeAiComposer();
+  }
+  aiForm?.addEventListener('submit', event => {
     event.preventDefault();
     const input = event.currentTarget.elements.message;
     const question = String(input.value || '').trim();
