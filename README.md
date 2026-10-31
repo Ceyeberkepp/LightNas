@@ -143,8 +143,13 @@ curl -fsSL https://raw.githubusercontent.com/Ceyeberkepp/LightNas/main/install.s
 
 The installer adds Node.js 22 when required, checks out LightNAS under
 `/opt/lightnas`, keeps appliance state under `/var/lib/lightnas`, and installs
-an automatically starting `lightnas.service`. Open port `3080` at the IP shown
-when installation finishes.
+an automatically starting `lightnas.service`. New installations use
+`https://<LIGHTNAS-IP>:3080` with a unique local certificate. Browsers will
+warn until this certificate is explicitly trusted. For existing HTTP installs,
+use `sudo bash /opt/lightnas/scripts/enable-local-https.sh` after updating the
+checkout; the utility migrates the same port and attempts rollback on failure.
+See [the installation guide](docs/INSTALLATION.md) for certificate trust and
+reverse-proxy/tunnel migration precautions.
 
 The installer prepares native LXC/liblxc plus QEMU/libvirt. It uses KVM acceleration when available and automatically falls back to QEMU TCG software virtualization when hardware virtualization is unavailable. Docker is never the System Containers backend; it is used only by the App Store and can be disabled with `LIGHTNAS_ENABLE_DOCKER_APPS=0`.
 
