@@ -36,8 +36,11 @@ Do not format or initialize disks, assign unknown block devices to LightNAS, imp
 Until a host-owned crash-safe network transaction and timed rollback pass
 real-hardware acceptance, the privileged network agent **rejects**:
 - Immediate live route replacements (`route-runtime-update`).
-- Arbitrary device disconnections, uplink priority changes and connection
-  profile deletion.
+- Arbitrary device disconnections/reconnections, Wi-Fi uplink changes,
+  uplink priority changes, and connection profile deletion.
+- Firewall enable/disable, reset, default policy changes and removal of
+  existing allow rules. Immediate deny rules are blocked; allow rules may
+  still be added for explicitly published applications.
 - Immediate activation of persistent route/profile modifications.
 
 In all cases the caller receives an explicit operation error. Passing a
