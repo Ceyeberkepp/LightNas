@@ -11,7 +11,7 @@ test('legacy backup definitions cannot be mistaken for completed backup protecti
   assert.match(app,/do not run on a schedule, create recovery copies, or prove that any data is protected/);
   assert.match(app,/data-backup-run disabled title="Legacy backup plans do not execute data backups">Run unavailable/);
   assert.match(app,/Show: Data Without Saved Plan/);
-  assert.match(app,/<span>Plan enabled<\/span>.*<span>Proposed schedule<\/span><span>Execution status<\/span>/);
+  assert.match(app,/<span>Plan enabled<\/span><span>Node<\/span><span>Proposed schedule<\/span><span>Execution status<\/span>/);
   assert.match(app,/<span>Not scheduled<\/span>/);
   assert.match(app,/Draft backup plan saved\. No data was backed up\./);
   assert.doesNotMatch(app,/data-backup-run \${selected \? '' : 'disabled'}>Run now/);
