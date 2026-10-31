@@ -53,8 +53,9 @@ test('reject after-preview alias changes before running a destructive mirror',as
     '/backup/target':{dev:1,ino:43}
   };
   const {adapter,calls}=adapterWithDirectories(paths);
+  const mountTopology=await adapter.rsyncTopology(task.source,task.target);
   const impact={
-    type:'protection.run',context:{
+    type:'protection.run',context:{mountTopology,
       task,source:{path:task.source,dev:1,ino:42},
       target:{path:task.target,dev:1,ino:43}
     },
