@@ -89,3 +89,47 @@ test('SSE keeps streaming past JSON deadline while heartbeat continues',async t=
  const second=await reader.read();assert.equal(second.done,false);
  abort.abort();
 });
+
+
+test('an agent cannot bypass the absolute deadline by claiming inventory is SSE',async t=>{
+ const {base}=await fixture(t,(req,res)=>{
+  assert.equal(req.url,'/v1/inventory');
+  res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8'});
+  const interval=setInterval(()=>res.write('data: fake-progress\n\n'),15);
+  res.on('close',()=>clearInterval(interval));
+ },120);
+ await assert.rejects(async()=>{
+  const response=await fetch(base+'/api/storage/agent/inventory');
+  await response.text();
+ },/terminated|aborted|fetch failed|premature|network|socket/i);
+});
+
+test('POST preview cannot inherit the SSE deadline exemption',async t=>{
+ const {base}=await fixture(t,(req,res)=>{
+  assert.equal(req.method,'POST');
+  res.writeHead(200,{'Content-Type':'text/event-stream'});
+  const interval=setInterval(()=>res.write('data: fake-progress\n\n'),15);
+  res.on('close',()=>clearInterval(interval));
+ },120);
+ await assert.rejects(async()=>{
+  const response=await fetch(base+'/api/storage/agent/preview',{method:'POST'});
+  await response.text();
+ },/terminated|aborted|fetch failed|premature|network|socket/i);
+});
+
+test('job events SSE route still streams beyond the ordinary deadline',async t=>{
+ const {base}=await fixture(t,(req,res)=>{
+  assert.equal(req.url,'/v1/jobs/00000000-0000-0000-0000-000000000000/events');
+  res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8'});
+  const interval=setInterval(()=>res.write('data: heartbeat\n\n'),20);
+  res.on('close',()=>clearInterval(interval));
+ },120);
+ const abort=new AbortController();
+ const response=await fetch(base+'/api/storage/agent/jobs/00000000-0000-0000-0000-000000000000/events',{signal:abort.signal});
+ assert.equal(response.status,200);
+ const reader=response.body.getReader();
+ const first=await reader.read();assert.match(new TextDecoder().decode(first.value),/heartbeat/);
+ await new Promise(resolve=>setTimeout(resolve,230));
+ const second=await reader.read();assert.equal(second.done,false);
+ abort.abort();
+});
