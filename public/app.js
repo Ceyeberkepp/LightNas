@@ -2785,21 +2785,22 @@ function backupsView() {
 
   const jobs = Array.isArray(state.backupJobs) ? state.backupJobs : [];
   const selected = jobs.find(job => job.id === state.selectedBackupJobId);
-  return `${pageHead('Backup', 'Create and manage NAS backup jobs.', '')}
+  return `${pageHead('Backup plans', 'Draft definitions only. A saved plan does not protect or back up data.', '')}
     <section class="panel backup-console">
+      <div class="notice" role="status"><strong>Backup execution is not yet available for these legacy plans.</strong> These records do not run on a schedule, create recovery copies, or prove that any data is protected. Use verified off-device backup and restore procedures before relying on this appliance.</div>
       <div class="backup-toolbar" role="toolbar" aria-label="Backup jobs">
         <button type="button" class="secondary" data-backup-add>Add</button>
         <button type="button" class="secondary" data-backup-remove ${selected ? '' : 'disabled'}>Remove</button>
         <button type="button" class="secondary" data-backup-edit ${selected ? '' : 'disabled'}>Edit</button>
         <button type="button" class="secondary" data-backup-detail ${selected ? '' : 'disabled'}>Job Detail</button>
-        <button type="button" class="secondary" data-backup-run ${selected ? '' : 'disabled'}>Run now</button>
+        <button type="button" class="secondary" data-backup-run disabled title="Legacy backup plans do not execute data backups">Run unavailable</button>
         <span class="backup-toolbar-spacer"></span>
-        <label class="backup-filter"><input type="checkbox" data-backup-unprotected> Show: Data Without Backup Job</label>
+        <label class="backup-filter"><input type="checkbox" data-backup-unprotected> Show: Data Without Saved Plan</label>
         <button type="button" class="secondary" data-backup-simulator>Schedule Simulator</button>
       </div>
       <div class="backup-table-wrap">
         <div class="backup-table" role="table">
-          <div class="backup-row backup-head" role="row"><span>Enabled</span><span>Node</span><span>Schedule</span><span>Next Run</span><span>Storage</span><span>Comment</span><span>Retention</span><span>Selection</span></div>
+          <div class="backup-row backup-head" role="row"><span>Plan enabled</span><span>Node</span><span>Proposed schedule</span><span>Execution status</span><span>Storage</span><span>Comment</span><span>Retention</span><span>Selection</span></div>
           ${state.backupJobs === null
             ? '<div class="backup-empty">Loading backup jobs…</div>'
             : jobs.length
@@ -2807,13 +2808,13 @@ function backupsView() {
                   <span class="backup-enabled">${job.enabled ? '✓' : '—'}</span>
                   <span>${escapeHtml(job.node || state.overview?.appliance?.deviceName || 'LightNAS')}</span>
                   <span>${escapeHtml(job.schedule || 'On demand')}</span>
-                  <span>${escapeHtml(job.nextRun || 'Pending scheduler')}</span>
+                  <span>Not scheduled</span>
                   <span>${escapeHtml(job.storage || '—')}</span>
                   <span>${escapeHtml(job.comment || '')}</span>
                   <span>${escapeHtml(job.retention || 'Keep last 7')}</span>
                   <span class="backup-selection">${escapeHtml(job.selection || 'All NAS data')}</span>
                 </button>`).join('')
-              : '<div class="backup-empty">No backup jobs configured. Select Add to create the first NAS backup job.</div>'}
+              : '<div class="backup-empty">No legacy backup plans saved. Select Add to save a draft plan, not an executing backup job.</div>'}
         </div>
       </div>
       <div class="backup-status-line"><span>${eligible.length} backup-capable storage target${eligible.length === 1 ? '' : 's'} detected</span><span>${activity.length} recent backup/restore event${activity.length === 1 ? '' : 's'}</span></div>
@@ -3536,7 +3537,7 @@ function bindViewActions() {
       const job = await request('/api/backups/jobs', { method:'POST', body:JSON.stringify({ storage, schedule, selection, retention }) });
       state.selectedBackupJobId = job.id;
       await loadBackupJobs();
-      toast('Backup job added.');
+      toast('Draft backup plan saved. No data was backed up.');
     } catch (error) { toast(error.message); }
   });
   $('[data-backup-edit]', $('#content'))?.addEventListener('click', async () => {
@@ -3550,7 +3551,7 @@ function bindViewActions() {
     try {
       await request(`/api/backups/jobs/${encodeURIComponent(job.id)}`, { method:'PATCH', body:JSON.stringify({ schedule, storage, selection, retention, comment }) });
       await loadBackupJobs();
-      toast('Backup job updated.');
+      toast('Draft plan updated. No backup was executed.');
     } catch (error) { toast(error.message); }
   });
   $('[data-backup-remove]', $('#content'))?.addEventListener('click', async () => {
@@ -3560,7 +3561,7 @@ function bindViewActions() {
       await request(`/api/backups/jobs/${encodeURIComponent(job.id)}`, { method:'DELETE' });
       state.selectedBackupJobId = null;
       await loadBackupJobs();
-      toast('Backup job removed.');
+      toast('Draft plan removed.');
     } catch (error) { toast(error.message); }
   });
   $('[data-backup-detail]', $('#content'))?.addEventListener('click', () => {
