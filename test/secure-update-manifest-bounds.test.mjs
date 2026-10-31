@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readBoundedManifest} from '../src/secure-updates.mjs';
+import {generateKeyPairSync,sign} from 'node:crypto';
+import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {arch,platform} from 'node:process';
+import {checkSignedUpdates,readBoundedManifest} from '../src/secure-updates.mjs';
 
 function streamed(parts) {
   const queue=[...parts];
@@ -62,4 +67,60 @@ test('missing or invalid streaming response fails closed',async()=>{
   const {response,wasCancelled}=openUntilCancelled(['not a byte array']);
   await assert.rejects(readBoundedManifest(response),/Invalid manifest response chunk/);
   assert.equal(wasCancelled(),true);
+});
+
+test('signed update check rejects an oversized feed without buffering it',async()=>{
+  const originalFetch=globalThis.fetch;
+  const originalUrl=process.env.LIGHTNAS_UPDATE_MANIFEST_URL;
+  const originalKey=process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE;
+  const {response,wasCancelled}=openUntilCancelled([Buffer.alloc(65537,65)]);
+  try {
+    process.env.LIGHTNAS_UPDATE_MANIFEST_URL='https://updates.example.invalid/manifest';
+    process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE='/nonexistent-lightnas-update-test-key';
+    globalThis.fetch=async()=>({ok:true,status:200,body:response.body});
+    const result=await checkSignedUpdates({currentVersion:'1.0.0'});
+    assert.equal(result.checkStatus,'error');
+    assert.equal(result.updateEnabled,false);
+    assert.match(result.message,/Manifest exceeds size limit/);
+    assert.equal(wasCancelled(),true);
+  } finally {
+    globalThis.fetch=originalFetch;
+    if(originalUrl===undefined)delete process.env.LIGHTNAS_UPDATE_MANIFEST_URL;
+    else process.env.LIGHTNAS_UPDATE_MANIFEST_URL=originalUrl;
+    if(originalKey===undefined)delete process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE;
+    else process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE=originalKey;
+  }
+});
+
+test('bounded signed feed still verifies valid Ed25519 metadata but cannot install',async()=>{
+  const originalFetch=globalThis.fetch;
+  const originalUrl=process.env.LIGHTNAS_UPDATE_MANIFEST_URL;
+  const originalKey=process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE;
+  const directory=await mkdtemp(join(tmpdir(),'lightnas-signed-update-test-'));
+  try {
+    const {publicKey,privateKey}=generateKeyPairSync('ed25519');
+    const keyPath=join(directory,'update-public.pem');
+    await writeFile(keyPath,publicKey.export({type:'spki',format:'pem'}));
+    const payload={
+      product:'lightnas-nas',tier:'community',channel:'stable',
+      arch,platform,version:'1.0.1',
+      expiresAt:new Date(Date.now()+60000).toISOString()
+    };
+    const signature=sign(null,Buffer.from(JSON.stringify(payload)),privateKey).toString('base64');
+    const {response}=streamed([Buffer.from(JSON.stringify({payload,signature}))]);
+    process.env.LIGHTNAS_UPDATE_MANIFEST_URL='https://updates.example.invalid/manifest';
+    process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE=keyPath;
+    globalThis.fetch=async()=>({ok:true,status:200,body:response.body});
+    const result=await checkSignedUpdates({currentVersion:'1.0.0'});
+    assert.equal(result.checkStatus,'verified',result.message);
+    assert.equal(result.updateAvailable,true);
+    assert.equal(result.updateEnabled,false,'unimplemented staging and rollback must remain disabled');
+  } finally {
+    globalThis.fetch=originalFetch;
+    if(originalUrl===undefined)delete process.env.LIGHTNAS_UPDATE_MANIFEST_URL;
+    else process.env.LIGHTNAS_UPDATE_MANIFEST_URL=originalUrl;
+    if(originalKey===undefined)delete process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE;
+    else process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE=originalKey;
+    await rm(directory,{recursive:true,force:true});
+  }
 });
