@@ -105,6 +105,32 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(self.restores,[pending["transactionId"]])
         self.assertFalse(self.cp.journal.exists())
 
+    def test_real_backup_and_boot_recovery_restore_previous_profile_bytes(self):
+        network_dir = Path(self.temp.name) / "config" / "system-connections"
+        network_dir.mkdir(parents=True)
+        profile = network_dir / "managed.nmconnection"
+        profile.write_text("[connection]\\nid=safe\\n")
+        self.cp.profile_root = network_dir
+        self.cp._backup_profiles = checkpoint.NetworkCheckpoint._backup_profiles.__get__(self.cp)
+        self.cp._restore_profiles = checkpoint.NetworkCheckpoint._restore_profiles.__get__(self.cp)
+        self.cp._remove_backup = checkpoint.NetworkCheckpoint._remove_backup.__get__(self.cp)
+        pending = self.cp.begin("connection-update", lambda: profile.write_text("[connection]\\nid=unsafe\\n"))
+        self.assertTrue(pending["pendingConfirmation"])
+        self.assertEqual(profile.read_text(), "[connection]\\nid=unsafe\\n")
+        self.cp.recover_pending()
+        self.assertEqual(profile.read_text(), "[connection]\\nid=safe\\n")
+        self.assertFalse(self.cp.journal.exists())
+
+    def test_profile_symlinks_fail_closed_before_checkpoint_create(self):
+        network_dir = Path(self.temp.name) / "config" / "system-connections"
+        network_dir.mkdir(parents=True)
+        (network_dir / "external").symlink_to("/etc/hosts")
+        self.cp.profile_root = network_dir
+        self.cp._backup_profiles = checkpoint.NetworkCheckpoint._backup_profiles.__get__(self.cp)
+        with self.assertRaisesRegex(RuntimeError,"symlinks"):
+            self.cp.begin("connection-update", lambda: None)
+        self.assertEqual(self.calls, [], "No checkpoint or network action may run on unsafe profiles")
+
     def test_no_management_writes_in_source_api_without_checkpoint(self):
         source=(ROOT/"scripts"/"lightnas-host-agent.py").read_text()
         self.assertIn("NETWORK_CHECKPOINT.begin(action, lambda: network_action(data, _checkpointed=True))",source)
