@@ -7,6 +7,7 @@ import {previewNetworkMigration} from './migration-network-preflight.mjs';
 import {evaluateMigrationAcceptance} from './migration-acceptance.mjs';
 import {inspectMigrationCertificate} from './migration-certificate-inspect.mjs';
 import {createApiRateLimiter} from './api-rate-limit.mjs';
+import {requestUsesHttps} from './trusted-request-transport.mjs';
 import { resolveStaticAsset } from './static-asset-boundary.mjs';
 import http from 'node:http';
 import {normalizeRedHatInventory,buildSourceExportManifest} from './migration-redhat-local.mjs';
@@ -797,8 +798,7 @@ function validProfileImage(data, extension) {
 }
 
 function requestIsSecure(req) {
-  const forwarded = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
-  return Boolean(req.socket?.encrypted) || forwarded === 'https';
+  return requestUsesHttps(req, process.env.LIGHTNAS_TRUSTED_PROXY_IPS);
 }
 
 function sessionCookie(req, token, maxAge = 43200) {
