@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("checkpoint_test", ROOT / "scripts" / "network_checkpoint.py")
@@ -317,6 +318,17 @@ class CheckpointTests(unittest.TestCase):
         self.assertFalse(self.cp.journal.exists())
         backup_root = self.cp.journal.parent / "network-backups"
         self.assertEqual(list(backup_root.iterdir()), [], "Discard incomplete backup")
+
+    def test_backup_walk_error_fails_closed_before_network_checkpoint(self):
+        self._use_real_profile_snapshot()
+        def failed_walk(root, **kwargs):
+            kwargs["onerror"](OSError("injected unreadable backup directory"))
+            yield from ()
+        with patch.object(checkpoint.os, "walk", side_effect=failed_walk):
+            with self.assertRaisesRegex(OSError, "injected unreadable backup directory"):
+                self.cp.begin("connection-update", lambda: self.fail("network must not change"))
+        self.assertEqual(self.calls, [])
+        self.assertFalse(self.cp.journal.exists())
 
     def test_restore_sync_failure_keeps_journal_and_retries_from_backup(self):
         profile = self._use_real_profile_snapshot()
