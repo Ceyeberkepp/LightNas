@@ -58,6 +58,45 @@ function signedReceiptPayload(receipt, instanceId, verificationKey) {
   return payload;
 }
 
+// A signed response is still untrusted input until its size, deadline and signature are checked.
+const MAX_LICENSE_RESPONSE_BYTES = 96 * 1024;
+async function readBoundedLicenseResponse(response, signal) {
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    throw new Error('The license server returned no readable response body.');
+  }
+  const reader = response.body.getReader();
+  let onAbort;
+  const aborted = new Promise((_, reject) => {
+    onAbort = () => reject(Object.assign(new Error('License response deadline exceeded.'), { name: 'AbortError' }));
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
+  const chunks = [];
+  let bytes = 0;
+  let complete = false;
+  try {
+    const declared = Number(response.headers?.get?.('content-length'));
+    if (Number.isFinite(declared) && declared > MAX_LICENSE_RESPONSE_BYTES) {
+      throw new Error('The license response exceeds the maximum allowed size.');
+    }
+    while (true) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done) { complete = true; break; }
+      bytes += value.byteLength;
+      if (bytes > MAX_LICENSE_RESPONSE_BYTES) {
+        throw new Error('The license response exceeds the maximum allowed size.');
+      }
+      chunks.push(Buffer.from(value));
+    }
+    try { return JSON.parse(Buffer.concat(chunks, bytes).toString('utf8')); }
+    catch { throw new Error('The license server returned invalid JSON.'); }
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+    if (!complete) void reader.cancel().catch(() => {});
+    try { reader.releaseLock(); } catch {}
+  }
+}
+
 export async function licenseStatus({ instanceId, version }) {
   const verificationKey = await configuredPublicKey();
   let payload = null;
@@ -101,19 +140,18 @@ export async function verifyLicense({ licenseKey, instanceId, version }) {
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
-  let response;
+  let body;
   try {
-    response = await fetch(licenseServer, {
+    const response = await fetch(licenseServer, {
       method: 'POST',
       redirect: 'error',
       signal: controller.signal,
       headers: { 'Content-Type': 'application/json', 'User-Agent': `LightNAS/${version}` },
       body: JSON.stringify({ licenseKey: key, instanceId, version })
     });
+    if (!response.ok) throw Object.assign(new Error(`License verification failed with HTTP ${response.status}.`), { status: 409 });
+    body = await readBoundedLicenseResponse(response, controller.signal);
   } finally { clearTimeout(timer); }
-  if (!response.ok) throw Object.assign(new Error(`License verification failed with HTTP ${response.status}.`), { status: 409 });
-
-  const body = await response.json();
   const receipt = { payload: body?.payload, signature: body?.signature };
   try { signedReceiptPayload(receipt, instanceId, verificationKey); }
   catch (error) { throw Object.assign(error, { status: 409 }); }
