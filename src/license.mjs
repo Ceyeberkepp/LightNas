@@ -1,4 +1,5 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
+import { atomic } from './storage-agent/persistence.js';
 import { dirname, resolve } from 'node:path';
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
 
@@ -157,6 +158,7 @@ export async function verifyLicense({ licenseKey, instanceId, version }) {
   catch (error) { throw Object.assign(error, { status: 409 }); }
 
   await mkdir(dirname(receiptFile), { recursive: true, mode: 0o700 });
-  await writeFile(receiptFile, JSON.stringify({ ...receipt, verifiedAt: new Date().toISOString() }, null, 2), { mode: 0o600 });
+  // Preserve the previous signed entitlement if activation crashes before rename.
+  await atomic(receiptFile, JSON.stringify({ ...receipt, verifiedAt: new Date().toISOString() }, null, 2));
   return await licenseStatus({ instanceId, version });
 }
