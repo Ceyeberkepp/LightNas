@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hmac
 import hashlib
+import filecmp
 import json
 import os
 import re
@@ -69,6 +70,25 @@ class NetworkCheckpoint:
         if backup.is_dir() and not backup.is_symlink():
             shutil.rmtree(backup)
 
+    @staticmethod
+    def _same_profile_tree(expected, actual):
+        """Verify a completed recovery swap before discarding the old tree."""
+        if any(root.is_symlink() or not root.is_dir() for root in (expected, actual)):
+            return False
+        left = {str(p.relative_to(expected)): p for p in expected.rglob("*")}
+        right = {str(p.relative_to(actual)): p for p in actual.rglob("*")}
+        if left.keys() != right.keys():
+            return False
+        for rel, path in left.items():
+            other = right[rel]
+            if path.is_symlink() or other.is_symlink() or path.is_dir() != other.is_dir():
+                return False
+            if path.is_file() != other.is_file():
+                return False
+            if path.is_file() and not filecmp.cmp(path, other, shallow=False):
+                return False
+        return True
+
     def _restore_profiles(self, record):
         if not re.fullmatch(r"[0-9a-f]{32}", str(record.get("id", ""))):
             raise RuntimeError("Invalid network recovery transaction ID")
@@ -80,8 +100,35 @@ class NetworkCheckpoint:
             raise RuntimeError("NetworkManager recovery backup contains symlinks")
         staged = dest.parent / (".lightnas-recovered-" + record["id"])
         previous = dest.parent / (".lightnas-pending-" + record["id"])
-        if staged.exists() or previous.exists():
-            raise RuntimeError("Conflicting NetworkManager recovery directory")
+        if staged.is_symlink() or previous.is_symlink():
+            raise RuntimeError("Unsafe NetworkManager recovery staging directory")
+        if previous.exists():
+            # A prior recovery may have been interrupted after moving the
+            # live profiles aside. Resume from the durable backup rather than
+            # permanently blocking every subsequent boot on a stale rename.
+            if not previous.is_dir():
+                raise RuntimeError("Unsafe NetworkManager previous-profile directory")
+            if dest.exists():
+                if not self._same_profile_tree(backup, dest):
+                    raise RuntimeError("Recovered NetworkManager profiles differ from saved backup")
+                if staged.exists():
+                    raise RuntimeError("Unexpected NetworkManager recovery staging conflict")
+                shutil.rmtree(previous)
+                return
+            if staged.exists():
+                if not staged.is_dir():
+                    raise RuntimeError("Unsafe NetworkManager recovery staging directory")
+                shutil.rmtree(staged)
+            shutil.copytree(backup, staged, copy_function=shutil.copy2)
+            staged.rename(dest)
+            shutil.rmtree(previous)
+            return
+        if staged.exists():
+            # The live tree has not yet been renamed. Discard an incomplete
+            # staging copy and rebuild it from the immutable backup.
+            if not staged.is_dir():
+                raise RuntimeError("Unsafe NetworkManager recovery staging directory")
+            shutil.rmtree(staged)
         shutil.copytree(backup, staged, copy_function=shutil.copy2)
         try:
             if dest.exists():
