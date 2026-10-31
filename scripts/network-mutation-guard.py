@@ -27,13 +27,10 @@ def require_safe_network_mutation(action: str, data: dict) -> None:
             f"{action} cannot be applied without verified timed network rollback; "
             "use a local console and an externally approved maintenance process."
         )
-    if action in ACTIVATION_ACTIONS and data.get("activate") is not False and (
-        # Parse only native booleans; never let a string such as 'false' or an
-        # unknown payload override a safety requirement.
-        "activate" in data and data.get("activate") is not None
-    ):
-        if data.get("activate") is not False:
-            raise ValueError(
-                f"{action} with immediate activation is unavailable until "
-                "management connectivity verification and timed rollback exist."
-            )
+    # Permit only an explicit JSON boolean false. "false", 0, null and
+    # other forged flag representations are never treated as an opt-out.
+    if action in ACTIVATION_ACTIONS and "activate" in data and data["activate"] is not False:
+        raise ValueError(
+            f"{action} with immediate activation is unavailable until "
+            "management connectivity verification and timed rollback exist."
+        )
