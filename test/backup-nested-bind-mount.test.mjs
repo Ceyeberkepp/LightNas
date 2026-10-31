@@ -38,7 +38,7 @@ test('same backing filesystem is permitted only when source and target trees do 
 });
 
 test('mountinfo escaped spaces decode to the same backing filesystem tree',()=>{
-  const info=topology(mount(2,'/data/source\040docs/child','/backup/target'));
+  const info=topology(mount(2,'/data/source\\040docs/child','/backup/target'));
   assert.throws(()=>assertSeparateRsyncTrees('/data/source docs',target,info),
     /overlap through a bind mount/);
 });
