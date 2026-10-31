@@ -1,6 +1,7 @@
 """Isolated validation of the complete NetworkManager checkpoint lifecycle."""
 import importlib.util
 import json
+import shutil
 from pathlib import Path
 import tempfile
 import unittest
@@ -165,6 +166,63 @@ class CheckpointTests(unittest.TestCase):
         self.assertTrue(result["rolledBack"])
         self.assertEqual(self.restores, [pending["transactionId"]])
         self.assertFalse(self.cp.journal.exists())
+
+    def test_boot_recovery_resumes_crash_after_moving_live_profiles_aside(self):
+        network_dir = Path(self.temp.name) / "config" / "system-connections"
+        network_dir.mkdir(parents=True)
+        profile = network_dir / "uplink.nmconnection"
+        profile.write_text("working")
+        self.cp.profile_root = network_dir
+        self.cp._backup_profiles = checkpoint.NetworkCheckpoint._backup_profiles.__get__(self.cp)
+        self.cp._restore_profiles = checkpoint.NetworkCheckpoint._restore_profiles.__get__(self.cp)
+        self.cp._remove_backup = checkpoint.NetworkCheckpoint._remove_backup.__get__(self.cp)
+        pending = self.cp.begin("connection-update", lambda: profile.write_text("bad"))
+        previous = network_dir.parent / (".lightnas-pending-" + pending["transactionId"])
+        network_dir.rename(previous)  # Inject crash between the two directory renames.
+        self.assertFalse(network_dir.exists())
+        self.cp.recover_pending()
+        self.assertEqual(profile.read_text(), "working")
+        self.assertFalse(previous.exists())
+        self.assertFalse(self.cp.journal.exists())
+
+    def test_boot_recovery_finishes_crash_after_restored_tree_rename(self):
+        network_dir = Path(self.temp.name) / "config" / "system-connections"
+        network_dir.mkdir(parents=True)
+        profile = network_dir / "uplink.nmconnection"
+        profile.write_text("working")
+        self.cp.profile_root = network_dir
+        self.cp._backup_profiles = checkpoint.NetworkCheckpoint._backup_profiles.__get__(self.cp)
+        self.cp._restore_profiles = checkpoint.NetworkCheckpoint._restore_profiles.__get__(self.cp)
+        self.cp._remove_backup = checkpoint.NetworkCheckpoint._remove_backup.__get__(self.cp)
+        pending = self.cp.begin("connection-update", lambda: profile.write_text("bad"))
+        backup = self.cp.journal.parent / "network-backups" / pending["transactionId"] / "profiles"
+        staged = network_dir.parent / (".lightnas-recovered-" + pending["transactionId"])
+        previous = network_dir.parent / (".lightnas-pending-" + pending["transactionId"])
+        shutil.copytree(backup, staged, copy_function=shutil.copy2)
+        network_dir.rename(previous)
+        staged.rename(network_dir)  # Inject crash before deleting old profiles.
+        self.cp.recover_pending()
+        self.assertEqual(profile.read_text(), "working")
+        self.assertFalse(previous.exists())
+        self.assertFalse(self.cp.journal.exists())
+
+    def test_recovery_preserves_journal_if_post_swap_tree_is_unexpected(self):
+        network_dir = Path(self.temp.name) / "config" / "system-connections"
+        network_dir.mkdir(parents=True)
+        profile = network_dir / "uplink.nmconnection"
+        profile.write_text("working")
+        self.cp.profile_root = network_dir
+        self.cp._backup_profiles = checkpoint.NetworkCheckpoint._backup_profiles.__get__(self.cp)
+        self.cp._restore_profiles = checkpoint.NetworkCheckpoint._restore_profiles.__get__(self.cp)
+        pending = self.cp.begin("connection-update", lambda: profile.write_text("bad"))
+        previous = network_dir.parent / (".lightnas-pending-" + pending["transactionId"])
+        network_dir.rename(previous)
+        network_dir.mkdir()
+        profile.write_text("unexpected")
+        with self.assertRaisesRegex(RuntimeError, "differ from saved backup"):
+            self.cp.recover_pending()
+        self.assertTrue(self.cp.journal.exists(), "Do not discard recovery state on mismatch")
+        self.assertTrue(previous.exists(), "Do not discard previous profiles on mismatch")
 
     def test_profile_symlinks_fail_closed_before_checkpoint_create(self):
         network_dir = Path(self.temp.name) / "config" / "system-connections"
