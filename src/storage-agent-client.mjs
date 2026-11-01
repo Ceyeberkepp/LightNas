@@ -26,7 +26,11 @@ export async function forwardStorageAgent(req,res,url,input,{timeoutMs=120000}={
   };
   const upstream=http.request({socketPath:process.env.LIGHTNAS_STORAGE_AGENT_SOCKET||'/run/lightnas-storage/storage.sock',path,method:req.method,headers:{authorization:'Bearer '+token,'content-type':'application/json',...(req.headers['last-event-id']?{'last-event-id':req.headers['last-event-id']}:{})}},response=>{
    const contentType=String(response.headers['content-type']||'application/json');
-   const eventStream=contentType.split(';',1)[0].trim().toLowerCase()==='text/event-stream';
+   // Only the job progress routes may outlive the absolute request deadline.
+   // An agent-controlled Content-Type header must not exempt inventory, preview
+   // or other ordinary requests from timeout enforcement.
+   const jobStream=req.method==='GET'&&/^\/jobs\/[0-9a-f-]{36}\/(?:events|stream)$/.test(url.pathname.slice(namespace.length));
+   const eventStream=jobStream&&contentType.split(';',1)[0].trim().toLowerCase()==='text/event-stream';
    // Long-running SSE is intentional. Other agent responses have an
    // absolute deadline so a trickling peer cannot hold clients indefinitely.
    if(eventStream)clearTimeout(deadline);
