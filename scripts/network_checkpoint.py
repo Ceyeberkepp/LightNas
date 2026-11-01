@@ -277,11 +277,27 @@ class NetworkCheckpoint:
                             if not left_chunk:
                                 break
                         after = (os.fstat(left_fd), os.fstat(right_fd))
-                        return all(
+                        if not all(
                             (old.st_dev, old.st_ino, old.st_size, old.st_mtime_ns, old.st_ctime_ns) ==
                             (new.st_dev, new.st_ino, new.st_size, new.st_mtime_ns, new.st_ctime_ns)
                             for old, new in zip(before, after)
-                        )
+                        ):
+                            return False
+                        # A pathname can be swapped after the initial identity
+                        # check while the already-open descriptors still read
+                        # identical bytes. Revalidate each path after the reads
+                        # so a replacement cannot be approved as the restored
+                        # live profile.
+                        for path, info in ((left_path, after[0]), (right_path, after[1])):
+                            observed = path.lstat()
+                            if (observed.st_dev, observed.st_ino,
+                                stat.S_IFMT(observed.st_mode), stat.S_IMODE(observed.st_mode),
+                                observed.st_uid, observed.st_gid) != (
+                                info.st_dev, info.st_ino,
+                                stat.S_IFMT(info.st_mode), stat.S_IMODE(info.st_mode),
+                                info.st_uid, info.st_gid):
+                                return False
+                        return True
                     finally:
                         os.close(right_fd)
                 finally:
