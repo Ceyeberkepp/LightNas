@@ -1,0 +1,60 @@
+"""Regression tests for non-cached NetworkManager recovery integrity checks.
+
+Uses temporary directories only. No NetworkManager D-Bus calls, appliance
+network changes or real host profiles.
+"""
+import importlib.util
+import os
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location(
+    "network_checkpoint_uncached_test", ROOT / "scripts" / "network_checkpoint.py"
+)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+
+class NetworkProfileFreshCompareTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        base = Path(self.temp.name)
+        self.expected = base / "expected"
+        self.actual = base / "actual"
+        for root in (self.expected, self.actual):
+            root.mkdir(mode=0o700)
+            profile = root / "uplink.nmconnection"
+            profile.write_bytes(b"good")
+            profile.chmod(0o600)
+
+    def same(self):
+        return module.NetworkCheckpoint._same_profile_tree(self.expected, self.actual)
+
+    def test_same_size_corruption_with_restored_mtime_invalidates_previous_match(self):
+        self.assertTrue(self.same(), "prime the old filecmp cache with an equal result")
+        profile = self.actual / "uplink.nmconnection"
+        before = profile.stat()
+        profile.write_bytes(b"evil")  # same byte length as the original
+        os.utime(profile, ns=(before.st_atime_ns, before.st_mtime_ns))
+        self.assertEqual(profile.stat().st_size, before.st_size)
+        self.assertEqual(profile.stat().st_mtime_ns, before.st_mtime_ns)
+        self.assertFalse(self.same(), "a previous equality result must never be reused")
+
+    def test_repeated_valid_comparisons_remain_accepted(self):
+        self.assertTrue(self.same())
+        self.assertTrue(self.same())
+
+    def test_replaced_profile_symlink_is_rejected(self):
+        profile = self.actual / "uplink.nmconnection"
+        target = Path(self.temp.name) / "outside"
+        target.write_bytes(b"good")
+        profile.unlink()
+        profile.symlink_to(target)
+        self.assertFalse(self.same(), "a symlink must not be followed as a trusted keyfile")
+
+
+if __name__ == "__main__":
+    unittest.main()
