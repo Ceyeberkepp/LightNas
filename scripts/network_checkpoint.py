@@ -6,6 +6,7 @@ after a host-agent restart. Only a positively confirmed transaction commits.
 """
 from __future__ import annotations
 
+import fcntl
 import hmac
 import hashlib
 import filecmp
@@ -18,6 +19,8 @@ import stat
 import subprocess
 import threading
 import time
+from contextlib import contextmanager
+from functools import wraps
 from pathlib import Path
 
 NM_SERVICE = "org.freedesktop.NetworkManager"
@@ -25,6 +28,15 @@ NM_PATH = "/org/freedesktop/NetworkManager"
 NM_INTERFACE = "org.freedesktop.NetworkManager"
 CHECKPOINT_RE = re.compile(r'^o "(/org/freedesktop/NetworkManager/Checkpoint/[0-9]+)"\s*$')
 TOKEN_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def transaction_locked(method):
+    """Serialize network transactions across threads and host-agent processes."""
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        with self._transaction_lock():
+            return method(self, *args, **kwargs)
+    return guarded
 
 
 class NetworkCheckpoint:
@@ -37,6 +49,43 @@ class NetworkCheckpoint:
         self.now = now or time.time
         self.timeout = timeout
         self.lock = threading.RLock()
+        self._process_lock_depth = 0
+
+    @contextmanager
+    def _transaction_lock(self):
+        # An RLock alone cannot prevent a separate host-agent or boot-recovery
+        # process from replacing another transaction's recovery journal.
+        # Keep the lockfile inode stable: never unlink it after releasing flock.
+        with self.lock:
+            if self._process_lock_depth:
+                self._process_lock_depth += 1
+                try:
+                    yield
+                finally:
+                    self._process_lock_depth -= 1
+                return
+            parent = self.journal.parent
+            parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if parent.is_symlink():
+                raise RuntimeError("Unsafe network transaction lock directory")
+            lockfile = parent / "network-checkpoint.lock"
+            if lockfile.is_symlink():
+                raise RuntimeError("Unsafe network transaction lock file")
+            flags = (os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+                     | getattr(os, "O_CLOEXEC", 0))
+            fd = os.open(lockfile, flags, 0o600)
+            try:
+                info = os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                    raise RuntimeError("Unsafe network transaction lock file")
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                self._process_lock_depth = 1
+                try:
+                    yield
+                finally:
+                    self._process_lock_depth = 0
+            finally:
+                os.close(fd)
 
     @staticmethod
     def _busctl(method, signature="", *args):
@@ -191,6 +240,7 @@ class NetworkCheckpoint:
             shutil.rmtree(previous)
             self._fsync_directory(previous.parent)
 
+    @transaction_locked
     def recover_pending(self):
         # Called before NetworkManager starts on reboot, and on host-agent
         # restart. Never commit an unconfirmed change.
@@ -264,6 +314,7 @@ class NetworkCheckpoint:
         # backup directory was already deleted.
         self._fsync_directory(self.journal.parent)
 
+    @transaction_locked
     def begin(self, action, execute):
         with self.lock:
             previous = self._read()
@@ -337,6 +388,7 @@ class NetworkCheckpoint:
                 "result": result
             }
 
+    @transaction_locked
     def resolve(self, data, commit=False):
         with self.lock:
             record = self._read()
@@ -372,6 +424,7 @@ class NetworkCheckpoint:
             return {"action": "network-confirm" if commit else "network-rollback",
                     "confirmed": bool(commit), "rolledBack": not commit}
 
+    @transaction_locked
     def status(self):
         record = self._read()
         return {"pending": bool(record),

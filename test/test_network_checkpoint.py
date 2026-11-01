@@ -2,6 +2,9 @@
 import importlib.util
 import json
 import shutil
+import subprocess
+import sys
+import threading
 from pathlib import Path
 import tempfile
 import unittest
@@ -53,6 +56,61 @@ class CheckpointTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,"awaiting confirmation"):
             self.cp.begin("route-update", lambda: None)
         self.assertFalse(self.cp.status()["action"] is None)
+
+    def test_separate_process_lock_blocks_overlapping_network_transaction(self):
+        # A different host-agent process may be writing the same journal.
+        # Hold its lock in a real child process; the network checkpoint must
+        # not be created until that process releases the lock.
+        lockfile = self.cp.journal.parent / "network-checkpoint.lock"
+        lockfile.touch(mode=0o600)
+        child_code = (
+            "import fcntl, os, sys\n"
+            "fd = os.open(sys.argv[1], os.O_RDWR)\n"
+            "fcntl.flock(fd, fcntl.LOCK_EX)\n"
+            "print('locked', flush=True)\n"
+            "sys.stdin.readline()\n"
+            "os.close(fd)\n"
+        )
+        child = subprocess.Popen(
+            [sys.executable, "-c", child_code, str(lockfile)],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True
+        )
+        done = threading.Event()
+        outcome = {}
+
+        def attempt():
+            try:
+                outcome["pending"] = self.cp.begin("connection-update", lambda: {"ok": True})
+            except Exception as error:
+                outcome["error"] = error
+            finally:
+                done.set()
+
+        try:
+            self.assertEqual(child.stdout.readline().strip(), "locked")
+            worker = threading.Thread(target=attempt, daemon=True)
+            worker.start()
+            self.assertFalse(done.wait(0.25), "A second process bypassed the lock")
+            self.assertEqual(self.calls, [], "NetworkManager was called before lock release")
+            child.stdin.write("\n")
+            child.stdin.flush()
+            self.assertTrue(done.wait(5), "Transaction did not resume after lock release")
+            worker.join(timeout=5)
+            self.assertNotIn("error", outcome)
+            self.assertTrue(outcome["pending"]["pendingConfirmation"])
+        finally:
+            if child.poll() is None:
+                child.kill()
+            child.communicate(timeout=5)
+
+    def test_symlinked_transaction_lock_fails_before_network_changes(self):
+        lockfile = self.cp.journal.parent / "network-checkpoint.lock"
+        lockfile.symlink_to(Path(self.temp.name) / "other")
+        with self.assertRaisesRegex(RuntimeError, "Unsafe network transaction lock file"):
+            self.cp.begin("connection-update", lambda: self.fail("must not modify network"))
+        self.assertEqual(self.calls, [])
+        self.assertFalse(self.cp.journal.exists())
 
     def test_confirm_valid_token_commits_and_removes_journal(self):
         pending=self.cp.begin("connection-update", lambda: {"ok":True})
