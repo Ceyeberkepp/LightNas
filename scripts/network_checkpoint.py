@@ -9,7 +9,6 @@ from __future__ import annotations
 import fcntl
 import hmac
 import hashlib
-import filecmp
 import json
 import os
 import re
@@ -226,8 +225,12 @@ class NetworkCheckpoint:
             left_info = left_path.lstat()
             right_info = right_path.lstat()
             if not (stat.S_ISREG(left_info.st_mode) or stat.S_ISDIR(left_info.st_mode)):
-                return False
-            return (
+                return False, False
+            # Capture the verified entry kind together with metadata. A
+            # profile can be replaced with a FIFO after lstat; deciding
+            # whether to compare bytes with a later path.is_file() check
+            # would silently skip verification of that substituted entry.
+            matches = (
                 stat.S_IFMT(left_info.st_mode),
                 stat.S_IMODE(left_info.st_mode),
                 left_info.st_uid,
@@ -238,8 +241,73 @@ class NetworkCheckpoint:
                 right_info.st_uid,
                 right_info.st_gid,
             )
+            return matches, stat.S_ISREG(left_info.st_mode)
 
-        if not same_metadata(expected, actual):
+        def same_file_bytes(left_path, right_path):
+            # filecmp.cmp caches comparisons by size/mtime. A same-size
+            # replacement with restored mtime can reuse a stale "equal"
+            # result and falsely approve corrupted network credentials.
+            # Compare bytes from fresh, no-follow descriptors every time.
+            flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+                     getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0))
+            try:
+                left_fd = os.open(left_path, flags)
+                try:
+                    right_fd = os.open(right_path, flags)
+                    try:
+                        before = (os.fstat(left_fd), os.fstat(right_fd))
+                        if not all(stat.S_ISREG(info.st_mode) for info in before):
+                            return False
+                        if before[0].st_size != before[1].st_size:
+                            return False
+                        # Reject path replacement between tree enumeration
+                        # and opening either descriptor.
+                        for path, info in ((left_path, before[0]), (right_path, before[1])):
+                            observed = path.lstat()
+                            if (observed.st_dev, observed.st_ino,
+                                stat.S_IMODE(observed.st_mode), observed.st_uid, observed.st_gid) != (
+                                info.st_dev, info.st_ino,
+                                stat.S_IMODE(info.st_mode), info.st_uid, info.st_gid):
+                                return False
+                        while True:
+                            left_chunk = os.read(left_fd, 1024 * 1024)
+                            right_chunk = os.read(right_fd, 1024 * 1024)
+                            if left_chunk != right_chunk:
+                                return False
+                            if not left_chunk:
+                                break
+                        after = (os.fstat(left_fd), os.fstat(right_fd))
+                        if not all(
+                            (old.st_dev, old.st_ino, old.st_size, old.st_mtime_ns, old.st_ctime_ns) ==
+                            (new.st_dev, new.st_ino, new.st_size, new.st_mtime_ns, new.st_ctime_ns)
+                            for old, new in zip(before, after)
+                        ):
+                            return False
+                        # A pathname can be swapped after the initial identity
+                        # check while the already-open descriptors still read
+                        # identical bytes. Revalidate each path after the reads
+                        # so a replacement cannot be approved as the restored
+                        # live profile.
+                        for path, info in ((left_path, after[0]), (right_path, after[1])):
+                            observed = path.lstat()
+                            if (observed.st_dev, observed.st_ino,
+                                stat.S_IFMT(observed.st_mode), stat.S_IMODE(observed.st_mode),
+                                observed.st_uid, observed.st_gid) != (
+                                info.st_dev, info.st_ino,
+                                stat.S_IFMT(info.st_mode), stat.S_IMODE(info.st_mode),
+                                info.st_uid, info.st_gid):
+                                return False
+                        return True
+                    finally:
+                        os.close(right_fd)
+                finally:
+                    os.close(left_fd)
+            except OSError:
+                # Disappearing/replaced profiles must never be accepted.
+                return False
+
+        root_matches, _ = same_metadata(expected, actual)
+        if not root_matches:
             return False
         left = {str(p.relative_to(expected)): p for p in expected.rglob("*")}
         right = {str(p.relative_to(actual)): p for p in actual.rglob("*")}
@@ -247,9 +315,10 @@ class NetworkCheckpoint:
             return False
         for rel, path in left.items():
             other = right[rel]
-            if not same_metadata(path, other):
+            entry_matches, is_regular = same_metadata(path, other)
+            if not entry_matches:
                 return False
-            if path.is_file() and not filecmp.cmp(path, other, shallow=False):
+            if is_regular and not same_file_bytes(path, other):
                 return False
         return True
 
