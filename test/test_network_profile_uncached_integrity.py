@@ -89,6 +89,31 @@ class NetworkProfileFreshCompareTests(unittest.TestCase):
             self.assertFalse(self.same(), "metadata-verified regular files must always be byte-checked")
         self.assertTrue(swapped)
 
+    def test_path_swapped_after_read_is_rejected(self):
+        # Opening the original profile protects the descriptor, not its
+        # pathname. A swap after the initial identity check and byte reads
+        # must be detected before recovery can discard its durable backup.
+        profile = self.actual / "uplink.nmconnection"
+        outside = Path(self.temp.name) / "external-profile"
+        outside.write_bytes(b"evil")
+        original_read = os.read
+        swapped = False
+
+        def replace_after_read(fd, count):
+            nonlocal swapped
+            chunk = original_read(fd, count)
+            if not swapped and chunk == b"good":
+                swapped = True
+                profile.unlink()
+                profile.symlink_to(outside)
+            return chunk
+
+        with mock.patch.object(module.os, "read", side_effect=replace_after_read):
+            self.assertFalse(self.same(), "post-read path replacement must fail closed")
+        self.assertTrue(swapped)
+        self.assertTrue(profile.is_symlink())
+        self.assertEqual(outside.read_bytes(), b"evil")
+
     def test_replaced_profile_symlink_is_rejected(self):
         profile = self.actual / "uplink.nmconnection"
         target = Path(self.temp.name) / "outside"
