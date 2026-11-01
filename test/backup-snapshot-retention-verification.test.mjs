@@ -19,11 +19,11 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
   run:async(bin,args)=>{
    if(args[0]==='get'&&args.includes('guid')){
     events.push('verify-source-guid');
-    return {ok:sourceCheckOk,stdout:sourceGuid+'\\n'};
+    return {ok:sourceCheckOk,stdout:sourceGuid+'\n'};
    }
    if(bin==='/usr/bin/ssh'&&args.at(-1).startsWith('zfs get ')){
     events.push('verify-target-guid');
-    return {ok:targetCheckOk,stdout:targetGuid+'\\n'};
+    return {ok:targetCheckOk,stdout:targetGuid+'\n'};
    }
    commands.push({bin,args});
    events.push(args[0]+':'+args[1]);
@@ -114,7 +114,7 @@ test('failure injection: local snapshot GUID lookup fails and no retention is at
 });
 
 test('failure injection: malformed remote GUID output cannot authorize destructive retention',async()=>{
- const {adapter,impact,commands}=isolatedJob({replication:true,targetGuid:'81234567\\nUnexpected banner'});
+ const {adapter,impact,commands}=isolatedJob({replication:true,targetGuid:'81234567\nUnexpected banner'});
  await assert.rejects(adapter.apply(impact),/Remote replica snapshot GUID not verified/);
  assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
 });
