@@ -120,7 +120,7 @@ export class ProtectionAdapter{
       throw Error('Remote replica verification missing; existing recovery snapshots retained');
      const source=await this.run(verification.source.bin,verification.source.args,120000);
      const target=await this.run(verification.target.bin,verification.target.args,120000);
-     const guid=result=>result?.ok&&/^\\d+$/.test(String(result.stdout||'').trim())?result.stdout.trim():null;
+     const guid=result=>result?.ok&&/^[0-9]+$/.test(String(result.stdout||'').trim())?result.stdout.trim():null;
      if(!guid(source)||guid(source)!==guid(target))
       throw Error('Remote replica snapshot GUID not verified; existing recovery snapshots retained');
     }
