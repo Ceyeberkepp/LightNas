@@ -226,7 +226,11 @@ class NetworkCheckpoint:
             right_info = right_path.lstat()
             if not (stat.S_ISREG(left_info.st_mode) or stat.S_ISDIR(left_info.st_mode)):
                 return False
-            return (
+            # Capture the verified entry kind together with metadata. A
+            # profile can be replaced with a FIFO after lstat; deciding
+            # whether to compare bytes with a later path.is_file() check
+            # would silently skip verification of that substituted entry.
+            matches = (
                 stat.S_IFMT(left_info.st_mode),
                 stat.S_IMODE(left_info.st_mode),
                 left_info.st_uid,
@@ -237,6 +241,7 @@ class NetworkCheckpoint:
                 right_info.st_uid,
                 right_info.st_gid,
             )
+            return matches, stat.S_ISREG(left_info.st_mode)
 
         def same_file_bytes(left_path, right_path):
             # filecmp.cmp caches comparisons by size/mtime. A same-size
@@ -285,7 +290,8 @@ class NetworkCheckpoint:
                 # Disappearing/replaced profiles must never be accepted.
                 return False
 
-        if not same_metadata(expected, actual):
+        root_matches, _ = same_metadata(expected, actual)
+        if not root_matches:
             return False
         left = {str(p.relative_to(expected)): p for p in expected.rglob("*")}
         right = {str(p.relative_to(actual)): p for p in actual.rglob("*")}
@@ -293,9 +299,10 @@ class NetworkCheckpoint:
             return False
         for rel, path in left.items():
             other = right[rel]
-            if not same_metadata(path, other):
+            entry_matches, is_regular = same_metadata(path, other)
+            if not entry_matches:
                 return False
-            if path.is_file() and not same_file_bytes(path, other):
+            if is_regular and not same_file_bytes(path, other):
                 return False
         return True
 
