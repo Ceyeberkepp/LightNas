@@ -370,6 +370,60 @@ class CheckpointTests(unittest.TestCase):
         self.assertTrue(backup.exists(), "Never discard backup before durable journal deletion")
         self.assertEqual(profile.read_text(), "[connection]\\nid=known-good\\n")
 
+    def _fail_journal_directory_sync_after_rename(self):
+        # The journal is already atomically renamed when _write opens its
+        # parent directory to fsync it. Simulate that precise durability fault.
+        real_open = checkpoint.os.open
+
+        def fail_open(path, flags, *args, **kwargs):
+            if (Path(path) == self.cp.journal.parent and
+                    flags & checkpoint.os.O_DIRECTORY):
+                raise OSError("injected journal directory sync failure")
+            return real_open(path, flags, *args, **kwargs)
+
+        return patch.object(checkpoint.os, "open", side_effect=fail_open)
+
+    def test_journal_sync_failure_preserves_snapshot_for_boot_recovery(self):
+        profile = self._use_real_profile_snapshot()
+        applied = []
+        with self._fail_journal_directory_sync_after_rename():
+            with self.assertRaisesRegex(OSError, "injected journal directory sync failure"):
+                self.cp.begin("connection-update", lambda: applied.append(True))
+        self.assertEqual(applied, [], "Never apply after journal durability fails")
+        self.assertTrue(self.cp.journal.exists(), "Atomic rename already installed the journal")
+        record = json.loads(self.cp.journal.read_text())
+        backup = self.cp.journal.parent / "network-backups" / record["id"]
+        self.assertTrue((backup / "profiles").is_dir(), "Retain the only recovery snapshot")
+        self.assertTrue(any(call[0] == "CheckpointRollback" for call in self.calls))
+        self.cp.recover_pending()
+        self.assertEqual(profile.read_text(), "[connection]\\nid=known-good\\n")
+        self.assertFalse(self.cp.journal.exists())
+        self.assertFalse(backup.exists())
+
+    def test_journal_sync_and_nm_rollback_failure_keep_recovery_files(self):
+        self._use_real_profile_snapshot()
+        self.fail_rollback = True
+        with self._fail_journal_directory_sync_after_rename():
+            with self.assertRaisesRegex(RuntimeError, "rollback could not be confirmed"):
+                self.cp.begin("connection-update", lambda: self.fail("must not apply"))
+        self.assertTrue(self.cp.journal.exists())
+        record = json.loads(self.cp.journal.read_text())
+        backup = self.cp.journal.parent / "network-backups" / record["id"]
+        self.assertTrue((backup / "profiles").is_dir())
+        self.fail_rollback = False
+        self.cp.recover_pending()
+        self.assertFalse(self.cp.journal.exists())
+        self.assertFalse(backup.exists())
+
+    def test_journal_write_failure_before_rename_cleans_unused_snapshot(self):
+        self._use_real_profile_snapshot()
+        with patch.object(self.cp, "_write", side_effect=OSError("injected pre-rename failure")):
+            with self.assertRaisesRegex(OSError, "injected pre-rename failure"):
+                self.cp.begin("connection-update", lambda: self.fail("must not apply"))
+        self.assertFalse(self.cp.journal.exists())
+        self.assertEqual(list((self.cp.journal.parent / "network-backups").iterdir()), [])
+        self.assertTrue(any(call[0] == "CheckpointRollback" for call in self.calls))
+
     def test_no_management_writes_in_source_api_without_checkpoint(self):
         source=(ROOT/"scripts"/"lightnas-host-agent.py").read_text()
         self.assertIn("NETWORK_CHECKPOINT.begin(action, lambda: network_action(data, _checkpointed=True))",source)
