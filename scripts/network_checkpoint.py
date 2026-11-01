@@ -145,6 +145,13 @@ class NetworkCheckpoint:
         try:
             shutil.copytree(source, backup / "profiles", copy_function=shutil.copy2)
             self._fsync_tree(backup / "profiles")
+            # A completed copy is not necessarily a faithful recovery image:
+            # interrupted/racing writes and silent copy corruption must be
+            # detected before creating a checkpoint or changing the network.
+            # Check bytes, entry types, ownership and permissions against the
+            # source after the copied files have been synchronized.
+            if not self._same_profile_tree(source, backup / "profiles"):
+                raise RuntimeError("NetworkManager recovery snapshot differs from live profiles")
             self._fsync_directory(backup)
             self._fsync_directory(backup.parent)
         except Exception:
