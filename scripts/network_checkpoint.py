@@ -165,15 +165,34 @@ class NetworkCheckpoint:
         """Verify a completed recovery swap before discarding the old tree."""
         if any(root.is_symlink() or not root.is_dir() for root in (expected, actual)):
             return False
+        def same_metadata(left_path, right_path):
+            # Keyfiles contain credentials. A byte-identical restore with
+            # broader permissions or changed ownership is not a safe restore.
+            left_info = left_path.lstat()
+            right_info = right_path.lstat()
+            if not (stat.S_ISREG(left_info.st_mode) or stat.S_ISDIR(left_info.st_mode)):
+                return False
+            return (
+                stat.S_IFMT(left_info.st_mode),
+                stat.S_IMODE(left_info.st_mode),
+                left_info.st_uid,
+                left_info.st_gid,
+            ) == (
+                stat.S_IFMT(right_info.st_mode),
+                stat.S_IMODE(right_info.st_mode),
+                right_info.st_uid,
+                right_info.st_gid,
+            )
+
+        if not same_metadata(expected, actual):
+            return False
         left = {str(p.relative_to(expected)): p for p in expected.rglob("*")}
         right = {str(p.relative_to(actual)): p for p in actual.rglob("*")}
         if left.keys() != right.keys():
             return False
         for rel, path in left.items():
             other = right[rel]
-            if path.is_symlink() or other.is_symlink() or path.is_dir() != other.is_dir():
-                return False
-            if path.is_file() != other.is_file():
+            if not same_metadata(path, other):
                 return False
             if path.is_file() and not filecmp.cmp(path, other, shallow=False):
                 return False
@@ -212,9 +231,13 @@ class NetworkCheckpoint:
                 shutil.rmtree(staged)
             shutil.copytree(backup, staged, copy_function=shutil.copy2)
             self._fsync_tree(staged)
+            if not self._same_profile_tree(backup, staged):
+                raise RuntimeError("Staged NetworkManager recovery profiles differ from saved backup")
             self._fsync_directory(staged.parent)
             staged.rename(dest)
             self._fsync_directory(dest.parent)
+            if not self._same_profile_tree(backup, dest):
+                raise RuntimeError("Recovered NetworkManager profiles differ from saved backup")
             shutil.rmtree(previous)
             self._fsync_directory(previous.parent)
             return
@@ -226,12 +249,16 @@ class NetworkCheckpoint:
             shutil.rmtree(staged)
         shutil.copytree(backup, staged, copy_function=shutil.copy2)
         self._fsync_tree(staged)
+        if not self._same_profile_tree(backup, staged):
+            raise RuntimeError("Staged NetworkManager recovery profiles differ from saved backup")
         self._fsync_directory(staged.parent)
         try:
             if dest.exists():
                 dest.rename(previous)
             staged.rename(dest)
             self._fsync_directory(dest.parent)
+            if not self._same_profile_tree(backup, dest):
+                raise RuntimeError("Recovered NetworkManager profiles differ from saved backup")
         except Exception:
             if previous.exists() and not dest.exists():
                 previous.rename(dest)
