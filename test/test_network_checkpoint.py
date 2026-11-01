@@ -482,6 +482,70 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(list((self.cp.journal.parent / "network-backups").iterdir()), [])
         self.assertTrue(any(call[0] == "CheckpointRollback" for call in self.calls))
 
+    def test_corrupt_staged_restore_preserves_live_tree_and_recovery_journal(self):
+        profile = self._use_real_profile_snapshot()
+        pending = self.cp.begin("connection-update", lambda: profile.write_text("bad-uplink"))
+        original_copytree = checkpoint.shutil.copytree
+
+        def corrupt_stage(source, destination, *args, **kwargs):
+            copied = original_copytree(source, destination, *args, **kwargs)
+            if Path(destination).name.startswith(".lightnas-recovered-"):
+                (Path(destination) / profile.name).write_text("injected-copy-corruption")
+            return copied
+
+        with patch.object(checkpoint.shutil, "copytree", side_effect=corrupt_stage):
+            with self.assertRaisesRegex(RuntimeError, "Staged NetworkManager recovery profiles differ"):
+                self.cp.recover_pending()
+        self.assertEqual(profile.read_text(), "bad-uplink", "Do not replace live profiles with corrupt data")
+        self.assertTrue(self.cp.journal.exists(), "Keep recovery journal on failed verification")
+        backup = self.cp.journal.parent / "network-backups" / pending["transactionId"]
+        self.assertTrue(backup.exists(), "Keep original snapshot for retry")
+        self.cp.recover_pending()
+        self.assertEqual(profile.read_text(), "[connection]\\nid=known-good\\n")
+        self.assertFalse(self.cp.journal.exists())
+
+    def test_permission_broadening_in_staged_restore_fails_closed(self):
+        profile = self._use_real_profile_snapshot()
+        profile.chmod(0o600)
+        pending = self.cp.begin("connection-update", lambda: profile.write_text("bad-uplink"))
+        original_copytree = checkpoint.shutil.copytree
+
+        def broaden_stage_permissions(source, destination, *args, **kwargs):
+            copied = original_copytree(source, destination, *args, **kwargs)
+            if Path(destination).name.startswith(".lightnas-recovered-"):
+                (Path(destination) / profile.name).chmod(0o644)
+            return copied
+
+        with patch.object(checkpoint.shutil, "copytree", side_effect=broaden_stage_permissions):
+            with self.assertRaisesRegex(RuntimeError, "Staged NetworkManager recovery profiles differ"):
+                self.cp.recover_pending()
+        self.assertTrue(self.cp.journal.exists())
+        self.assertTrue((self.cp.journal.parent / "network-backups" / pending["transactionId"]).exists())
+        self.assertEqual(profile.read_text(), "bad-uplink")
+        self.cp.recover_pending()
+        self.assertEqual(profile.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(profile.read_text(), "[connection]\\nid=known-good\\n")
+
+    def test_post_swap_corruption_keeps_previous_profiles_and_journal(self):
+        profile = self._use_real_profile_snapshot()
+        pending = self.cp.begin("connection-update", lambda: profile.write_text("bad-uplink"))
+        original_compare = self.cp._same_profile_tree
+
+        def corrupt_after_swap(expected, actual):
+            if Path(actual) == profile.parent:
+                profile.write_text("injected-post-swap-corruption")
+            return original_compare(expected, actual)
+
+        with patch.object(self.cp, "_same_profile_tree", side_effect=corrupt_after_swap):
+            with self.assertRaisesRegex(RuntimeError, "Recovered NetworkManager profiles differ"):
+                self.cp.recover_pending()
+        previous = profile.parent.parent / (".lightnas-pending-" + pending["transactionId"])
+        self.assertTrue(previous.exists(), "Retain pre-recovery profiles for investigation")
+        self.assertTrue(self.cp.journal.exists(), "Do not claim recovery on post-swap corruption")
+        self.assertTrue((self.cp.journal.parent / "network-backups" / pending["transactionId"]).exists())
+        with self.assertRaisesRegex(RuntimeError, "Recovered NetworkManager profiles differ"):
+            self.cp.recover_pending()
+
     def test_no_management_writes_in_source_api_without_checkpoint(self):
         source=(ROOT/"scripts"/"lightnas-host-agent.py").read_text()
         self.assertIn("NETWORK_CHECKPOINT.begin(action, lambda: network_action(data, _checkpointed=True))",source)
