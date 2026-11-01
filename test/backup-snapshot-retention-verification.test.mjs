@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ProtectionAdapter} from '../src/storage-agent/protection.js';
+import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 
 const created='tank/data@lightnas-BackupTask-1700000000';
 const older=['tank/data@lightnas-BackupTask-1699999998','tank/data@lightnas-BackupTask-1699999999'];
@@ -132,4 +135,29 @@ test('failure injection: source snapshot replacement during retention stops furt
  await assert.rejects(adapter.apply(impact),/Replicated source snapshot changed before retention/);
  assert.deepEqual(commands.map(c=>c.args[0]),['snapshot','destroy']);
  assert.deepEqual(commands[1].args,['destroy',older[0]]);
+});
+
+test('replication plan pins SSH host identity and verifies the exact received ZFS snapshot GUID',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'lightnas-replica-plan-'));
+ try{
+  const config=join(dir,'protection');
+  await mkdir(config,{recursive:true});
+  await writeFile(join(config,'RemoteBackup.key'),'isolated-fake-key');
+  await writeFile(join(config,'RemoteBackup.known_hosts'),'backup.example ssh-ed25519 isolated-fake-host-key');
+  const datasets={inventory:async()=>({available:true,datasets:[{name:'tank/data',guid:'12345'}],snapshots:[]})};
+  const adapter=new ProtectionAdapter({dir,datasets});
+  adapter.registry=async()=>({
+   tasks:[{id:'BackupTask',kind:'replication',source:'tank/data',target:'backup/data',retention:7,mode:'copy',direction:'push',profile:'RemoteBackup',schedule:{frequency:'on-demand'},enabled:true}],
+   cloudRemotes:[],
+   replicationProfiles:[{name:'RemoteBackup',host:'backup.example',user:'backup',port:22}]
+  });
+  const impact=await adapter.plan({type:'protection.run',id:'BackupTask',runStamp:1700000000});
+  assert.equal(impact.context.remoteVerification.snapshot,'backup/data/lightnas-BackupTask-1700000000@lightnas-BackupTask-1700000000');
+  assert.deepEqual(impact.context.remoteVerification.source.args,['get','-H','-o','value','guid',created]);
+  const ssh=impact.context.remoteVerification.target.args;
+  assert.ok(ssh.includes('StrictHostKeyChecking=yes'));
+  assert.ok(ssh.includes('UserKnownHostsFile='+join(config,'RemoteBackup.known_hosts')));
+  assert.equal(ssh.at(-1),'zfs get -H -o value guid '+impact.context.remoteVerification.snapshot);
+  assert.equal(impact.context.pipeline[1].args.at(-1),'zfs receive -u backup/data/lightnas-BackupTask-1700000000');
+ }finally{await rm(dir,{recursive:true,force:true});}
 });
