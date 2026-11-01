@@ -66,7 +66,17 @@ export class ProtectionAdapter{
     if(task.kind==='replication'){
      const profile=before.replicationProfiles.find(p=>p.name===task.profile);context.profile=profile;
      context.credentialState={key:digest(await readFile(join(this.dir,profile.name+'.key'),'utf8')),hostKey:digest(await readFile(join(this.dir,profile.name+'.known_hosts'),'utf8'))};
-     context.pipeline=[{bin:'/usr/sbin/zfs',args:['send',snap]},{bin:'/usr/bin/ssh',args:['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','UserKnownHostsFile='+join(this.dir,profile.name+'.known_hosts'),'-i',join(this.dir,profile.name+'.key'),'-p',String(profile.port),profile.user+'@'+profile.host,'zfs receive -u '+task.target+'/lightnas-'+task.id+'-'+input.runStamp]}];
+     // A successful SSH receive exit is not evidence that the expected replica
+     // snapshot exists. Compare the immutable ZFS snapshot GUID at both ends.
+     const remoteDataset=datasetName(task.target+'/lightnas-'+task.id+'-'+input.runStamp);
+     const remoteSnapshot=snapshotName(remoteDataset+'@'+snap.split('@')[1]);
+     const sshArgs=['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','UserKnownHostsFile='+join(this.dir,profile.name+'.known_hosts'),'-i',join(this.dir,profile.name+'.key'),'-p',String(profile.port),profile.user+'@'+profile.host];
+     context.pipeline=[{bin:'/usr/sbin/zfs',args:['send',snap]},{bin:'/usr/bin/ssh',args:[...sshArgs,'zfs receive -u '+remoteDataset]}];
+     context.remoteVerification={
+      source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',snap]},
+      target:{bin:'/usr/bin/ssh',args:[...sshArgs,'zfs get -H -o value guid '+remoteSnapshot]},
+      snapshot:remoteSnapshot
+     };
     }
    }else if(task.kind==='rsync')commands.push({bin:'/usr/bin/rsync',args:['-a','--safe-links','--numeric-ids',...(task.mode==='mirror'?['--delete']:[]),'--',task.source+'/',task.target+'/']});
    else {context.credentialState=digest(await readFile(join(this.dir,'rclone.conf'),'utf8'));commands.push({bin:'/usr/bin/rclone',args:[task.mode==='mirror'?'sync':'copy','--config',join(this.dir,'rclone.conf'),'--',...(task.direction==='pull'?[task.target,task.source]:[task.source,task.target])]});}
@@ -102,13 +112,33 @@ export class ProtectionAdapter{
      throw Error('Created snapshot not verified; existing recovery snapshots retained');
    };
    await verifyCreatedSnapshot();
+   let verifiedReplicaGuid=null;
+   const guid=result=>result?.ok&&/^[0-9]+$/.test(String(result.stdout||'').trim())?result.stdout.trim():null;
    if(impact.context.pipeline){
     await this.pipeline(impact.context.pipeline);
+    if(impact.context.task?.kind==='replication'){
+     const verification=impact.context.remoteVerification;
+     if(!verification?.source||!verification?.target||!verification.snapshot)
+      throw Error('Remote replica verification missing; existing recovery snapshots retained');
+     const source=await this.run(verification.source.bin,verification.source.args,120000);
+     const target=await this.run(verification.target.bin,verification.target.args,120000);
+     if(!guid(source)||guid(source)!==guid(target))
+      throw Error('Remote replica snapshot GUID not verified; existing recovery snapshots retained');
+     verifiedReplicaGuid=guid(source);
+    }
     // Recheck after a potentially long remote transfer before retention.
     await verifyCreatedSnapshot();
    }
    for(const snap of impact.context.prune||[]){
     await verifyCreatedSnapshot();
+    // A snapshot name can be reused after deletion; never prune based on a
+    // replacement local snapshot that was not the one replicated remotely.
+    if(verifiedReplicaGuid){
+     const source=impact.context.remoteVerification.source;
+     const current=await this.run(source.bin,source.args,120000);
+     if(guid(current)!==verifiedReplicaGuid)
+      throw Error('Replicated source snapshot changed before retention; existing recovery snapshots retained');
+    }
     const result=await this.run('/usr/sbin/zfs',['destroy',snap],120000);
     if(!result.ok)throw Error('Task completed, but snapshot retention failed; inspect the snapshot list');
    }
