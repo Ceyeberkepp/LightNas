@@ -93,9 +93,25 @@ export class ProtectionAdapter{
      throw Error('Backup source or target changed since preview; refusing to run');
    }
    for(const c of impact.commands){const result=await this.run(c.bin,c.args,1800000);if(!result.ok)throw Error('Protection command failed; inspect task destination and operation history');}
-   if(impact.context.pipeline)await this.pipeline(impact.context.pipeline);
-   for(const snap of impact.context.prune||[]){const result=await this.run('/usr/sbin/zfs',['destroy',snap],120000);if(!result.ok)throw Error('Task completed, but snapshot retention failed; inspect the snapshot list');}
-   if(impact.context.snapshot){const inv=await this.datasets.inventory();if(!inv.snapshots.some(s=>s.name===impact.context.snapshot))throw Error('Created snapshot not verified');}
+   // Do not destroy the last usable recovery points when a snapshot command
+   // reports success but ZFS inventory does not contain the new snapshot.
+   const verifyCreatedSnapshot=async()=>{
+    if(!impact.context.snapshot)return;
+    const inv=await this.datasets.inventory();
+    if(!inv.snapshots.some(s=>s.name===impact.context.snapshot))
+     throw Error('Created snapshot not verified; existing recovery snapshots retained');
+   };
+   await verifyCreatedSnapshot();
+   if(impact.context.pipeline){
+    await this.pipeline(impact.context.pipeline);
+    // Recheck after a potentially long remote transfer before retention.
+    await verifyCreatedSnapshot();
+   }
+   for(const snap of impact.context.prune||[]){
+    await verifyCreatedSnapshot();
+    const result=await this.run('/usr/sbin/zfs',['destroy',snap],120000);
+    if(!result.ok)throw Error('Task completed, but snapshot retention failed; inspect the snapshot list');
+   }
    return {...impact.result,snapshot:impact.context.snapshot||null};
   }
   const restore=[];const write=async(path,value)=>{let old=null;try{old=await readFile(path);}catch(e){if(e.code!=='ENOENT')throw e;}restore.push({path,old});await atomic(path,value);};
