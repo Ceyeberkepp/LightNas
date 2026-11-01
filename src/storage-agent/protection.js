@@ -112,6 +112,8 @@ export class ProtectionAdapter{
      throw Error('Created snapshot not verified; existing recovery snapshots retained');
    };
    await verifyCreatedSnapshot();
+   let verifiedReplicaGuid=null;
+   const guid=result=>result?.ok&&/^[0-9]+$/.test(String(result.stdout||'').trim())?result.stdout.trim():null;
    if(impact.context.pipeline){
     await this.pipeline(impact.context.pipeline);
     if(impact.context.task?.kind==='replication'){
@@ -120,15 +122,23 @@ export class ProtectionAdapter{
       throw Error('Remote replica verification missing; existing recovery snapshots retained');
      const source=await this.run(verification.source.bin,verification.source.args,120000);
      const target=await this.run(verification.target.bin,verification.target.args,120000);
-     const guid=result=>result?.ok&&/^[0-9]+$/.test(String(result.stdout||'').trim())?result.stdout.trim():null;
      if(!guid(source)||guid(source)!==guid(target))
       throw Error('Remote replica snapshot GUID not verified; existing recovery snapshots retained');
+     verifiedReplicaGuid=guid(source);
     }
     // Recheck after a potentially long remote transfer before retention.
     await verifyCreatedSnapshot();
    }
    for(const snap of impact.context.prune||[]){
     await verifyCreatedSnapshot();
+    // A snapshot name can be reused after deletion; never prune based on a
+    // replacement local snapshot that was not the one replicated remotely.
+    if(verifiedReplicaGuid){
+     const source=impact.context.remoteVerification.source;
+     const current=await this.run(source.bin,source.args,120000);
+     if(guid(current)!==verifiedReplicaGuid)
+      throw Error('Replicated source snapshot changed before retention; existing recovery snapshots retained');
+    }
     const result=await this.run('/usr/sbin/zfs',['destroy',snap],120000);
     if(!result.ok)throw Error('Task completed, but snapshot retention failed; inspect the snapshot list');
    }
