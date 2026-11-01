@@ -68,6 +68,27 @@ class NetworkProfileFreshCompareTests(unittest.TestCase):
             self.assertFalse(self.same())
         self.assertTrue(swapped)
 
+    def test_file_swapped_to_fifo_after_metadata_cannot_skip_byte_comparison(self):
+        # A previously verified regular file can be replaced after lstat()
+        # and before the old path.is_file() dispatch. That old dispatch
+        # returned False for a FIFO and skipped the byte comparison entirely.
+        profile = self.expected / "uplink.nmconnection"
+        original_lstat = Path.lstat
+        swapped = False
+
+        def swap_after_lstat(path, *args, **kwargs):
+            nonlocal swapped
+            info = original_lstat(path, *args, **kwargs)
+            if str(path) == str(profile) and not swapped:
+                swapped = True
+                profile.unlink()
+                os.mkfifo(profile, 0o600)
+            return info
+
+        with mock.patch.object(Path, "lstat", autospec=True, side_effect=swap_after_lstat):
+            self.assertFalse(self.same(), "metadata-verified regular files must always be byte-checked")
+        self.assertTrue(swapped)
+
     def test_replaced_profile_symlink_is_rejected(self):
         profile = self.actual / "uplink.nmconnection"
         target = Path(self.temp.name) / "outside"
