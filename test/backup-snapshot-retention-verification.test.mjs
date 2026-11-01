@@ -7,7 +7,7 @@ const older=['tank/data@lightnas-BackupTask-1699999998','tank/data@lightnas-Back
 
 function isolatedJob({visible=[true],replication=false,prune=older,failSend=false,sourceGuid='81234567',targetGuid='81234567',sourceCheckOk=true,targetCheckOk=true}={}){
  const commands=[],events=[];
- let inventoryReads=0;
+ let inventoryReads=0,sourceGuidReads=0;
  const datasets={inventory:async()=>{
   const present=visible[Math.min(inventoryReads++,visible.length-1)];
   events.push('inventory:'+present);
@@ -19,7 +19,8 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
   run:async(bin,args)=>{
    if(args[0]==='get'&&args.includes('guid')){
     events.push('verify-source-guid');
-    return {ok:sourceCheckOk,stdout:sourceGuid+'\n'};
+    const value=Array.isArray(sourceGuid)?sourceGuid[Math.min(sourceGuidReads++,sourceGuid.length-1)]:sourceGuid;
+    return {ok:sourceCheckOk,stdout:value+'\n'};
    }
    if(bin==='/usr/bin/ssh'&&args.at(-1).startsWith('zfs get ')){
     events.push('verify-target-guid');
@@ -124,4 +125,11 @@ test('failure injection: missing replica verification plan cannot authorize rete
  delete impact.context.remoteVerification;
  await assert.rejects(adapter.apply(impact),/Remote replica verification missing/);
  assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+});
+
+test('failure injection: source snapshot replacement during retention stops further pruning',async()=>{
+ const {adapter,impact,commands}=isolatedJob({replication:true,sourceGuid:['81234567','81234567','99999999']});
+ await assert.rejects(adapter.apply(impact),/Replicated source snapshot changed before retention/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot','destroy']);
+ assert.deepEqual(commands[1].args,['destroy',older[0]]);
 });
