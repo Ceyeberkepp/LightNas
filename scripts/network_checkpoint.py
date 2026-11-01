@@ -225,7 +225,7 @@ class NetworkCheckpoint:
             left_info = left_path.lstat()
             right_info = right_path.lstat()
             if not (stat.S_ISREG(left_info.st_mode) or stat.S_ISDIR(left_info.st_mode)):
-                return False
+                return False, False
             # Capture the verified entry kind together with metadata. A
             # profile can be replaced with a FIFO after lstat; deciding
             # whether to compare bytes with a later path.is_file() check
