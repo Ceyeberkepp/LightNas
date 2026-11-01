@@ -292,9 +292,25 @@ class NetworkCheckpoint:
             }
             try:
                 self._write(record)
-            except Exception:
-                self._rollback(checkpoint)
-                shutil.rmtree(backup, ignore_errors=True)
+            except Exception as write_error:
+                # _write can fail *after* os.replace, e.g. while fsyncing the
+                # journal directory. At that point the journal may survive a
+                # reboot, so deleting its only recovery snapshot would make
+                # boot-time rollback impossible. Never discard a snapshot while
+                # its recovery journal still exists.
+                try:
+                    self._rollback(checkpoint)
+                except Exception as rollback_error:
+                    # The NM timeout may still roll back in-memory changes.
+                    # Retain the snapshot for console recovery; if a journal
+                    # was installed, boot recovery can also use it.
+                    raise RuntimeError(
+                        "Network checkpoint journal persistence failed and "
+                        "NetworkManager rollback could not be confirmed; "
+                        "inspect the host console before further changes."
+                    ) from rollback_error
+                if not self.journal.exists() and not self.journal.is_symlink():
+                    shutil.rmtree(backup, ignore_errors=True)
                 raise
             try:
                 result = execute()
