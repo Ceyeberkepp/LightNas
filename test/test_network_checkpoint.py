@@ -64,12 +64,12 @@ class CheckpointTests(unittest.TestCase):
         lockfile = self.cp.journal.parent / "network-checkpoint.lock"
         lockfile.touch(mode=0o600)
         child_code = (
-            "import fcntl, os, sys\\n"
-            "fd = os.open(sys.argv[1], os.O_RDWR)\\n"
-            "fcntl.flock(fd, fcntl.LOCK_EX)\\n"
-            "print('locked', flush=True)\\n"
-            "sys.stdin.readline()\\n"
-            "os.close(fd)\\n"
+            "import fcntl, os, sys\n"
+            "fd = os.open(sys.argv[1], os.O_RDWR)\n"
+            "fcntl.flock(fd, fcntl.LOCK_EX)\n"
+            "print('locked', flush=True)\n"
+            "sys.stdin.readline()\n"
+            "os.close(fd)\n"
         )
         child = subprocess.Popen(
             [sys.executable, "-c", child_code, str(lockfile)],
@@ -93,7 +93,7 @@ class CheckpointTests(unittest.TestCase):
             worker.start()
             self.assertFalse(done.wait(0.25), "A second process bypassed the lock")
             self.assertEqual(self.calls, [], "NetworkManager was called before lock release")
-            child.stdin.write("\\n")
+            child.stdin.write("\n")
             child.stdin.flush()
             self.assertTrue(done.wait(5), "Transaction did not resume after lock release")
             worker.join(timeout=5)
