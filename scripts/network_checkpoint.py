@@ -130,6 +130,56 @@ class NetworkCheckpoint:
                     raise RuntimeError("Unsafe NetworkManager recovery backup symlink")
             cls._fsync_directory(directory)
 
+    def _backup_root(self, create=False):
+        """Keep recovery snapshots in a private, non-symlinked directory.
+
+        Profile restore and cleanup use path-based filesystem operations. A
+        substituted backup root must never redirect either operation outside
+        the root-owned recovery state directory.
+        """
+        parent = self.journal.parent
+        if parent.is_symlink():
+            raise RuntimeError("Unsafe NetworkManager recovery state directory")
+        parent_info = parent.stat()
+        if (not stat.S_ISDIR(parent_info.st_mode) or
+            parent_info.st_uid != os.geteuid() or
+            parent_info.st_mode & 0o022):
+            raise RuntimeError("Unsafe NetworkManager recovery state directory")
+        root = parent / "network-backups"
+        if create:
+            root.mkdir(mode=0o700, exist_ok=True)
+        flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(root, flags)
+        except OSError as error:
+            raise RuntimeError("Unsafe NetworkManager recovery backup root") from error
+        try:
+            info = os.fstat(fd)
+            path_info = root.lstat()
+            if (not stat.S_ISDIR(info.st_mode) or
+                info.st_uid != os.geteuid() or info.st_mode & 0o077 or
+                (path_info.st_dev, path_info.st_ino) != (info.st_dev, info.st_ino)):
+                raise RuntimeError("Unsafe NetworkManager recovery backup root")
+        finally:
+            os.close(fd)
+        return root
+
+    def _backup_path(self, transaction_id, required=True):
+        if not re.fullmatch(r"[0-9a-f]{32}", str(transaction_id)):
+            raise RuntimeError("Invalid network recovery transaction ID")
+        path = self._backup_root() / transaction_id
+        if path.is_symlink():
+            raise RuntimeError("Unsafe NetworkManager recovery transaction directory")
+        if not path.exists():
+            if required:
+                raise RuntimeError("Missing NetworkManager recovery transaction directory")
+            return path
+        info = path.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or
+            info.st_mode & 0o077):
+            raise RuntimeError("Unsafe NetworkManager recovery transaction directory")
+        return path
+
     def _backup_profiles(self, transaction_id):
         # Protect persistent NetworkManager profiles if the manager or machine
         # restarts before its D-Bus checkpoint timeout can take effect.
@@ -138,12 +188,19 @@ class NetworkCheckpoint:
             raise RuntimeError("A local NetworkManager keyfile directory is required for safe rollback")
         if any(path.is_symlink() for path in source.rglob("*")):
             raise RuntimeError("NetworkManager configuration symlinks cannot be checkpointed safely")
-        backup = self.journal.parent / "network-backups" / transaction_id
-        backup.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        backup = self._backup_root(create=True) / transaction_id
         backup.mkdir(mode=0o700)
+        self._backup_path(transaction_id)
         try:
             shutil.copytree(source, backup / "profiles", copy_function=shutil.copy2)
             self._fsync_tree(backup / "profiles")
+            # A completed copy is not necessarily a faithful recovery image:
+            # interrupted/racing writes and silent copy corruption must be
+            # detected before creating a checkpoint or changing the network.
+            # Check bytes, entry types, ownership and permissions against the
+            # source after the copied files have been synchronized.
+            if not self._same_profile_tree(source, backup / "profiles"):
+                raise RuntimeError("NetworkManager recovery snapshot differs from live profiles")
             self._fsync_directory(backup)
             self._fsync_directory(backup.parent)
         except Exception:
@@ -152,10 +209,8 @@ class NetworkCheckpoint:
         return str(backup)
 
     def _remove_backup(self, record):
-        if not re.fullmatch(r"[0-9a-f]{32}", str(record.get("id", ""))):
-            raise RuntimeError("Invalid network recovery transaction ID")
-        backup = self.journal.parent / "network-backups" / record["id"]
-        if backup.is_dir() and not backup.is_symlink():
+        backup = self._backup_path(record.get("id"), required=False)
+        if backup.exists():
             shutil.rmtree(backup)
             self._fsync_directory(backup.parent)
 
@@ -188,7 +243,8 @@ class NetworkCheckpoint:
             # replacement with restored mtime can reuse a stale "equal"
             # result and falsely approve corrupted network credentials.
             # Compare bytes from fresh, no-follow descriptors every time.
-            flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+            flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+                     getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0))
             try:
                 left_fd = os.open(left_path, flags)
                 try:
@@ -244,9 +300,7 @@ class NetworkCheckpoint:
         return True
 
     def _restore_profiles(self, record):
-        if not re.fullmatch(r"[0-9a-f]{32}", str(record.get("id", ""))):
-            raise RuntimeError("Invalid network recovery transaction ID")
-        backup = self.journal.parent / "network-backups" / record["id"] / "profiles"
+        backup = self._backup_path(record.get("id")) / "profiles"
         dest = self.profile_root
         if backup.is_symlink() or dest.is_symlink() or not backup.is_dir():
             raise RuntimeError("Missing or unsafe NetworkManager recovery backup")

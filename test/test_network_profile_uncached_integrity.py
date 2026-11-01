@@ -7,6 +7,7 @@ import importlib.util
 import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +47,26 @@ class NetworkProfileFreshCompareTests(unittest.TestCase):
     def test_repeated_valid_comparisons_remain_accepted(self):
         self.assertTrue(self.same())
         self.assertTrue(self.same())
+
+    def test_profile_replaced_with_fifo_before_open_fails_without_blocking(self):
+        # Simulate a swap after metadata enumeration but before descriptor open.
+        # O_NONBLOCK must be present so a substituted FIFO cannot hang recovery.
+        profile = self.actual / "uplink.nmconnection"
+        original_open = os.open
+        swapped = False
+
+        def swap_before_open(path, flags, *args, **kwargs):
+            nonlocal swapped
+            if str(path) == str(profile) and not swapped:
+                self.assertTrue(flags & os.O_NONBLOCK, "FIFO swap must not block")
+                swapped = True
+                profile.unlink()
+                os.mkfifo(profile, 0o600)
+            return original_open(path, flags, *args, **kwargs)
+
+        with mock.patch.object(module.os, "open", side_effect=swap_before_open):
+            self.assertFalse(self.same())
+        self.assertTrue(swapped)
 
     def test_replaced_profile_symlink_is_rejected(self):
         profile = self.actual / "uplink.nmconnection"
