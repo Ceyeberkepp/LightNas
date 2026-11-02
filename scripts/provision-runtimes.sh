@@ -260,16 +260,24 @@ if [[ "${LIGHTNAS_SKIP_VM:-0}" == "1" ]]; then
   set_flag LIGHTNAS_VM_ENABLED 0
   set_flag LIGHTNAS_VM_ACCELERATION disabled
   report VMs 'skipped by operator (LIGHTNAS_SKIP_VM=1)'
-elif [[ "$(uname -m)" != 'x86_64' ]]; then
-  set_flag LIGHTNAS_VM_ENABLED 0
-  set_flag LIGHTNAS_VM_ACCELERATION unsupported
-  report VMs 'automatic x86 VM provisioning currently supports x86_64 LightNAS hosts only'
 else
+  # Provision only a native ISA machine emulator frontend: virt-install always
+  # uses KVM and never selects QEMU's translated/TCG guest CPU fallback.
+  host_arch="$(dpkg --print-architecture)"
+  case "$host_arch" in
+    amd64) vm_binary=qemu-system-x86_64; vm_package=qemu-system-x86 ;;
+    i386) vm_binary=qemu-system-i386; vm_package=qemu-system-x86 ;;
+    arm64) vm_binary=qemu-system-aarch64; vm_package=qemu-system-arm ;;
+    armhf|armel) vm_binary=qemu-system-arm; vm_package=qemu-system-arm ;;
+    riscv64) vm_binary=qemu-system-riscv64; vm_package=qemu-system-misc ;;
+    *) vm_binary=; vm_package= ;;
+  esac
   vm_packages_ready=1
-  for command in qemu-system-x86_64 qemu-img virsh virt-install; do
-    command -v "$command" >/dev/null 2>&1 || vm_packages_ready=0
+  [[ -n "$vm_binary" ]] || vm_packages_ready=0
+  for command in "$vm_binary" qemu-img virsh virt-install; do
+    [[ -n "$command" ]] && command -v "$command" >/dev/null 2>&1 || vm_packages_ready=0
   done
-  if [[ "$vm_packages_ready" == "1" ]] || apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients virtinst; then
+  if [[ "$vm_packages_ready" == "1" ]] || { [[ -n "$vm_package" ]] && apt-get install -y --no-install-recommends "$vm_package" qemu-utils libvirt-daemon-system libvirt-clients virtinst; }; then
     # Nested/unprivileged LXC cannot chown host device nodes such as
     # /dev/urandom. libvirt's normal DAC manager can therefore abort a VM at
     # startup with "Failed to chown device /dev/urandom: Operation not
@@ -426,8 +434,8 @@ for name in names:
 PY
     fi
 
-    acceleration=tcg
-    if [[ -c /dev/kvm ]]; then
+    acceleration=unavailable
+    if [[ -c /dev/kvm ]] && runuser -u lightnas -- test -r /dev/kvm && runuser -u lightnas -- test -w /dev/kvm; then
       acceleration=kvm
     fi
     set_flag LIGHTNAS_VM_ACCELERATION "$acceleration"
@@ -447,11 +455,12 @@ PY
       && virsh -c qemu:///system pool-info default >/dev/null 2>&1 \
       && [[ "${vm_network_ready}" == "1" ]] \
       && command -v virt-install >/dev/null 2>&1; then
-      set_flag LIGHTNAS_VM_ENABLED 1
       if [[ "$acceleration" == kvm ]]; then
-        if [[ "${lan_bridge_ready}" == "1" ]]; then report VMs "native QEMU/KVM + libvirt ready on ${lan_bridge} LAN bridge"; else report VMs 'native QEMU/KVM + libvirt ready; hardware acceleration enabled'; fi
+        set_flag LIGHTNAS_VM_ENABLED 1
+        if [[ "${lan_bridge_ready}" == "1" ]]; then report VMs "native KVM/libvirt ready on ${lan_bridge} LAN bridge"; else report VMs 'native KVM/libvirt ready; hardware acceleration enabled'; fi
       else
-        if [[ "${lan_bridge_ready}" == "1" ]]; then report VMs "QEMU/libvirt TCG ready on ${lan_bridge} LAN bridge; VMs work without VT-x/AMD-V but run slower"; else report VMs 'QEMU/libvirt software virtualization ready (TCG); VMs work without VT-x/AMD-V but run slower'; fi
+        set_flag LIGHTNAS_VM_ENABLED 0
+        report VMs 'Native VM creation unavailable: no accessible KVM acceleration on this host; software CPU emulation is disabled'
       fi
     else
       set_flag LIGHTNAS_VM_ENABLED 0
