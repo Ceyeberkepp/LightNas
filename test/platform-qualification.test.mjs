@@ -82,7 +82,7 @@ test('i386 CI runs real upload API and security regressions under native ia32 No
   assert.match(i386, /getent ahostsv4 deb\.debian\.org/, 'i386 must verify working DNS before package installation');
   assert.match(i386, /name=seccomp/, 'i386 must require seccomp');
   assert.match(i386, /name=apparmor/, 'i386 must require an active LSM');
-  assert.match(i386, /AF_ALG socket unexpectedly allowed/, 'i386 must prove dangerous AF_ALG sockets remain blocked');
+  assert.match(i386, /assertRaises\(PermissionError, socket\.socket, socket\.AF_ALG/, 'i386 must prove dangerous AF_ALG sockets remain blocked');
   assert.doesNotMatch(i386, /seccomp=unconfined|--privileged|--network host/, 'i386 must not bypass container confinement');
   assert.ok(i386.includes('process.arch') && i386.includes('ia32'),
     '32-bit CI must verify the native Node architecture');
