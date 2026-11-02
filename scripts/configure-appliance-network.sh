@@ -16,6 +16,16 @@ STATE_FILE="${STATE_DIR}/network.env"
 CHOICE_FILE="${STATE_DIR}/network-choice.env"
 mkdir -p "${STATE_DIR}"
 
+# WSL2's eth0, address, DNS and default route are provisioned by Windows.
+# It is not a physical appliance uplink and must NEVER be moved into virbr0,
+# enslaved, renamed, or managed by LightNAS's DHCP/NetworkManager bootstrap.
+# Keep this check before any NIC discovery, probes, or network writes.
+if grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null; then
+  printf 'LIGHTNAS_NETWORK_MODE=pending-uplink\nLIGHTNAS_NETWORK_ERROR=wsl-host-managed\n' >"${STATE_FILE}"
+  echo "LightNAS network: WSL2 guest detected; preserving Windows-owned networking. Guest LAN passthrough requires separate validated support."
+  exit 0
+fi
+
 preferred_uplink="${LIGHTNAS_UPLINK_PREFERENCE:-}"
 if [[ -z "${preferred_uplink}" && -r "${CHOICE_FILE}" ]]; then
   preferred_uplink="$(sed -n 's/^LIGHTNAS_UPLINK_PREFERENCE=//p' "${CHOICE_FILE}" | tail -1)"
