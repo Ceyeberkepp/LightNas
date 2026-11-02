@@ -43,11 +43,15 @@ test('transition fails closed and restores the previous management listener if H
   assert.doesNotMatch(migration, /\b(?:mkfs|wipefs|zpool create|pvcreate|parted -s)\b/);
 });
 
-test('upgrades preserve deliberately enabled HTTPS and installation guide includes migration and trust', () => {
+test('upgrades always require HTTPS and preserve guarded migration and certificate trust', () => {
   const marker = '# Managed by LightNAS local HTTPS migration; do not edit manually.';
-  assert.ok(installer.includes(marker));
+  // The one-click installer now enforces HTTPS for ALL installations and
+  // invokes the migration helper, which still owns the managed unit override.
   assert.ok(migration.includes(marker));
   assert.match(installer, /LIGHTNAS_LOCAL_TLS=1/);
+  assert.match(installer, /if ! bash "\$\{INSTALL_DIRECTORY\}\/scripts\/enable-local-https\.sh"/);
+  assert.match(installer, /--cacert \/etc\/lightnas\/tls\/nas\.crt/);
+  assert.doesNotMatch(installer, /LIGHTNAS_LOCAL_TLS="\$\{LIGHTNAS_LOCAL_TLS:-\$\(\[\[/);
   assert.match(docs, /https:\/\/<LIGHTNAS-IP>:3080/);
   assert.match(docs, /sudo bash scripts\/enable-local-https\.sh/);
   assert.match(docs, /self-signed/i);
