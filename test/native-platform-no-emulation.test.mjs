@@ -21,11 +21,11 @@ test('native VM provisioning selects a matching architecture and never claims TC
  const provision=read('scripts/provision-runtimes.sh');
  for(const [arch,packageName] of [
   ['amd64','qemu-system-x86'],['i386','qemu-system-x86'],
-  ['arm64','qemu-system-arm'],['armhf','qemu-system-arm'],
-  ['armel','qemu-system-arm'],['riscv64','qemu-system-misc']
+  ['arm64','qemu-system-arm'],['riscv64','qemu-system-misc']
  ]){
   assert.match(provision,new RegExp(arch+'\\).*vm_package='+packageName));
  }
+ assert.match(provision,/armhf\|armel\) vm_binary=qemu-system-arm; vm_package=qemu-system-arm/);
  assert.match(provision,/acceleration=unavailable/);
  assert.match(provision,/runuser -u lightnas -- test -r \/dev\/kvm/);
  assert.match(provision,/set_flag LIGHTNAS_VM_ENABLED 0/);
