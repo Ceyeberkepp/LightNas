@@ -173,7 +173,7 @@ test('network share provisioning uses the privileged host agent', async () => {
 });
 
 
-test('nested VM runtime remains usable with TCG and qemu user NAT when tun is missing', async () => {
+test('nested native VM policy requires KVM and can offer user NAT when tun is missing', async () => {
   const [runtime, dialogs] = await Promise.all([
     read('src/runtimes-next.mjs'),
     read('public/dialog-controls.js')
