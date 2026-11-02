@@ -19,7 +19,7 @@ test('LXC appliance networking follows the host LAN when direct nested LAN is av
   assert.match(network, /LIGHTNAS_NETWORK_MODE=bridge/);
   assert.match(network, /LIGHTNAS_NETWORK_MODE=pending-uplink/);
 
-  assert.match(provision, /10\\\.77\\\.0\\\.1/);
+  assert.match(provision, /legacy LXC guest configuration/);
   assert.match(provision, /192\.168\.122\.1/);
   assert.match(provision, /network_mode.*lxc-nat/);
   assert.match(provision, /lightnas0\|lxcbr0\|virbr0/);
