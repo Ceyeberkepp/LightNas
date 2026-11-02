@@ -128,6 +128,8 @@ export class ProtectionAdapter{
       throw Error('Cloud backup must execute using pinned credentials');
     }
     if(taskKind==='replication'){
+     if(!remoteVerification?.source||!remoteVerification?.target||!remoteVerification.snapshot)
+      throw Error('Remote replica verification missing; existing recovery snapshots retained');
      const profile=impact.context.task.profile;
      const stagedKey=staged.paths.get(join(this.dir,profile+'.key'));
      const stagedKnown=staged.paths.get(join(this.dir,profile+'.known_hosts'));
