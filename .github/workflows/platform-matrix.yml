@@ -78,44 +78,46 @@ jobs:
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v5
+      # Docker Engine 29.4.2 denied socketcall(2), breaking i386 glibc DNS.
+      # Docker 29.4.3 restores legitimate 32-bit sockets and enforces the
+      # AF_ALG restriction through AppArmor/SELinux (CVE-2026-31431).
+      # Pin the fixed engine rather than disabling seccomp or using host DNS.
+      - name: Install security-corrected Docker Engine for i386
+        uses: docker/setup-docker-action@v5
+        with:
+          version: v29.4.3
+      - name: Verify Docker Engine and container confinement
+        run: |
+          docker version
+          test "$(docker version --format '{{.Server.Version}}')" = "29.4.3"
+          docker info --format '{{json .SecurityOptions}}' | tee /tmp/lightnas-docker-security.json
+          grep -q 'name=seccomp' /tmp/lightnas-docker-security.json
+          grep -q 'name=apparmor' /tmp/lightnas-docker-security.json
       - name: Build native 32-bit runtime and test live API and security regressions
         run: |
-          # The hosted runner's Docker bridge DNS repeatedly failed to resolve
-          # deb.debian.org for the linux/386 container (exit 100 before tests).
-          # Use the runner's network namespace, preserving the full native
-          # ia32 source build, package signature checks and test suite.
-          getent ahostsv4 deb.debian.org >/dev/null
-          # systemd-resolved's 127.0.0.53 stub is host-local. Supply the
-          # real upstream resolver configuration, not the loopback stub.
-          test -s /run/systemd/resolve/resolv.conf
-          # Compare host, amd64 and ia32 DNS under unchanged Docker security.
-          echo "Host resolver:"; getent ahostsv4 deb.debian.org
-          echo "AMD64 resolver baseline:"
-          docker run --rm --network host --platform linux/amd64 -v /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro debian:bookworm-slim bash -ec '
-            uname -m
-            grep -E "^(Seccomp|Seccomp_filters):" /proc/self/status
-            getent ahostsv4 deb.debian.org
-          '
-          echo "i386 resolver diagnosis:"
-          docker run --rm --network host --platform linux/386 -v /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro debian:bookworm-slim bash -ec '
-            uname -m
-            dpkg --print-architecture
-            grep -E "^(Seccomp|Seccomp_filters):" /proc/self/status
-            cat /etc/resolv.conf
-            getent ahostsv4 deb.debian.org
-          '
-          docker run --rm --network host --platform linux/386 -v /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro -v "$PWD:/source:ro" debian:bookworm-slim bash -ec '
-            cat /etc/resolv.conf
+          # Use the default isolated container network and default seccomp.
+          # A failing DNS lookup is a hard error, never skipped.
+          docker run --rm --platform linux/386 -v "$PWD:/source:ro" debian:bookworm-slim bash -ec '
+            test "$(dpkg --print-architecture)" = "i386"
+            grep -q "^Seccomp:[[:space:]]*2$" /proc/self/status
             getent ahostsv4 deb.debian.org
             apt-get update
             apt-get install -y --no-install-recommends python3 curl ca-certificates
+            # The CVE-2026-31431 mitigation must still deny AF_ALG sockets.
+            python3 -c "import socket, errno; s = None
+try:
+ s = socket.socket(socket.AF_ALG, socket.SOCK_SEQPACKET, 0)
+except OSError as e:
+ assert e.errno in (errno.EPERM, errno.EACCES, errno.EAFNOSUPPORT), e
+else:
+ s.close()
+ raise AssertionError(\"AF_ALG socket unexpectedly allowed\")"
             cp -a /source /work
             cd /work
             LIGHTNAS_ARCH=i386 LIGHTNAS_RUNTIME_BUILD_JOBS=2 bash scripts/install-node-runtime.sh
             node -e "if(process.arch!==\"ia32\")process.exit(1)"
             npm install --omit=dev --no-audit --no-fund
-            # Exercise the actual ia32 runtime against the live upload route and
-            # regressions introduced by the security/upload fixes in #390-#392.
+            # Exercise the actual ia32 runtime against the live upload route.
             node --test \
               test/platform-qualification.test.mjs \
               test/kubernetes.test.mjs \
