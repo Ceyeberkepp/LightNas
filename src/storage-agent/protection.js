@@ -63,6 +63,17 @@ export class ProtectionAdapter{
     commands.push({bin:'/usr/sbin/zfs',args:['snapshot',snap]});
     // Retention only touches snapshots created for this exact task/dataset.
     const owned=inv.snapshots.filter(s=>s.name.startsWith(task.source+'@lightnas-'+task.id+'-')&&/^\d+$/.test(s.name.slice((task.source+'@lightnas-'+task.id+'-').length))).sort((a,b)=>a.created-b.created);context.prune=owned.slice(0,Math.max(0,owned.length+1-task.retention)).map(s=>s.name);
+    // Retention approval must identify each old recovery point by immutable
+    // ZFS snapshot GUID, not only by a reusable dataset@snapshot name.
+    // Fail before snapshot creation if an intended deletion cannot be pinned.
+    context.pruneGuids={};
+    for(const oldSnapshot of context.prune){
+     const identity=await this.run('/usr/sbin/zfs',['get','-H','-o','value','guid',oldSnapshot],120000);
+     const oldGuid=String(identity?.stdout||'').trim();
+     if(!identity?.ok||!/^[0-9]+$/.test(oldGuid))
+      throw Error('Retention snapshot identity unavailable; refusing to schedule deletion');
+     context.pruneGuids[oldSnapshot]=oldGuid;
+    }
     if(task.kind==='replication'){
      const profile=before.replicationProfiles.find(p=>p.name===task.profile);context.profile=profile;
      context.credentialState={key:digest(await readFile(join(this.dir,profile.name+'.key'),'utf8')),hostKey:digest(await readFile(join(this.dir,profile.name+'.known_hosts'),'utf8'))};
@@ -167,6 +178,14 @@ export class ProtectionAdapter{
      if(guid(current)!==verifiedReplicaGuid)
       throw Error('Replicated source snapshot changed before retention; existing recovery snapshots retained');
     }
+    // A different snapshot can be created under the same old name between
+    // preview and execution. Never delete that replacement by name alone.
+    const expectedOldGuid=impact.context.pruneGuids?.[snap];
+    if(typeof expectedOldGuid!=='string'||!/^[0-9]+$/.test(expectedOldGuid))
+     throw Error('Retention snapshot identity missing; refusing to delete');
+    const oldIdentity=await this.run('/usr/sbin/zfs',['get','-H','-o','value','guid',snap],120000);
+    if(guid(oldIdentity)!==expectedOldGuid)
+     throw Error('Retention snapshot identity changed since preview; refusing to delete');
     const result=await this.run('/usr/sbin/zfs',['destroy',snap],120000);
     if(!result.ok)throw Error('Task completed, but snapshot retention failed; inspect the snapshot list');
    }
