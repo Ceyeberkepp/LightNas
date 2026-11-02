@@ -85,7 +85,9 @@ jobs:
           # Use the runner's network namespace, preserving the full native
           # ia32 source build, package signature checks and test suite.
           getent ahostsv4 deb.debian.org >/dev/null
-          docker run --rm --network host --platform linux/386 -v "$PWD:/source:ro" debian:bookworm-slim bash -ec '
+          docker run --rm --network host --platform linux/386 -v /etc/resolv.conf:/etc/resolv.conf:ro -v "$PWD:/source:ro" debian:bookworm-slim bash -ec '
+            cat /etc/resolv.conf
+            getent ahostsv4 deb.debian.org
             apt-get update
             apt-get install -y --no-install-recommends python3 curl ca-certificates
             cp -a /source /work
