@@ -116,7 +116,7 @@ ensure_host_kvm() {
     AuthenticAMD) modprobe kvm_amd >/dev/null 2>&1 || true ;;
   esac
   if [[ ! -c /dev/kvm ]]; then
-    echo "WARNING: /dev/kvm is unavailable on the Proxmox host. LightNAS will use QEMU software virtualization (TCG)." >&2
+    echo "WARNING: /dev/kvm is unavailable on the Proxmox host. Native VM creation requires KVM; no CPU emulation fallback is permitted." >&2
   fi
 }
 
