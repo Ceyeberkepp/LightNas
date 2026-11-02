@@ -5,6 +5,7 @@ import {atomic} from './persistence.js';
 import {command,digest} from './storage.js';
 import {dataPath,datasetName,snapshotName} from './datasets.js';
 import {assertSeparateRsyncTrees} from './mount-identity.js';
+import {pinBackupCredentials} from './credential-snapshot.js';
 export const PROTECTION_TYPES=['protection.task.save','protection.task.delete','protection.run','cloud.remote.save','replication.profile.save'];
 const name=value=>{if(typeof value!=='string'||!/^[A-Za-z][A-Za-z0-9_-]{1,47}$/.test(value))throw Error('Use a 2–48 character task/profile name');return value;};
 const remoteFields={s3:['provider','access_key_id','secret_access_key','region','endpoint'],drive:['token','root_folder_id','service_account_credentials','client_id','client_secret'],googlephotos:['token','client_id','client_secret','read_only'],dropbox:['token'],azureblob:['account','key','sas_url'],b2:['account','key'],tardigrade:['access_grant']};
@@ -100,26 +101,22 @@ export class ProtectionAdapter{
     if(!live.ok||String(live.stdout||'').trim()!==String(expected.guid))
      throw Error('Backup source dataset identity changed; refusing to operate');
    };
-   // The approval preview pins the remote credentials and SSH host identity.
-   // A credential rotation between validation and execution must never
-   // silently redirect an off-host backup or replication to a new principal.
+   // Pin the actual subprocess input bytes, not only the preflight hashes.
+   // A rotated source credential cannot alter the private per-run copy.
    const taskKind=impact.context?.task?.kind;
-   if(taskKind==='cloud'){
-    const expected=impact.context.credentialState;
-    if(typeof expected!=='string'||!expected)throw Error('Cloud backup credential identity missing; request another preview');
-    const current=digest(await readFile(join(this.dir,'rclone.conf'),'utf8'));
-    if(current!==expected)throw Error('Cloud backup credentials changed since preview; refusing to run');
-   }
-   if(taskKind==='replication'){
-    const expected=impact.context.credentialState,profile=impact.context.task.profile;
-    // Missing preview identity must fail closed, not silently skip pinning.
-    if(!expected||typeof expected.key!=='string'||!expected.key||typeof expected.hostKey!=='string'||!expected.hostKey)
-     throw Error('Replication credential identity missing or invalid; request another preview');
-    const currentKey=digest(await readFile(join(this.dir,profile+'.key'),'utf8'));
-    const currentHostKey=digest(await readFile(join(this.dir,profile+'.known_hosts'),'utf8'));
-    if(currentKey!==expected.key||currentHostKey!==expected.hostKey)
-     throw Error('Replication SSH identity changed since preview; refusing to run');
-   }
+   const staged=await pinBackupCredentials({
+    directory:this.dir,kind:taskKind,expected:impact.context?.credentialState,
+    profile:impact.context?.task?.profile
+   });
+   try{
+    const rewrite=command=>staged?{...command,args:staged.rewrite(command.args)}:command;
+    const commands=impact.commands.map(rewrite);
+    const pipeline=impact.context.pipeline?.map(rewrite);
+    const remoteVerification=impact.context.remoteVerification?{
+     ...impact.context.remoteVerification,
+     source:rewrite(impact.context.remoteVerification.source),
+     target:rewrite(impact.context.remoteVerification.target)
+    }:null;
    await verifySourceDataset();
    if(impact.context?.task?.kind==='rsync'){
     // A bind mount can alias one directory through unrelated absolute paths.
@@ -135,7 +132,7 @@ export class ProtectionAdapter{
     if(!priorSource||!priorTarget||source.dev!==priorSource.dev||source.ino!==priorSource.ino||target.dev!==priorTarget.dev||target.ino!==priorTarget.ino)
      throw Error('Backup source or target changed since preview; refusing to run');
    }
-   for(const c of impact.commands){const result=await this.run(c.bin,c.args,1800000);if(!result.ok)throw Error('Protection command failed; inspect task destination and operation history');}
+   for(const c of commands){const result=await this.run(c.bin,c.args,1800000);if(!result.ok)throw Error('Protection command failed; inspect task destination and operation history');}
    // Do not destroy the last usable recovery points when a snapshot command
    // reports success but ZFS inventory does not contain the new snapshot.
    const verifyCreatedSnapshot=async()=>{
@@ -155,11 +152,11 @@ export class ProtectionAdapter{
     verifiedLocalGuid=guid(result);
     if(!verifiedLocalGuid)throw Error('Created snapshot GUID not verified; existing recovery snapshots retained');
    }
-   if(impact.context.pipeline){
+   if(pipeline){
     await verifySourceDataset();
-    await this.pipeline(impact.context.pipeline);
+    await this.pipeline(pipeline);
     if(impact.context.task?.kind==='replication'){
-     const verification=impact.context.remoteVerification;
+     const verification=remoteVerification;
      if(!verification?.source||!verification?.target||!verification.snapshot)
       throw Error('Remote replica verification missing; existing recovery snapshots retained');
      const source=await this.run(verification.source.bin,verification.source.args,120000);
@@ -182,7 +179,7 @@ export class ProtectionAdapter{
       throw Error('Created snapshot identity changed before retention; existing recovery snapshots retained');
     }
     if(verifiedReplicaGuid){
-     const source=impact.context.remoteVerification.source;
+     const source=remoteVerification.source;
      const current=await this.run(source.bin,source.args,120000);
      if(guid(current)!==verifiedReplicaGuid)
       throw Error('Replicated source snapshot changed before retention; existing recovery snapshots retained');
@@ -191,6 +188,7 @@ export class ProtectionAdapter{
     if(!result.ok)throw Error('Task completed, but snapshot retention failed; inspect the snapshot list');
    }
    return {...impact.result,snapshot:impact.context.snapshot||null};
+   }finally{if(staged)await staged.cleanup();}
   }
   const restore=[];const write=async(path,value)=>{let old=null;try{old=await readFile(path);}catch(e){if(e.code!=='ENOENT')throw e;}restore.push({path,old});await atomic(path,value);};
   try{
