@@ -16,7 +16,7 @@ async function fixture(t){
  const adapter=new ProtectionAdapter({
   dir,
   datasets:{inventory:async()=>({snapshots:[]})},
-  run:async(bin,args)=>{calls.push({bin,args});return {ok:true,stdout:'12345\\n'};}
+  run:async(bin,args)=>{calls.push({bin,args});return {ok:true,stdout:'12345\n'};}
  });
  return {adapter,config,calls};
 }
@@ -24,18 +24,18 @@ async function fixture(t){
 test('cloud backup rejects credentials rotated after preview without running rclone',async t=>{
  const {adapter,config,calls}=await fixture(t);
  const file=join(config,'rclone.conf');
- await writeFile(file,'[Remote]\\ntype = s3\\naccess_key_id = first\\n', {mode:0o600});
- const expected=digest('[Remote]\\ntype = s3\\naccess_key_id = first\\n');
+ await writeFile(file,'[Remote]\ntype = s3\naccess_key_id = first\n', {mode:0o600});
+ const expected=digest('[Remote]\ntype = s3\naccess_key_id = first\n');
  const impact={type:'protection.run',context:{task:{kind:'cloud'},credentialState:expected},
   commands:[{bin:'/usr/bin/rclone',args:['copy','--config',join(config,'rclone.conf'),'--','/data/source','Remote:archive']}],result:{id:'Backup'}};
- await writeFile(file,'[Remote]\\ntype = s3\\naccess_key_id = second\\n', {mode:0o600});
+ await writeFile(file,'[Remote]\ntype = s3\naccess_key_id = second\n', {mode:0o600});
  await assert.rejects(adapter.apply(impact),/Cloud backup credentials changed since preview/);
  assert.deepEqual(calls,[],'No transfer may start with a different remote identity');
 });
 
 test('cloud backup requires a pinned preview identity and allows an unchanged one',async t=>{
  const {adapter,config,calls}=await fixture(t);
- const value='[Remote]\\ntype = s3\\naccess_key_id = pinned\\n';
+ const value='[Remote]\ntype = s3\naccess_key_id = pinned\n';
  await writeFile(join(config,'rclone.conf'),value, {mode:0o600});
  const impact={type:'protection.run',context:{task:{kind:'cloud'}},
   commands:[{bin:'/usr/bin/rclone',args:['copy','--config',join(config,'rclone.conf'),'--','/data/source','Remote:archive']}],result:{id:'Backup'}};
@@ -83,8 +83,8 @@ test('failure injection: absent or incomplete replication preview identity canno
 
 test('failure injection: cloud config rotated immediately before subprocess cannot redirect approved transfer',async t=>{
  const {config,adapter}=await fixture(t);
- const original='[Remote]\\ntype = s3\\naccess_key_id = approved\\n';
- const changed='[Remote]\\ntype = s3\\naccess_key_id = attacker\\n';
+ const original='[Remote]\ntype = s3\naccess_key_id = approved\n';
+ const changed='[Remote]\ntype = s3\naccess_key_id = attacker\n';
  const source=join(config,'rclone.conf');
  await writeFile(source,original,{mode:0o600});
  let observed;
@@ -121,9 +121,9 @@ test('failure injection: replication uses pinned SSH identity even when original
     remoteChecked=true;
     const sshKey=args[args.indexOf('-i')+1];
     assert.equal(await readFile(sshKey,'utf8'),approvedKey);
-    return {ok:true,stdout:'7777\\n'};
+    return {ok:true,stdout:'7777\n'};
    }
-   return {ok:true,stdout:args.at(-1)==='tank/data'?'12345\\n':'7777\\n'};
+   return {ok:true,stdout:args.at(-1)==='tank/data'?'12345\n':'7777\n'};
   },
   pipeline:async commands=>{
    pipelineChecked=true;
@@ -149,7 +149,7 @@ test('failure injection: replication uses pinned SSH identity even when original
 
 test('symlinked or world-readable cloud credentials fail before any transfer',async t=>{
  const {adapter,config,calls}=await fixture(t);
- const file=join(config,'rclone.conf'),value='[Remote]\\ntype = s3\\n';
+ const file=join(config,'rclone.conf'),value='[Remote]\ntype = s3\n';
  await writeFile(file,value,{mode:0o600});
  const impact={type:'protection.run',context:{task:{kind:'cloud'},credentialState:digest(value)},
   commands:[{bin:'/usr/bin/rclone',args:['copy','--config',file,'--','/data','Remote:backup']}],result:{id:'Backup'}};
