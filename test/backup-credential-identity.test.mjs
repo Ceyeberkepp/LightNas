@@ -87,11 +87,13 @@ test('failure injection: cloud config rotated immediately before subprocess cann
  const changed='[Remote]\ntype = s3\naccess_key_id = attacker\n';
  const source=join(config,'rclone.conf');
  await writeFile(source,original,{mode:0o600});
- let observed;
+ let observed,stagedPath;
  adapter.run=async(bin,args)=>{
   assert.equal(bin,'/usr/bin/rclone');
   await writeFile(source,changed);
   const staged=args[args.indexOf('--config')+1];
+  stagedPath=staged;
+  assert.match(staged,/^\\/dev\\/shm\\/lightnas-credential-run-/);
   assert.notEqual(staged,source,'subprocess must not read mutable original credentials');
   observed=await readFile(staged,'utf8');
   return {ok:true,stdout:''};
@@ -102,6 +104,7 @@ test('failure injection: cloud config rotated immediately before subprocess cann
  await adapter.apply(impact);
  assert.equal(observed,original);
  assert.equal(await readFile(source,'utf8'),changed);
+ await assert.rejects(readFile(stagedPath,'utf8'),{code:'ENOENT'},'ephemeral credential copy must be removed');
  assert.deepEqual((await readdir(config)).filter(n=>n.startsWith('.credential-run-')),[],'private credentials must be removed after execution');
 });
 
@@ -112,7 +115,7 @@ test('failure injection: replication uses pinned SSH identity even when original
  await writeFile(key,approvedKey,{mode:0o600});
  await writeFile(known,approvedHost,{mode:0o600});
  const snapshot='tank/data@lightnas-Backup-123';
- let pipelineChecked=false,remoteChecked=false;
+ let pipelineChecked=false,remoteChecked=false,stagedSSHKey;
  const adapter=new ProtectionAdapter({
   dir:join(config,'..'),
   datasets:{inventory:async()=>({snapshots:[{name:snapshot}]})},
@@ -130,7 +133,9 @@ test('failure injection: replication uses pinned SSH identity even when original
    await writeFile(key,'rotated private key');
    await writeFile(known,'backup.example ssh-ed25519 rotated-host-key');
    const ssh=commands[1].args;
-   assert.equal(await readFile(ssh[ssh.indexOf('-i')+1],'utf8'),approvedKey);
+   stagedSSHKey=ssh[ssh.indexOf('-i')+1];
+   assert.match(stagedSSHKey,/^\\/dev\\/shm\\/lightnas-credential-run-/);
+   assert.equal(await readFile(stagedSSHKey,'utf8'),approvedKey);
    assert.equal(await readFile(ssh.find(a=>a.startsWith('UserKnownHostsFile=')).split('=')[1],'utf8'),approvedHost);
   }
  });
@@ -144,6 +149,7 @@ test('failure injection: replication uses pinned SSH identity even when original
  },commands:[{bin:'/usr/sbin/zfs',args:['snapshot',snapshot]}],result:{id:'Backup'}};
  await adapter.apply(impact);
  assert.ok(pipelineChecked&&remoteChecked);
+ await assert.rejects(readFile(stagedSSHKey,'utf8'),{code:'ENOENT'});
  assert.deepEqual((await readdir(config)).filter(n=>n.startsWith('.credential-run-')),[]);
 });
 
