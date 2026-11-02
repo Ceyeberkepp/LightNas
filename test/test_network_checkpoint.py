@@ -478,8 +478,12 @@ class CheckpointTests(unittest.TestCase):
         real_open = checkpoint.os.open
 
         def fail_open(path, flags, *args, **kwargs):
+            # The lock now opens the verified parent with O_NOFOLLOW.
+            # Inject only the post-rename journal fsync open, which lacks
+            # O_NOFOLLOW, not the earlier lock acquisition.
             if (Path(path) == self.cp.journal.parent and
-                    flags & checkpoint.os.O_DIRECTORY):
+                    flags & checkpoint.os.O_DIRECTORY and
+                    not flags & checkpoint.os.O_NOFOLLOW):
                 raise OSError("injected journal directory sync failure")
             return real_open(path, flags, *args, **kwargs)
 
