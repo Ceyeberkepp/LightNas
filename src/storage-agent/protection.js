@@ -117,6 +117,20 @@ export class ProtectionAdapter{
      source:rewrite(impact.context.remoteVerification.source),
      target:rewrite(impact.context.remoteVerification.target)
     }:null;
+    // Never execute a transport with the original mutable credential path.
+    if(taskKind==='cloud'){
+     const args=commands[0]?.args||[];
+     if(commands.length!==1||commands[0].bin!=='/usr/bin/rclone'||!args.includes('--config')||
+        args[args.indexOf('--config')+1]===join(this.dir,'rclone.conf'))
+      throw Error('Cloud backup must execute using pinned credentials');
+    }
+    if(taskKind==='replication'){
+     const safeSSH=c=>c?.bin==='/usr/bin/ssh'&&
+      c.args.includes('-i')&&c.args[c.args.indexOf('-i')+1]!==join(this.dir,impact.context.task.profile+'.key')&&
+      c.args.some(a=>a.startsWith('UserKnownHostsFile=')&&!a.endsWith(join(this.dir,impact.context.task.profile+'.known_hosts')));
+     if(!pipeline||pipeline.length!==2||!safeSSH(pipeline[1])||!safeSSH(remoteVerification?.target))
+      throw Error('Replication must execute using pinned SSH credentials and host trust');
+    }
    await verifySourceDataset();
    if(impact.context?.task?.kind==='rsync'){
     // A bind mount can alias one directory through unrelated absolute paths.
