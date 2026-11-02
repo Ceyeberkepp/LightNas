@@ -85,7 +85,10 @@ jobs:
           # Use the runner's network namespace, preserving the full native
           # ia32 source build, package signature checks and test suite.
           getent ahostsv4 deb.debian.org >/dev/null
-          docker run --rm --network host --platform linux/386 -v /etc/resolv.conf:/etc/resolv.conf:ro -v "$PWD:/source:ro" debian:bookworm-slim bash -ec '
+          # systemd-resolved's 127.0.0.53 stub is host-local. Supply the
+          # real upstream resolver configuration, not the loopback stub.
+          test -s /run/systemd/resolve/resolv.conf
+          docker run --rm --network host --platform linux/386 -v /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro -v "$PWD:/source:ro" debian:bookworm-slim bash -ec '
             cat /etc/resolv.conf
             getent ahostsv4 deb.debian.org
             apt-get update
