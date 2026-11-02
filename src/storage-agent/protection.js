@@ -70,7 +70,7 @@ export class ProtectionAdapter{
      // snapshot exists. Compare the immutable ZFS snapshot GUID at both ends.
      const remoteDataset=datasetName(task.target+'/lightnas-'+task.id+'-'+input.runStamp);
      const remoteSnapshot=snapshotName(remoteDataset+'@'+snap.split('@')[1]);
-     const sshArgs=['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','UserKnownHostsFile='+join(this.dir,profile.name+'.known_hosts'),'-i',join(this.dir,profile.name+'.key'),'-p',String(profile.port),profile.user+'@'+profile.host];
+     const sshArgs=['-F','/dev/null','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','GlobalKnownHostsFile=/dev/null','-o','VerifyHostKeyDNS=no','-o','UpdateHostKeys=no','-o','IdentitiesOnly=yes','-o','UserKnownHostsFile='+join(this.dir,profile.name+'.known_hosts'),'-i',join(this.dir,profile.name+'.key'),'-p',String(profile.port),profile.user+'@'+profile.host];
      context.pipeline=[{bin:'/usr/sbin/zfs',args:['send',snap]},{bin:'/usr/bin/ssh',args:[...sshArgs,'zfs receive -u '+remoteDataset]}];
      context.remoteVerification={
       source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',snap]},
@@ -100,6 +100,25 @@ export class ProtectionAdapter{
     if(!live.ok||String(live.stdout||'').trim()!==String(expected.guid))
      throw Error('Backup source dataset identity changed; refusing to operate');
    };
+   // The approval preview pins the remote credentials and SSH host identity.
+   // A credential rotation between validation and execution must never
+   // silently redirect an off-host backup or replication to a new principal.
+   const taskKind=impact.context?.task?.kind;
+   if(taskKind==='cloud'){
+    const expected=impact.context.credentialState;
+    if(typeof expected!=='string'||!expected)throw Error('Cloud backup credential identity missing; request another preview');
+    const current=digest(await readFile(join(this.dir,'rclone.conf'),'utf8'));
+    if(current!==expected)throw Error('Cloud backup credentials changed since preview; refusing to run');
+   }
+   if(taskKind==='replication'&&impact.context.credentialState){
+    const expected=impact.context.credentialState,profile=impact.context.task.profile;
+    if(typeof expected.key!=='string'||typeof expected.hostKey!=='string')
+     throw Error('Replication credential identity invalid; request another preview');
+    const currentKey=digest(await readFile(join(this.dir,profile+'.key'),'utf8'));
+    const currentHostKey=digest(await readFile(join(this.dir,profile+'.known_hosts'),'utf8'));
+    if(currentKey!==expected.key||currentHostKey!==expected.hostKey)
+     throw Error('Replication SSH identity changed since preview; refusing to run');
+   }
    await verifySourceDataset();
    if(impact.context?.task?.kind==='rsync'){
     // A bind mount can alias one directory through unrelated absolute paths.
