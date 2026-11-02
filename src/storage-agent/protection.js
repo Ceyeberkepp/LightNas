@@ -21,10 +21,36 @@ export function nextRun(schedule,now=new Date()){
 const TRANSPORT_ENV=Object.freeze({PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C'});
 export async function replicate(commands,timeout=1800000){
  return new Promise((resolve,reject)=>{
-  const sender=spawn(commands[0].bin,commands[0].args,{stdio:['ignore','pipe','pipe'],env:TRANSPORT_ENV}),receiver=spawn(commands[1].bin,commands[1].args,{stdio:['pipe','ignore','pipe'],env:TRANSPORT_ENV});let completed=0,failed=false;const codes=[];
-  const fail=()=>{if(failed)return;failed=true;clearTimeout(timer);sender.kill('SIGKILL');receiver.kill('SIGKILL');reject(Error('Replication failed; inspect source snapshot and destination before retrying'));};
-  const timer=setTimeout(fail,timeout);sender.stdout.on('error',fail);receiver.stdin.on('error',fail);sender.stdout.pipe(receiver.stdin);sender.stderr.resume();receiver.stderr.resume();
-  for(const [index,child] of [sender,receiver].entries()){child.on('error',fail);child.on('close',code=>{codes[index]=code;if(++completed===2){clearTimeout(timer);if(codes.some(c=>c!==0))fail();else if(!failed)resolve();}});}
+  const sender=spawn(commands[0].bin,commands[0].args,{stdio:['ignore','pipe','pipe'],env:TRANSPORT_ENV});
+  const receiver=spawn(commands[1].bin,commands[1].args,{stdio:['pipe','ignore','pipe'],env:TRANSPORT_ENV});
+  let completed=0,failed=false,stdinFinished=false;
+  // A failed ZFS sender or SSH receiver is definitive. Do not wait for the
+  // other process to exit or for the 30-minute timeout while it remains alive.
+  const fail=()=>{
+   if(failed)return;
+   failed=true;
+   clearTimeout(timer);
+   sender.stdout.unpipe(receiver.stdin);
+   sender.kill('SIGKILL');
+   receiver.kill('SIGKILL');
+   reject(Error('Replication failed; inspect source snapshot and destination before retrying'));
+  };
+  const timer=setTimeout(fail,timeout);
+  sender.stdout.on('error',fail);
+  receiver.stdin.on('error',fail);
+  // A zero exit from the receiver is insufficient if it closed before the
+  // complete sender stream was delivered to its stdin.
+  receiver.stdin.once('finish',()=>{stdinFinished=true;});
+  sender.stdout.pipe(receiver.stdin);
+  sender.stderr.resume();receiver.stderr.resume();
+  for(const [index,child] of [sender,receiver].entries()){
+   child.on('error',fail);
+   child.on('close',(code,signal)=>{
+    completed++;
+    if(code!==0||signal||(index===1&&!stdinFinished)){fail();return;}
+    if(completed===2&&!failed){clearTimeout(timer);resolve();}
+   });
+  }
  });
 }
 export class ProtectionAdapter{
