@@ -125,8 +125,16 @@ export class ProtectionAdapter{
      throw Error('Created snapshot not verified; existing recovery snapshots retained');
    };
    await verifyCreatedSnapshot();
-   let verifiedReplicaGuid=null;
+   let verifiedReplicaGuid=null,verifiedLocalGuid=null;
    const guid=result=>result?.ok&&/^[0-9]+$/.test(String(result.stdout||'').trim())?result.stdout.trim():null;
+   // Snapshot-only retention also needs immutable identity proof: the name
+   // can be reused after an external destroy/recreate between inventory reads.
+   // Fail closed before any prune if the new recovery point cannot be identified.
+   if(impact.context.snapshot&&!impact.context.pipeline&&(impact.context.prune||[]).length){
+    const result=await this.run('/usr/sbin/zfs',['get','-H','-o','value','guid',impact.context.snapshot],120000);
+    verifiedLocalGuid=guid(result);
+    if(!verifiedLocalGuid)throw Error('Created snapshot GUID not verified; existing recovery snapshots retained');
+   }
    if(impact.context.pipeline){
     await verifySourceDataset();
     await this.pipeline(impact.context.pipeline);
@@ -148,6 +156,11 @@ export class ProtectionAdapter{
     await verifyCreatedSnapshot();
     // A snapshot name can be reused after deletion; never prune based on a
     // replacement local snapshot that was not the one replicated remotely.
+    if(verifiedLocalGuid){
+     const current=await this.run('/usr/sbin/zfs',['get','-H','-o','value','guid',impact.context.snapshot],120000);
+     if(guid(current)!==verifiedLocalGuid)
+      throw Error('Created snapshot identity changed before retention; existing recovery snapshots retained');
+    }
     if(verifiedReplicaGuid){
      const source=impact.context.remoteVerification.source;
      const current=await this.run(source.bin,source.args,120000);

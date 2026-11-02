@@ -143,6 +143,40 @@ test('failure injection: snapshot loss between retention deletions stops remaini
 });
 
 
+
+test('local retention requires a stable created snapshot GUID before deleting recovery points',async()=>{
+ const {adapter,impact,commands,events}=isolatedJob();
+ await adapter.apply(impact);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot','destroy','destroy']);
+ assert.equal(events.filter(e=>e==='verify-source-guid').length,3);
+ assert.ok(events.indexOf('verify-source-guid')<events.indexOf('destroy:'+older[0]));
+});
+
+test('failure injection: snapshot GUID lookup failure prevents all local retention',async()=>{
+ const {adapter,impact,commands}=isolatedJob({sourceCheckOk:false});
+ await assert.rejects(adapter.apply(impact),/Created snapshot GUID not verified/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+});
+
+test('failure injection: replaced snapshot identity before first prune retains every older snapshot',async()=>{
+ const {adapter,impact,commands}=isolatedJob({sourceGuid:['81234567','99999999']});
+ await assert.rejects(adapter.apply(impact),/Created snapshot identity changed before retention/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+});
+
+test('failure injection: snapshot identity replacement between local retention deletes stops remaining pruning',async()=>{
+ const {adapter,impact,commands}=isolatedJob({sourceGuid:['81234567','81234567','99999999']});
+ await assert.rejects(adapter.apply(impact),/Created snapshot identity changed before retention/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot','destroy']);
+ assert.deepEqual(commands[1].args,['destroy',older[0]]);
+});
+
+test('failure injection: malformed created snapshot GUID cannot authorize local retention',async()=>{
+ const {adapter,impact,commands}=isolatedJob({sourceGuid:'81234567\\nUnexpected output'});
+ await assert.rejects(adapter.apply(impact),/Created snapshot GUID not verified/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+});
+
 test('verified remote replica GUID permits retention only after the receive and both GUID checks',async()=>{
  const {adapter,impact,commands,events}=isolatedJob({replication:true});
  await adapter.apply(impact);
