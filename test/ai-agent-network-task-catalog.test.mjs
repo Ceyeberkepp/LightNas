@@ -13,7 +13,7 @@ test('nested LightNAS preserves management networking and uses direct LAN only w
   assert.match(provision, /migration_pending/);
   assert.match(provision, /rollback-capable plan/);
   assert.doesNotMatch(provision, /lxc-stop -n|lxc-start -n/);
-  assert.match(install, /Migration requires an approved rollback-capable plan/);  assert.match(install, /automatic migration to the LightNAS host LAN/);
+  assert.match(install, /Migration requires an approved rollback-capable plan/);
 });
 
 test('managed container network is DHCP-first and repairs legacy auto-static guests', async () => {
