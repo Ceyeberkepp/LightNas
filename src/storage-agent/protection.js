@@ -117,17 +117,22 @@ export class ProtectionAdapter{
      source:rewrite(impact.context.remoteVerification.source),
      target:rewrite(impact.context.remoteVerification.target)
     }:null;
-    // Never execute a transport with the original mutable credential path.
+    // A validated preview cannot authorize a command that bypasses the
+    // exact, private credential snapshot opened by the subprocess.
     if(taskKind==='cloud'){
      const args=commands[0]?.args||[];
+     const stagedConfig=staged.paths.get(join(this.dir,'rclone.conf'));
      if(commands.length!==1||commands[0].bin!=='/usr/bin/rclone'||!args.includes('--config')||
-        args[args.indexOf('--config')+1]===join(this.dir,'rclone.conf'))
+        args[args.indexOf('--config')+1]!==stagedConfig)
       throw Error('Cloud backup must execute using pinned credentials');
     }
     if(taskKind==='replication'){
+     const profile=impact.context.task.profile;
+     const stagedKey=staged.paths.get(join(this.dir,profile+'.key'));
+     const stagedKnown=staged.paths.get(join(this.dir,profile+'.known_hosts'));
      const safeSSH=c=>c?.bin==='/usr/bin/ssh'&&
-      c.args.includes('-i')&&c.args[c.args.indexOf('-i')+1]!==join(this.dir,impact.context.task.profile+'.key')&&
-      c.args.some(a=>a.startsWith('UserKnownHostsFile=')&&!a.endsWith(join(this.dir,impact.context.task.profile+'.known_hosts')));
+      c.args.includes('-i')&&c.args[c.args.indexOf('-i')+1]===stagedKey&&
+      c.args.includes('UserKnownHostsFile='+stagedKnown);
      if(!pipeline||pipeline.length!==2||!safeSSH(pipeline[1])||!safeSSH(remoteVerification?.target))
       throw Error('Replication must execute using pinned SSH credentials and host trust');
     }
