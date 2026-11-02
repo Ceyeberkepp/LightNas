@@ -242,7 +242,11 @@ test('replication plan pins SSH host identity and verifies the exact received ZF
   assert.equal(impact.context.remoteVerification.snapshot,'backup/data/lightnas-BackupTask-1700000000@lightnas-BackupTask-1700000000');
   assert.deepEqual(impact.context.remoteVerification.source.args,['get','-H','-o','value','guid',created]);
   const ssh=impact.context.remoteVerification.target.args;
+  assert.deepEqual(ssh.slice(0,2),['-F','/dev/null'],'Ignore ambient user/system SSH config');
   assert.ok(ssh.includes('StrictHostKeyChecking=yes'));
+  assert.ok(ssh.includes('GlobalKnownHostsFile=/dev/null'),'Never trust ambient global host keys');
+  assert.ok(ssh.includes('VerifyHostKeyDNS=no'),'DNS SSHFP must not override the pinned host key');
+  assert.ok(ssh.includes('UpdateHostKeys=no'),'Do not silently expand host key trust');
   assert.ok(ssh.includes('UserKnownHostsFile='+join(config,'RemoteBackup.known_hosts')));
   assert.equal(ssh.at(-1),'zfs get -H -o value guid '+impact.context.remoteVerification.snapshot);
   assert.equal(impact.context.pipeline[1].args.at(-1),'zfs receive -u backup/data/lightnas-BackupTask-1700000000');
