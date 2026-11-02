@@ -1,5 +1,5 @@
 import {constants} from 'node:fs';
-import {lstat,mkdtemp,open,readFile,rm,writeFile} from 'node:fs/promises';
+import {lstat,mkdtemp,open,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {digest} from './storage.js';
 
@@ -52,6 +52,6 @@ export async function pinBackupCredentials({directory,kind,expected,profile}){
    }
    return arg;
   });
-  return {rewrite,cleanup:()=>rm(staging,{recursive:true,force:true})};
+  return {rewrite,paths,cleanup:()=>rm(staging,{recursive:true,force:true})};
  }catch(error){await rm(staging,{recursive:true,force:true});throw error;}
 }
