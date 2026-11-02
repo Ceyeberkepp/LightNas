@@ -93,7 +93,7 @@ test('failure injection: cloud config rotated immediately before subprocess cann
   await writeFile(source,changed);
   const staged=args[args.indexOf('--config')+1];
   stagedPath=staged;
-  assert.match(staged,/^\\/dev\\/shm\\/lightnas-credential-run-/);
+  assert.ok(staged.startsWith('/dev/shm/lightnas-credential-run-'),'cloud credentials must use tmpfs');
   assert.notEqual(staged,source,'subprocess must not read mutable original credentials');
   observed=await readFile(staged,'utf8');
   return {ok:true,stdout:''};
@@ -134,7 +134,7 @@ test('failure injection: replication uses pinned SSH identity even when original
    await writeFile(known,'backup.example ssh-ed25519 rotated-host-key');
    const ssh=commands[1].args;
    stagedSSHKey=ssh[ssh.indexOf('-i')+1];
-   assert.match(stagedSSHKey,/^\\/dev\\/shm\\/lightnas-credential-run-/);
+   assert.ok(stagedSSHKey.startsWith('/dev/shm/lightnas-credential-run-'),'SSH credentials must use tmpfs');
    assert.equal(await readFile(stagedSSHKey,'utf8'),approvedKey);
    assert.equal(await readFile(ssh.find(a=>a.startsWith('UserKnownHostsFile=')).split('=')[1],'utf8'),approvedHost);
   }
