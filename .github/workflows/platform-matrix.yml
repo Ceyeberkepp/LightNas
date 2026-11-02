@@ -104,14 +104,7 @@ jobs:
             apt-get update
             apt-get install -y --no-install-recommends python3 curl ca-certificates
             # The CVE-2026-31431 mitigation must still deny AF_ALG sockets.
-            python3 -c "import socket, errno; s = None
-try:
- s = socket.socket(socket.AF_ALG, socket.SOCK_SEQPACKET, 0)
-except OSError as e:
- assert e.errno in (errno.EPERM, errno.EACCES, errno.EAFNOSUPPORT), e
-else:
- s.close()
- raise AssertionError(\"AF_ALG socket unexpectedly allowed\")"
+            python3 -c "import socket, unittest; unittest.TestCase().assertRaises(PermissionError, socket.socket, socket.AF_ALG, socket.SOCK_SEQPACKET, 0)"
             cp -a /source /work
             cd /work
             LIGHTNAS_ARCH=i386 LIGHTNAS_RUNTIME_BUILD_JOBS=2 bash scripts/install-node-runtime.sh
