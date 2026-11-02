@@ -5,6 +5,22 @@ import { arch, platform } from 'node:process';
 const MAX_MANIFEST_BYTES = 65536;
 const VALID_TIERS = new Set(['community', 'premium', 'enterprise']);
 const VALID_CHANNELS = new Set(['stable', 'beta']);
+const RELEASE_VERSION_PATTERN = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+
+/**
+ * Never compare signed release versions using rounded or infinite JS numbers.
+ * Precision loss can make distinct versions compare equal or out of order.
+ */
+export function parseReleaseVersion(value) {
+  if (typeof value !== 'string' || !RELEASE_VERSION_PATTERN.test(value)) {
+    throw new Error('Invalid release version.');
+  }
+  const parts = value.split('.').map(Number);
+  if (!parts.every(Number.isSafeInteger)) {
+    throw new Error('Release version component exceeds safe integer range.');
+  }
+  return parts;
+}
 
 function configError(message) {
   return { updateAvailable: false, updateEnabled: false, checkStatus: 'not_configured', message };
@@ -73,11 +89,10 @@ export async function checkSignedUpdates({ currentVersion, edition = 'community'
     const p = envelope.payload;
     if (p.product !== 'lightnas-nas' || p.tier !== tier || p.channel !== selectedChannel || p.arch !== arch || p.platform !== platform) throw new Error('Manifest does not match device or edition.');
     if (!Number.isFinite(Date.parse(p.expiresAt)) || Date.parse(p.expiresAt) <= Date.now()) throw new Error('Update metadata expired.');
-    if (!/^\d+\.\d+\.\d+$/.test(String(p.version || ''))) throw new Error('Invalid release version.');
-    const comparable = v => v.split('.').map(Number);
-    const a = comparable(p.version);
-    const b = /^\d+\.\d+\.\d+$/.test(String(currentVersion)) ? comparable(String(currentVersion)) : null;
-    if (!b) throw new Error('Installed version cannot be compared safely.');
+    const a = parseReleaseVersion(p.version);
+    let b;
+    try { b = parseReleaseVersion(currentVersion); }
+    catch { throw new Error('Installed version cannot be compared safely.'); }
     const newer = a.findIndex((v, i) => v !== b[i]);
     const available = newer >= 0 && a[newer] > b[newer];
     return {
