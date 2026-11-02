@@ -26,7 +26,9 @@ export function safeJournalSnapshot(value){
 
 export class Operations extends EventEmitter {
  constructor({dir,adapter,discover,volumes=new VolumeAdapter(),resources=new ResourceAdapter(),features=new FeatureAdapter({dir}),allowInitialization=false}){super();this.dir=dir;this.adapter=adapter;this.discover=discover;this.volumes=volumes;this.resources=resources;this.features=features;this.allowInitialization=allowInitialization;this.jobs=new Map();this.busy=false;}
- async init(){await mkdir(this.dir,{recursive:true,mode:0o700});try{const jobs=JSON.parse(await readFile(this.dir+'/jobs.json','utf8'));for(const j of jobs){
+ async init(){await mkdir(this.dir,{recursive:true,mode:0o700});try{const jobs=JSON.parse(await readFile(this.dir+'/jobs.json','utf8'));for(const saved of jobs){
+  // Also scrub legacy job journals that were written by older versions.
+  const j=safeJournalSnapshot(saved);
   if(j.status==='preview'){
    // A restored preview must not authorize an operation with in-memory
    // secrets that were deliberately excluded from the durable journal.
