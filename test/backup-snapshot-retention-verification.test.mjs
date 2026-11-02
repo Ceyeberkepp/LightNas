@@ -4,7 +4,7 @@ import {ProtectionAdapter} from '../src/storage-agent/protection.js';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync,chmodSync} from 'node:fs';
 import {digest} from '../src/storage-agent/storage.js';
 
 const created='tank/data@lightnas-BackupTask-1700000000';
@@ -12,9 +12,10 @@ const older=['tank/data@lightnas-BackupTask-1699999998','tank/data@lightnas-Back
 const FIXTURE_DIR=mkdtempSync(join(tmpdir(),'lightnas-retention-replication-'));
 const FIXTURE_KEY='isolated replication private key fixture';
 const FIXTURE_HOST_KEY='backup.example ssh-ed25519 isolated pinned host key fixture';
-mkdirSync(join(FIXTURE_DIR,'protection'));
-writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.key'),FIXTURE_KEY);
-writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),FIXTURE_HOST_KEY);
+mkdirSync(join(FIXTURE_DIR,'protection'),{mode:0o700});
+chmodSync(join(FIXTURE_DIR,'protection'),0o700);
+writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.key'),FIXTURE_KEY,{mode:0o600});
+writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),FIXTURE_HOST_KEY,{mode:0o600});
 after(()=>rmSync(FIXTURE_DIR,{recursive:true,force:true}));
 
 function isolatedJob({visible=[true],replication=false,prune=older,failSend=false,sourceGuid='81234567',targetGuid='81234567',sourceCheckOk=true,targetCheckOk=true,datasetGuid='12345',datasetCheckOk=true}={}){
