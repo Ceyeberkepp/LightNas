@@ -65,26 +65,49 @@ class NetworkCheckpoint:
                 return
             parent = self.journal.parent
             parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            if parent.is_symlink():
-                raise RuntimeError("Unsafe network transaction lock directory")
-            lockfile = parent / "network-checkpoint.lock"
-            if lockfile.is_symlink():
-                raise RuntimeError("Unsafe network transaction lock file")
-            flags = (os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
-                     | getattr(os, "O_CLOEXEC", 0))
-            fd = os.open(lockfile, flags, 0o600)
+            # Locking a world-writable or substituted directory cannot protect
+            # the recovery journal: another process could swap the lock inode
+            # and run a second network transaction while the first is active.
+            # Open the directory without following symlinks, verify its owner
+            # and permissions, then create/open the lock relative to that fd.
+            directory_flags = (os.O_RDONLY | os.O_DIRECTORY |
+                               getattr(os, "O_NOFOLLOW", 0) |
+                               getattr(os, "O_CLOEXEC", 0))
             try:
-                info = os.fstat(fd)
-                if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-                    raise RuntimeError("Unsafe network transaction lock file")
-                fcntl.flock(fd, fcntl.LOCK_EX)
-                self._process_lock_depth = 1
+                parent_fd = os.open(parent, directory_flags)
+            except OSError as error:
+                raise RuntimeError("Unsafe network transaction lock directory") from error
+            try:
+                directory_info = os.fstat(parent_fd)
+                path_info = parent.lstat()
+                if (not stat.S_ISDIR(directory_info.st_mode) or
+                    directory_info.st_uid != os.geteuid() or
+                    directory_info.st_mode & 0o022 or
+                    (directory_info.st_dev, directory_info.st_ino) !=
+                    (path_info.st_dev, path_info.st_ino)):
+                    raise RuntimeError("Unsafe network transaction lock directory")
+                flags = (os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+                         | getattr(os, "O_CLOEXEC", 0))
                 try:
-                    yield
+                    fd = os.open("network-checkpoint.lock", flags, 0o600,
+                                 dir_fd=parent_fd)
+                except OSError as error:
+                    raise RuntimeError("Unsafe network transaction lock file") from error
+                try:
+                    info = os.fstat(fd)
+                    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or
+                        info.st_uid != os.geteuid() or info.st_mode & 0o077):
+                        raise RuntimeError("Unsafe network transaction lock file")
+                    fcntl.flock(fd, fcntl.LOCK_EX)
+                    self._process_lock_depth = 1
+                    try:
+                        yield
+                    finally:
+                        self._process_lock_depth = 0
                 finally:
-                    self._process_lock_depth = 0
+                    os.close(fd)
             finally:
-                os.close(fd)
+                os.close(parent_fd)
 
     @staticmethod
     def _busctl(method, signature="", *args):
