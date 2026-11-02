@@ -38,8 +38,12 @@ def transaction_locked(method):
     return guarded
 
 
+DEFAULT_JOURNAL = Path("/var/lib/lightnas-network/network-pending.json")
+LEGACY_JOURNAL = Path("/var/lib/lightnas/network-pending.json")
+
+
 class NetworkCheckpoint:
-    def __init__(self, journal=Path("/var/lib/lightnas/network-pending.json"),
+    def __init__(self, journal=DEFAULT_JOURNAL,
                  call=None, now=None, timeout=120,
                  profile_root=Path("/etc/NetworkManager/system-connections")):
         self.journal = Path(journal)
@@ -63,6 +67,15 @@ class NetworkCheckpoint:
                 finally:
                     self._process_lock_depth -= 1
                 return
+            # Old releases used the lightnas-owned application data root.
+            # Never silently skip an unconfirmed rollback from that location.
+            # It cannot safely be used for a root-authenticated lock, so fail
+            # closed until an operator recovers the legacy journal at console.
+            if self.journal == DEFAULT_JOURNAL and (
+                    LEGACY_JOURNAL.exists() or LEGACY_JOURNAL.is_symlink()):
+                raise RuntimeError(
+                    "Unconfirmed legacy network checkpoint requires console recovery"
+                )
             parent = self.journal.parent
             parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             # Locking a world-writable or substituted directory cannot protect
