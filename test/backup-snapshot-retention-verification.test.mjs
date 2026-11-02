@@ -268,3 +268,56 @@ test('replication plan pins SSH host identity and verifies the exact received ZF
   assert.equal(impact.context.pipeline[1].args.at(-1),'zfs receive -u backup/data/lightnas-BackupTask-1700000000');
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+
+test('retention preview pins old immutable ZFS GUIDs before any snapshot creation',async()=>{
+ const commands=[];
+ const datasets={inventory:async()=>({
+  available:true,datasets:[{name:'tank/data',guid:'12345'}],
+  snapshots:older.map((name,i)=>({name,created:i+1}))
+ })};
+ const adapter=new ProtectionAdapter({dir:'/unused-retention-preview-test',datasets,run:async(bin,args)=>{
+  commands.push({bin,args});
+  if(bin==='/usr/sbin/zfs'&&args[0]==='get'&&args.includes('guid')&&older.includes(args.at(-1)))
+   return {ok:true,stdout:(older.indexOf(args.at(-1))+7000)+'\n'};
+  throw Error('Unexpected operation during retention preview');
+ }});
+ adapter.registry=async()=>({tasks:[{id:'BackupTask',kind:'snapshot',source:'tank/data',target:'',retention:1,mode:'copy',direction:'push',schedule:{frequency:'on-demand'},enabled:true}],cloudRemotes:[],replicationProfiles:[]});
+ const impact=await adapter.plan({type:'protection.run',id:'BackupTask',runStamp:1700000000});
+ assert.deepEqual(impact.context.prune,older);
+ assert.deepEqual(impact.context.pruneGuids,Object.fromEntries(older.map((snap,i)=>[snap,String(7000+i)])));
+ assert.deepEqual(commands.map(command=>command.args[0]),['get','get']);
+});
+
+test('retention refuses to plan deletion if an old GUID is unreadable',async()=>{
+ const datasets={inventory:async()=>({available:true,datasets:[{name:'tank/data',guid:'12345'}],snapshots:older.map((name,i)=>({name,created:i+1}))})};
+ const adapter=new ProtectionAdapter({dir:'/unused-retention-preview-test',datasets,run:async()=>({ok:true,stdout:'-\n'})});
+ adapter.registry=async()=>({tasks:[{id:'BackupTask',kind:'snapshot',source:'tank/data',target:'',retention:1,mode:'copy',direction:'push',schedule:{frequency:'on-demand'},enabled:true}],cloudRemotes:[],replicationProfiles:[]});
+ await assert.rejects(adapter.plan({type:'protection.run',id:'BackupTask',runStamp:1700000000}),/Retention snapshot identity unavailable/);
+});
+
+test('missing previewed old snapshot identity blocks all destructive retention',async()=>{
+ const {adapter,impact,commands}=isolatedJob();
+ delete impact.context.pruneGuids;
+ await assert.rejects(adapter.apply(impact),/Retention snapshot identity missing/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+});
+
+test('replacement old snapshot before first retention is not destroyed',async()=>{
+ const {adapter,impact,commands}=isolatedJob({pruneGuid:'24681'});
+ await assert.rejects(adapter.apply(impact),/Retention snapshot identity changed since preview/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+});
+
+test('replacement of a second old snapshot stops any further deletion',async()=>{
+ const {adapter,impact,commands}=isolatedJob({pruneGuid:['24680','24681']});
+ await assert.rejects(adapter.apply(impact),/Retention snapshot identity changed since preview/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot','destroy']);
+ assert.deepEqual(commands[1].args,['destroy',older[0]]);
+});
+
+test('unreadable old snapshot GUID preserves old recovery points',async()=>{
+ const {adapter,impact,commands}=isolatedJob({pruneGuidOk:false});
+ await assert.rejects(adapter.apply(impact),/Retention snapshot identity changed since preview/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+});
