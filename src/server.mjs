@@ -3142,7 +3142,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (Boolean(certPath) !== Boolean(keyPath)) throw new Error('Both TLS certificate and private key must be configured.');
   const tls = certPath ? { cert: await readFile(certPath), key: await readFile(keyPath), minVersion: 'TLSv1.2' } : null;
   await recoverResumableImports();
-  createServer({ tls }).listen(port, host, () => {
+  const controlPlane = createServer({ tls });
+  controlPlane.once('error', (error) => {
+    if (error?.code === 'EADDRINUSE') {
+      console.error(`LightNAS cannot start: management port ${port} is already in use on ${host}. Inspect the owner with: ss -ltnp '( sport = :${port} )'`);
+    } else {
+      console.error('LightNAS failed to bind the management interface:', error);
+    }
+    process.exitCode = 1;
+  });
+  controlPlane.listen(port, host, () => {
     console.log(`LightNAS is running at ${tls ? 'https' : 'http'}://${host}:${port}`);
     // Prime the community App Store cache shortly after boot. Fresh installs
     // often reach the UI before WAN/DNS is fully ready, so retry quietly in
