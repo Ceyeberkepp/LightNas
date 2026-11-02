@@ -115,6 +115,8 @@ class ManagementPortGuardTests(unittest.TestCase):
         active = 'systemctl is-active --quiet "' + '$' + '{SERVICE_NAME}.service"'
         self.assertIn(active, installer)
         self.assertIn("setupRequired", installer)
+        self.assertIn("-s /etc/lightnas/tls/nas.crt", installer)
+        self.assertIn("-s /etc/lightnas/tls/nas.key", installer)
 
 
 if __name__ == "__main__":
