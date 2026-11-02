@@ -221,6 +221,17 @@ fi
 for group in libvirt kvm; do
   getent group "${group}" >/dev/null 2>&1 && usermod -aG "${group}" lightnas || true
 done
+# The application data root is writable by the unprivileged service account.
+# NetworkManager rollback journals and backups cannot safely live there: the
+# checkpoint implementation requires a separate root-owned private directory.
+# Do not silently ignore a previously pending journal from an older installer.
+legacy_checkpoint=/var/lib/lightnas/network-pending.json
+if [[ -e "${legacy_checkpoint}" || -L "${legacy_checkpoint}" ]]; then
+  echo "ERROR: Unconfirmed legacy network checkpoint at ${legacy_checkpoint}." >&2
+  echo "Stop: recover and verify the saved NetworkManager profiles from the host console before upgrading." >&2
+  exit 1
+fi
+install -d -o root -g root -m 0700 /var/lib/lightnas-network
 install -d -o lightnas -g lightnas -m 0700 "${DATA_DIRECTORY}"
 install -d -o lightnas -g lightnas -m 0700 "${DATA_DIRECTORY}/files"
 install -d -o lightnas -g lightnas -m 0770 "${DATA_DIRECTORY}/storage" "${DATA_DIRECTORY}/storage/local"
@@ -408,7 +419,7 @@ Description=Recover unconfirmed LightNAS network configuration
 DefaultDependencies=no
 After=local-fs.target
 Before=NetworkManager.service lightnas-host-agent.service
-RequiresMountsFor=/var/lib/lightnas
+RequiresMountsFor=/var/lib/lightnas-network
 
 [Service]
 Type=oneshot
