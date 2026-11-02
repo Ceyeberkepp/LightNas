@@ -378,8 +378,7 @@ done
 
 RUNTIME_PROVISION_NEEDED=0
 if [[ -r /etc/lightnas/network.env ]] && grep -q '^LIGHTNAS_NETWORK_MODE=lxc-nat$' /etc/lightnas/network.env; then
-  RUNTIME_PROVISION_NEEDED=1
-  echo "      Existing private container NAT detected; scheduling automatic migration to the LightNAS host LAN."
+  echo "      Existing private container NAT detected; preserving current guest networks. Migration requires an approved rollback-capable plan."
 fi
 if [[ "${EXISTING_INSTALL}" == "0" || ! -s "${DATA_DIRECTORY}/runtime-status.txt" || "${LIGHTNAS_REPAIR_RUNTIMES:-0}" == "1" || "${RUNTIME_PROVISION_NEEDED}" == "1" ]]; then
   RUNTIME_PROVISION_NEEDED=1
