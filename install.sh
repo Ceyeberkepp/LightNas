@@ -515,15 +515,24 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
-# On new installs serve the NAS UI over HTTPS on its IP and port 3080.
-# Existing tunnel deployments require explicit opt-in to avoid interrupting access.
-LIGHTNAS_LOCAL_TLS="${LIGHTNAS_LOCAL_TLS:-$([[ "${EXISTING_INSTALL}" == "0" ]] && echo 1 || echo 0)}"
-# Keep an explicitly migrated appliance on HTTPS across subsequent updates.
-# An existing customer HTTP tunnel is never migrated by the installer alone.
-if [[ -f /etc/systemd/system/lightnas.service.d/20-local-https.conf ]] && \
-   grep -Fxq "# Managed by LightNAS local HTTPS migration; do not edit manually." \
-   /etc/systemd/system/lightnas.service.d/20-local-https.conf; then
-  LIGHTNAS_LOCAL_TLS=1
+# The full LightNAS management listener is HTTPS-only on port 3080 for
+# BOTH fresh installations and upgrades. A checkout existing on disk is not
+# evidence that a customer explicitly chose an insecure HTTP listener.
+if [[ "${LIGHTNAS_LOCAL_TLS:-1}" != "1" ]]; then
+  echo "LightNAS requires HTTPS on its local IP and port 3080; LIGHTNAS_LOCAL_TLS=0 is unsupported." >&2
+  exit 1
+fi
+LIGHTNAS_LOCAL_TLS=1
+# A running HTTP installation must migrate *before* its systemd unit is
+# replaced. The existing migration helper validates the IP-specific cert,
+# restarts only lightnas.service and restores the old listener on failure.
+# If migration cannot be validated, stop rather than reporting success.
+if systemctl is-active --quiet "${SERVICE_NAME}.service"; then
+  echo "      Checking and migrating existing LightNAS listener to HTTPS on port 3080..."
+  if ! bash "${INSTALL_DIRECTORY}/scripts/enable-local-https.sh"; then
+    echo "LightNAS cannot safely enable HTTPS on the existing listener. Review the migration output; the installer will not replace its service settings." >&2
+    exit 1
+  fi
 fi
 TLS_SERVICE_ENV=""
 if [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]]; then
@@ -658,13 +667,18 @@ esac
 
 echo "[6/6] Verifying LightNAS..."
 for attempt in {1..15}; do
-  if curl -kfsS "$([[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo https || echo http)://127.0.0.1:3080/api/status" >/dev/null 2>&1; then
+  # Never pass -k/--insecure: the installation must prove its own certificate
+  # is used and the HTTPS listener actually passes trusted TLS verification.
+  if systemctl is-active --quiet "${SERVICE_NAME}.service" && \
+     curl --silent --show-error --fail --max-time 5 \
+       --cacert /etc/lightnas/tls/nas.crt \
+       https://127.0.0.1:3080/api/status >/dev/null 2>&1; then
     address="$(hostname -I 2>/dev/null | awk '{print $1}')"
     echo
     echo "LightNAS installation completed. Runtime results:"
     cat "${DATA_DIRECTORY}/runtime-status.txt"
-    echo "Open: $([[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo https || echo http)://${address:-SERVER-IP}:3080"
-    [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo "Import the local certificate into your trusted store to avoid browser warnings."
+    echo "Open: https://${address:-SERVER-IP}:3080"
+    echo "Import the local certificate into your trusted store to avoid browser warnings."
     exit 0
   fi
   sleep 1
