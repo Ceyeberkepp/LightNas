@@ -80,3 +80,80 @@ test('failure injection: absent or incomplete replication preview identity canno
   assert.deepEqual(calls,[],'No ZFS operation is authorized without both pinned credentials');
  }
 });
+
+test('failure injection: cloud config rotated immediately before subprocess cannot redirect approved transfer',async t=>{
+ const {config,adapter}=await fixture(t);
+ const original='[Remote]\\ntype = s3\\naccess_key_id = approved\\n';
+ const changed='[Remote]\\ntype = s3\\naccess_key_id = attacker\\n';
+ const source=join(config,'rclone.conf');
+ await writeFile(source,original,{mode:0o600});
+ let observed;
+ adapter.run=async(bin,args)=>{
+  assert.equal(bin,'/usr/bin/rclone');
+  await writeFile(source,changed);
+  const staged=args[args.indexOf('--config')+1];
+  assert.notEqual(staged,source,'subprocess must not read mutable original credentials');
+  observed=await readFile(staged,'utf8');
+  return {ok:true,stdout:''};
+ };
+ const impact={type:'protection.run',context:{task:{kind:'cloud'},credentialState:digest(original)},
+  commands:[{bin:'/usr/bin/rclone',args:['copy','--config',source,'--','/data/source','Remote:archive']}],
+  result:{id:'Backup'}};
+ await adapter.apply(impact);
+ assert.equal(observed,original);
+ assert.equal(await readFile(source,'utf8'),changed);
+ assert.deepEqual((await readdir(config)).filter(n=>n.startsWith('.credential-run-')),[],'private credentials must be removed after execution');
+});
+
+test('failure injection: replication uses pinned SSH identity even when originals rotate before receive',async t=>{
+ const {config}=await fixture(t);
+ const key=join(config,'RemoteBackup.key'),known=join(config,'RemoteBackup.known_hosts');
+ const approvedKey='approved private key',approvedHost='backup.example ssh-ed25519 approved-host-key';
+ await writeFile(key,approvedKey,{mode:0o600});
+ await writeFile(known,approvedHost,{mode:0o600});
+ const snapshot='tank/data@lightnas-Backup-123';
+ let pipelineChecked=false,remoteChecked=false;
+ const adapter=new ProtectionAdapter({
+  dir:join(config,'..'),
+  datasets:{inventory:async()=>({snapshots:[{name:snapshot}]})},
+  run:async(bin,args)=>{
+   if(bin==='/usr/bin/ssh'){
+    remoteChecked=true;
+    const sshKey=args[args.indexOf('-i')+1];
+    assert.equal(await readFile(sshKey,'utf8'),approvedKey);
+    return {ok:true,stdout:'7777\\n'};
+   }
+   return {ok:true,stdout:args.at(-1)==='tank/data'?'12345\\n':'7777\\n'};
+  },
+  pipeline:async commands=>{
+   pipelineChecked=true;
+   await writeFile(key,'rotated private key');
+   await writeFile(known,'backup.example ssh-ed25519 rotated-host-key');
+   const ssh=commands[1].args;
+   assert.equal(await readFile(ssh[ssh.indexOf('-i')+1],'utf8'),approvedKey);
+   assert.equal(await readFile(ssh.find(a=>a.startsWith('UserKnownHostsFile=')).split('=')[1],'utf8'),approvedHost);
+  }
+ });
+ const sshArgs=['-F','/dev/null','-o','UserKnownHostsFile='+known,'-i',key,'backup@backup.example'];
+ const impact={type:'protection.run',context:{
+  task:{kind:'replication',profile:'RemoteBackup',source:'tank/data'},
+  source:{name:'tank/data',guid:'12345'},snapshot,prune:[],
+  credentialState:{key:digest(approvedKey),hostKey:digest(approvedHost)},
+  pipeline:[{bin:'/usr/sbin/zfs',args:['send',snapshot]},{bin:'/usr/bin/ssh',args:[...sshArgs,'zfs receive -u backup/target']}],
+  remoteVerification:{source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',snapshot]},target:{bin:'/usr/bin/ssh',args:[...sshArgs,'zfs get -H -o value guid backup/target@Backup']},snapshot:'backup/target@Backup'}
+ },commands:[{bin:'/usr/sbin/zfs',args:['snapshot',snapshot]}],result:{id:'Backup'}};
+ await adapter.apply(impact);
+ assert.ok(pipelineChecked&&remoteChecked);
+ assert.deepEqual((await readdir(config)).filter(n=>n.startsWith('.credential-run-')),[]);
+});
+
+test('symlinked or world-readable cloud credentials fail before any transfer',async t=>{
+ const {adapter,config,calls}=await fixture(t);
+ const file=join(config,'rclone.conf'),value='[Remote]\\ntype = s3\\n';
+ await writeFile(file,value,{mode:0o600});
+ const impact={type:'protection.run',context:{task:{kind:'cloud'},credentialState:digest(value)},
+  commands:[{bin:'/usr/bin/rclone',args:['copy','--config',file,'--','/data','Remote:backup']}],result:{id:'Backup'}};
+ await chmod(file,0o644);
+ await assert.rejects(adapter.apply(impact),/permissions or size are unsafe/);
+ assert.deepEqual(calls,[]);
+});
