@@ -933,6 +933,7 @@ export async function runtimeInventory() {
         }
       } else {
         runtime.virtualization.acceleration = 'unavailable';
+        runtime.virtualization.provider = 'libvirt';
         runtime.virtualization.enabled = false;
         runtime.virtualization.reason = 'Native KVM virtualization is unavailable on this nested host. LightNAS does not emulate guest CPU instructions.';
         runtime.virtualization.warning = 'Existing guests remain visible for management, but new native VMs require a usable /dev/kvm and CPU virtualization support.';
@@ -943,6 +944,7 @@ export async function runtimeInventory() {
       // run the full NAS control plane and supported native containers.
       const kvmUsable = runtime.containers.diagnostics?.kvm?.usable === true;
       runtime.virtualization.acceleration = kvmUsable ? 'kvm' : 'unavailable';
+      runtime.virtualization.provider = kvmUsable ? 'libvirt-kvm' : 'libvirt';
       if (!kvmUsable) {
         runtime.virtualization.enabled = false;
         runtime.virtualization.reason = 'Native KVM virtualization is unavailable on this host. LightNAS does not emulate guest CPU instructions.';
@@ -953,6 +955,7 @@ export async function runtimeInventory() {
     runtime.containers = { available: false, enabled: false, provider: 'local-lxc', reason: `Native container host agent unavailable: ${error.message}`, containers: [], images: [], networks: [], storageRoot: null, diagnostics: null };
     // An unknown accelerator is never permission to boot emulated guests.
     runtime.virtualization.acceleration = 'unavailable';
+        runtime.virtualization.provider = 'libvirt';
     runtime.virtualization.enabled = false;
     runtime.virtualization.reason = 'KVM capability could not be verified; native VM creation is unavailable.';
     runtime.virtualization.warning = 'Inspect host-agent diagnostics; guest CPU emulation is not permitted.';
