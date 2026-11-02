@@ -10,6 +10,7 @@ import { localContainerInventory, localCreateContainer, localManageContainer, lo
 import { listContainerTemplates, resolveContainerTemplate } from './templates.mjs';
 import { listStoragePools, listContentAcrossPools, resolveStoragePool } from './storage-pools.mjs';
 import { ensureWindowsVirtioDrivers, vmGuestToolsInventory } from './guest-tools.mjs';
+import { nativeDockerPlatform } from './native-docker-platform.mjs';
 
 const execute = promisify(execFile);
 const dataRoot = dirname(process.env.NAS_DATA_FILE || 'data/state.json');
@@ -932,28 +933,33 @@ export async function runtimeInventory() {
           runtime.virtualization.warning = 'Hardware acceleration is available, but /dev/net/tun is not exposed to this nested LightNAS instance. VMs will use QEMU user-mode NAT for networking.';
         }
       } else {
-        runtime.virtualization.acceleration = 'tcg';
-        runtime.virtualization.provider = 'libvirt-qemu';
-        runtime.virtualization.warning = tun
-          ? 'Hardware virtualization is unavailable, so LightNAS will use QEMU software emulation (TCG). VMs work, but they run slower than KVM.'
-          : 'Hardware virtualization and /dev/net/tun are unavailable. LightNAS will use QEMU software emulation (TCG) with user-mode NAT. VMs still work, but they run slower than KVM and use NAT networking.';
+        runtime.virtualization.acceleration = 'unavailable';
+        runtime.virtualization.provider = 'libvirt';
+        runtime.virtualization.enabled = false;
+        runtime.virtualization.reason = 'Native KVM virtualization is unavailable on this nested host. LightNAS does not emulate guest CPU instructions.';
+        runtime.virtualization.warning = 'Existing guests remain visible for management, but new native VMs require a usable /dev/kvm and CPU virtualization support.';
       }
     } else {
-      // Probe KVM on bare metal and in VMs too; 'auto' must never silently
-      // choose software emulation simply because LightNAS is not nested.
+      // Never silently fall back to TCG. Every architecture uses its native
+      // kernel hypervisor when available; older CPUs without KVM can still
+      // run the full NAS control plane and supported native containers.
       const kvmUsable = runtime.containers.diagnostics?.kvm?.usable === true;
-      const forcedTcg = process.env.LIGHTNAS_VM_ACCELERATION === 'tcg';
-      runtime.virtualization.acceleration = !forcedTcg && kvmUsable ? 'kvm' : 'tcg';
-      runtime.virtualization.provider = kvmUsable && !forcedTcg ? 'libvirt-kvm' : 'libvirt-qemu';
-      if (!kvmUsable || forcedTcg) runtime.virtualization.warning = 'KVM acceleration is unavailable or disabled; VMs use QEMU software emulation and may run more slowly.';
+      runtime.virtualization.acceleration = kvmUsable ? 'kvm' : 'unavailable';
+      runtime.virtualization.provider = kvmUsable ? 'libvirt-kvm' : 'libvirt';
+      if (!kvmUsable) {
+        runtime.virtualization.enabled = false;
+        runtime.virtualization.reason = 'Native KVM virtualization is unavailable on this host. LightNAS does not emulate guest CPU instructions.';
+        runtime.virtualization.warning = 'A native VM requires a compatible CPU, host kernel and accessible KVM device.';
+      }
     }
   } catch (error) {
     runtime.containers = { available: false, enabled: false, provider: 'local-lxc', reason: `Native container host agent unavailable: ${error.message}`, containers: [], images: [], networks: [], storageRoot: null, diagnostics: null };
-    // Never claim KVM when capability probing is unavailable. Users may still
-    // create slower software-emulated VMs without hardware virtualization.
-    runtime.virtualization.acceleration = 'tcg';
-    runtime.virtualization.provider = 'libvirt-qemu';
-    runtime.virtualization.warning = 'Hardware acceleration could not be verified. Using compatible QEMU software emulation.';
+    // An unknown accelerator is never permission to boot emulated guests.
+    runtime.virtualization.acceleration = 'unavailable';
+        runtime.virtualization.provider = 'libvirt';
+    runtime.virtualization.enabled = false;
+    runtime.virtualization.reason = 'KVM capability could not be verified; native VM creation is unavailable.';
+    runtime.virtualization.warning = 'Inspect host-agent diagnostics; guest CPU emulation is not permitted.';
   }
 
   if (runtime.virtualization.available) {
@@ -1100,8 +1106,15 @@ async function runDocker(args, timeout = 180000) {
   return response.output;
 }
 
-async function pullDockerImage(image) {
-  try { return await runDocker(['pull', image], 600000); }
+async function hostNativeDockerPlatform() {
+  const result = await command('dpkg', ['--print-architecture'], 5000);
+  if (!result.ok) throw Object.assign(new Error('Cannot verify the native host architecture for Docker application installation.'), {status:409});
+  try { return nativeDockerPlatform(result.output.trim()); }
+  catch (error) { throw Object.assign(error, {status:409}); }
+}
+
+async function pullDockerImage(image, platform) {
+  try { return await runDocker(['pull', '--platform', platform, image], 600000); }
   catch (error) { throw Object.assign(new Error(`Unable to download Docker image ${image}: ${error.message.replace(/^Docker:\s*/, '')}`), { status: error.status || 409 }); }
 }
 
@@ -1264,11 +1277,12 @@ export async function installCatalogApp(id, input = {}) {
     throw Object.assign(new Error('Host port must be 0 (automatic) or a valid TCP port from 1 to 65535.'), { status: 400 });
   }
 
-  await pullDockerImage(app.image);
+  const nativePlatform = await hostNativeDockerPlatform();
+  await pullDockerImage(app.image, nativePlatform);
   const publish = requestedPort > 0
     ? `0.0.0.0:${requestedPort}:${app.containerPort}`
     : `0.0.0.0::${app.containerPort}`;
-  const args = ['run', '-d', '--name', name,
+  const args = ['run', '--platform', nativePlatform, '-d', '--name', name,
     '--label', 'lightnas.managed=true',
     '--label', `lightnas.catalog=${app.id}`,
     '--label', `lightnas.instance=${instanceName}`,
@@ -1482,7 +1496,7 @@ export async function createVm(input) {
     return await localManageVm(id, input.action);
   }
 
-  if (!virtualization.available || !virtualization.enabled) throw Object.assign(new Error(virtualization.reason || 'QEMU/libvirt virtualization is disabled on this host.'), { status: 409 });
+  if (!virtualization.available || !virtualization.enabled || (!virtualization.provider?.startsWith('proxmox') && virtualization.acceleration !== 'kvm')) throw Object.assign(new Error(virtualization.reason || 'Native KVM virtualization is required; guest CPU emulation is not supported.'), { status: 409 });
   if (!/^[a-zA-Z][a-zA-Z0-9-]{1,39}$/.test(input.name || '')) throw Object.assign(new Error('Use a 2–40 character VM name.'), { status: 400 });
   const memory = Number(input.memoryMiB), cpus = Number(input.cpus), disk = Number(input.diskGiB);
   const minMemory = input.minMemoryMiB === undefined || input.minMemoryMiB === '' ? memory : Number(input.minMemoryMiB);
@@ -1525,7 +1539,7 @@ export async function createVm(input) {
     : networkDetail?.type === 'host-bridge'
       ? `bridge=${input.network},model=${networkModel}`
       : `network=${input.network},model=${networkModel}`;
-  const virtType = virtualization.acceleration === 'kvm' ? 'kvm' : 'qemu';
+  const virtType = 'kvm'; // Native-only: never silently select QEMU TCG emulation.
   const diskController = diskBus === 'scsi' ? ['--controller', 'scsi,model=virtio-scsi'] : [];
   let guestDrivers = null;
   let guestDriversWarning = '';
@@ -1552,7 +1566,7 @@ export async function createVm(input) {
     await localRepairNestedLibvirt().catch(() => null);
   }
   // Expose Proxmox-style resource choices without requiring passthrough hardware.
-  // CPU host modes require KVM; TCG guests retain their compatible defaults.
+  // Native virtualization exposes host CPU modes only when hardware supports them.
   const cpuMode = ['host-model', 'host-passthrough', 'default'].includes(input.cpuMode) ? input.cpuMode : 'host-model';
   const cpuArgs = virtType === 'kvm' && cpuMode !== 'default' ? ['--cpu', cpuMode] : [];
   const memoryBalloon = input.memoryBalloon === 'none' ? 'none' : 'virtio';

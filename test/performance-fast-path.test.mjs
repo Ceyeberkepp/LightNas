@@ -17,8 +17,8 @@ test('installer upgrades skip unchanged package, npm and runtime work', async ()
 test('runtime provisioning does not reinstall QEMU when tools already exist', async () => {
   const runtime = await read('scripts/provision-runtimes.sh');
   assert.match(runtime, /vm_packages_ready=1/);
-  assert.match(runtime, /qemu-system-x86_64 qemu-img virsh virt-install/);
-  assert.match(runtime, /\[\[ "\$vm_packages_ready" == "1" \]\] \|\| apt-get install/);
+  assert.match(runtime, /for command in "\$vm_binary" qemu-img virsh virt-install/);
+  assert.match(runtime, /\[\[ "\$vm_packages_ready" == "1" \]\] \|\| \{ \[\[ -n "\$vm_package" \]\] && apt-get install/);
 });
 
 test('initial dashboard defers runtime and slow storage discovery', async () => {

@@ -97,9 +97,8 @@ not support every legacy CPU/ABI combination.
 Required direction:
 
 - Detect architecture and CPU capabilities during install.
-- Use a **legacy/light control-plane build** when the normal runtime cannot
-  execute.
-- Keep the browser UI protocol/API compatible between modern and legacy builds.
+- Provide an **architecture-native compatibility runtime implementing the complete LightNAS API** when the normal runtime cannot execute. Do not introduce a reduced-feature "lite" product or cross-architecture instruction emulation.
+- Keep the same browser UI protocol/API and core feature behavior between modern and legacy native builds. Release support requires functional, security, performance, and install/boot qualification of each build.
 - Do not advertise a legacy platform as supported until automated or physical
   boot/install tests exist for that class.
 
@@ -122,14 +121,43 @@ download, image, installer, or VM workflows.
 ### Multi-architecture rules
 
 - Image manifests must record architecture.
-- The UI must not offer an image incompatible with the host architecture unless
-  emulation is explicitly available.
+- The UI must not offer an image incompatible with the host architecture; no automatic QEMU/binfmt cross-ISA emulation is permitted in normal application or container execution.
 - OCI/Docker images should use multi-architecture manifests when the upstream
   project publishes them.
 - Native system-container images must be selected by architecture.
 - VM ISO images must be labeled by architecture.
 - Checksums must be architecture-specific.
 - Build workflows should generate architecture-specific artifacts.
+
+
+### Native execution requirement and physical limitations
+
+All architecture families target the **same complete LightNAS control plane**
+and supported NAS features. Installers must choose **native** OS packages,
+runtime builds, LXC images and OCI image manifests for their architecture.
+ARM32 includes both hard-float and soft-float targets as distinct release
+qualifications. RISC-V 64 is a separate target from future RISC-V 32.
+
+Native software cannot invent a CPU instruction or a kernel facility that a
+machine does not provide. Early-2000s x86 CPUs without SSE2 cannot currently
+execute the Node.js 22/V8 runtime, so a different **native** complete API
+runtime must be developed and fully qualified before that class can be
+declared supported. Contemporary official Node runtimes likewise impose
+operating-system, kernel, C-library and toolchain requirements.
+
+VM creation uses kernel-assisted native KVM **only**. Without compatible
+hardware virtualization and host kernel support, LightNAS continues providing
+the control plane, users, files and supported native applications/containers,
+but it **must not** emulate guest CPU instructions or advertise local VM
+creation as ready. A VM cannot have native KVM acceleration on hardware with
+no virtualization facility; this is a physical dependency, not a feature flag.
+Existing imported VM definitions may still be inspected.
+
+Release acceptance is per **architecture + CPU generation + operating system +
+feature**. CI running on QEMU cross-architecture simulation may find faults,
+but does **not** count as native physical-hardware validation. Target
+support must stay accurately marked unqualified until the install, boot,
+native runtime, security, imaging and relevant functionality have passed.
 
 ## 4. Ready-to-use image catalog
 

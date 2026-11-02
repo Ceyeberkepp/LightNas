@@ -151,7 +151,7 @@ checkout; the utility migrates the same port and attempts rollback on failure.
 See [the installation guide](docs/INSTALLATION.md) for certificate trust and
 reverse-proxy/tunnel migration precautions.
 
-The installer prepares native LXC/liblxc plus QEMU/libvirt. It uses KVM acceleration when available and automatically falls back to QEMU TCG software virtualization when hardware virtualization is unavailable. Docker is never the System Containers backend; it is used only by the App Store and can be disabled with `LIGHTNAS_ENABLE_DOCKER_APPS=0`.
+The installer prepares native LXC/liblxc plus QEMU/libvirt. It uses native KVM virtualization when the CPU, kernel and host permissions support it; it never silently falls back to QEMU TCG CPU emulation. LightNAS still runs its full NAS control plane and native containers where supported without KVM, while native VM creation reports a clear hardware requirement. Docker is never the System Containers backend; it is used only by the App Store and can be disabled with `LIGHTNAS_ENABLE_DOCKER_APPS=0`.
 
 ### Optional external-platform integrations
 
