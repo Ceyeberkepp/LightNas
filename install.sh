@@ -539,21 +539,56 @@ if [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]]; then
   install -d -m 0750 -o root -g lightnas /etc/lightnas/tls
   TLS_CERT=/etc/lightnas/tls/nas.crt
   TLS_KEY=/etc/lightnas/tls/nas.key
-  if [[ ! -s "${TLS_CERT}" || ! -s "${TLS_KEY}" ]]; then
-    tls_san="DNS:localhost,IP:127.0.0.1"
-    for ip in $(hostname -I 2>/dev/null); do
-      if [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
-        tls_san+=",IP:$ip"
-      fi
-    done
-    openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 397 \
-      -keyout "${TLS_KEY}" -out "${TLS_CERT}" \
-      -subj "/CN=LightNAS Local" -addext "subjectAltName=${tls_san}" \
-      -addext "extendedKeyUsage=serverAuth"
+  # Never overwrite a certificate that might have been supplied by the
+  # operator. Partial key pairs must fail closed rather than regenerate the
+  # other half and risk losing a previously trusted appliance identity.
+  if [[ -e "${TLS_CERT}" && ! -f "${TLS_CERT}" ]] || [[ -e "${TLS_KEY}" && ! -f "${TLS_KEY}" ]]; then
+    echo "LightNAS HTTPS certificate/key path is not a regular file." >&2
+    exit 1
   fi
+  if [[ -e "${TLS_CERT}" && ! -e "${TLS_KEY}" ]] || [[ ! -e "${TLS_CERT}" && -e "${TLS_KEY}" ]]; then
+    echo "Incomplete LightNAS HTTPS certificate/key pair; refusing to overwrite or downgrade to HTTP." >&2
+    exit 1
+  fi
+  if [[ ! -e "${TLS_CERT}" ]]; then
+    # Generate each appliance's own certificate in an isolated directory.
+    # Failed openssl/install calls must leave neither partial destination file.
+    (
+      umask 077
+      temp_dir="$(mktemp -d /etc/lightnas/tls/.issue.XXXXXX)"
+      complete=0
+      trap 'if [[ "$complete" -ne 1 ]]; then rm -f -- "${TLS_KEY}" "${TLS_CERT}"; fi; rm -rf -- "$temp_dir"' EXIT
+      tls_san="DNS:localhost,IP:127.0.0.1"
+      for ip in $(hostname -I 2>/dev/null); do
+        if [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+          tls_san+=",IP:$ip"
+        fi
+      done
+      openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 397 \
+        -keyout "$temp_dir/nas.key" -out "$temp_dir/nas.crt" \
+        -subj "/CN=LightNAS Local" -addext "subjectAltName=${tls_san}" \
+        -addext "extendedKeyUsage=serverAuth" >/dev/null 2>&1
+      install -o root -g lightnas -m 0640 "$temp_dir/nas.key" "${TLS_KEY}"
+      install -o root -g lightnas -m 0644 "$temp_dir/nas.crt" "${TLS_CERT}"
+      complete=1
+    )
+  fi
+  # The certificate must cover this machine's actual IP, not someone else's
+  # static address. Changing DHCP/WSL IP can require certificate rotation.
+  openssl x509 -in "${TLS_CERT}" -noout >/dev/null
+  openssl pkey -in "${TLS_KEY}" -noout >/dev/null
+  for ip in 127.0.0.1 $(hostname -I 2>/dev/null); do
+    if [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+      if ! openssl x509 -in "${TLS_CERT}" -noout -checkip "$ip" >/dev/null 2>&1; then
+        echo "LightNAS HTTPS certificate does not cover IP $ip. Renew the certificate instead of falling back to HTTP." >&2
+        exit 1
+      fi
+    fi
+  done
   chown root:lightnas "${TLS_CERT}" "${TLS_KEY}"
   chmod 0644 "${TLS_CERT}"
   chmod 0640 "${TLS_KEY}"
+  runuser -u lightnas -- test -r "${TLS_KEY}" || { echo "LightNAS cannot read its TLS key." >&2; exit 1; }
   TLS_SERVICE_ENV=$'Environment=LIGHTNAS_TLS_CERT_FILE=/etc/lightnas/tls/nas.crt\nEnvironment=LIGHTNAS_TLS_KEY_FILE=/etc/lightnas/tls/nas.key'
 fi
 
