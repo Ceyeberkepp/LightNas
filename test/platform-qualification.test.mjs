@@ -77,7 +77,13 @@ test('support matrix never advertises unvalidated target architectures as suppor
 test('i386 CI runs real upload API and security regressions under native ia32 Node', async () => {
   const workflow = await read('.github/workflows/platform-matrix.yml');
   const i386 = workflow.slice(workflow.indexOf('  full-i386:'));
-  assert.match(i386, /docker run --rm --network host --platform linux\/386\b/, 'i386 must execute in a 32-bit container with working runner DNS');
+  assert.match(i386, /docker\/setup-docker-action@v5[\s\S]*?version: v29\.4\.3/, 'i386 must use Docker with the upstream socketcall security fix');
+  assert.match(i386, /docker run --rm --platform linux\/386\b/, 'i386 must run under the isolated default container network');
+  assert.match(i386, /getent ahostsv4 deb\.debian\.org/, 'i386 must verify working DNS before package installation');
+  assert.match(i386, /name=seccomp/, 'i386 must require seccomp');
+  assert.match(i386, /name=apparmor/, 'i386 must require an active LSM');
+  assert.match(i386, /assertRaises\(PermissionError, socket\.socket, socket\.AF_ALG/, 'i386 must prove dangerous AF_ALG sockets remain blocked');
+  assert.doesNotMatch(i386, /seccomp=unconfined|--privileged|--network host/, 'i386 must not bypass container confinement');
   assert.ok(i386.includes('process.arch') && i386.includes('ia32'),
     '32-bit CI must verify the native Node architecture');
   for (const file of [
