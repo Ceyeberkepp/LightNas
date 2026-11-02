@@ -18,9 +18,9 @@ writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.key'),FIXTURE_KEY,{mod
 writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),FIXTURE_HOST_KEY,{mode:0o600});
 after(()=>rmSync(FIXTURE_DIR,{recursive:true,force:true}));
 
-function isolatedJob({visible=[true],replication=false,prune=older,failSend=false,sourceGuid='81234567',targetGuid='81234567',sourceCheckOk=true,targetCheckOk=true,datasetGuid='12345',datasetCheckOk=true}={}){
+function isolatedJob({visible=[true],replication=false,prune=older,failSend=false,sourceGuid='81234567',targetGuid='81234567',sourceCheckOk=true,targetCheckOk=true,datasetGuid='12345',datasetCheckOk=true,pruneGuid='24680',pruneGuidOk=true}={}){
  const commands=[],events=[];
- let inventoryReads=0,sourceGuidReads=0,datasetGuidReads=0;
+ let inventoryReads=0,sourceGuidReads=0,datasetGuidReads=0,pruneGuidReads=0;
  const datasets={inventory:async()=>{
   const present=visible[Math.min(inventoryReads++,visible.length-1)];
   events.push('inventory:'+present);
@@ -30,6 +30,11 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
   dir:FIXTURE_DIR,
   datasets,
   run:async(bin,args)=>{
+   if(args[0]==='get'&&args.includes('guid')&&older.includes(args.at(-1))){
+    events.push('verify-prune-guid:'+args.at(-1));
+    const value=Array.isArray(pruneGuid)?pruneGuid[Math.min(pruneGuidReads++,pruneGuid.length-1)]:pruneGuid;
+    return {ok:pruneGuidOk,stdout:String(value)+'\n'};
+   }
    if(args[0]==='get'&&args.includes('guid')&&args.at(-1)==='tank/data'){
     events.push('verify-dataset-guid');
     const value=Array.isArray(datasetGuid)?datasetGuid[Math.min(datasetGuidReads++,datasetGuid.length-1)]:datasetGuid;
@@ -61,6 +66,7 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
    source:{name:'tank/data',guid:'12345'},
    snapshot:created,
    prune,
+   pruneGuids:Object.fromEntries(prune.map(s=>[s,'24680'])),
    ...(replication?{credentialState:{key:digest(FIXTURE_KEY),hostKey:digest(FIXTURE_HOST_KEY)},pipeline:[{bin:'zfs',args:['send',created]},{bin:'/usr/bin/ssh',args:['-F','/dev/null','-o','UserKnownHostsFile='+join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),'-i',join(FIXTURE_DIR,'protection','RemoteBackup.key'),'receive']}],remoteVerification:{source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',created]},target:{bin:'/usr/bin/ssh',args:['-F','/dev/null','-o','UserKnownHostsFile='+join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),'-i',join(FIXTURE_DIR,'protection','RemoteBackup.key'),'zfs get -H -o value guid backup/data@lightnas-BackupTask-1700000000']},snapshot:'backup/data@lightnas-BackupTask-1700000000'}}:{})
   },
   commands:[{bin:'/usr/sbin/zfs',args:['snapshot',created]}],
