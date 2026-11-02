@@ -7,7 +7,7 @@ export function nativeDockerPlatform(arch) {
     i386: 'linux/386',
     arm64: 'linux/arm64',
     armhf: 'linux/arm/v7',
-    armel: 'linux/arm/v6',
+    armel: 'linux/arm/v5',
     riscv64: 'linux/riscv64'
   });
   const platform = platforms[String(arch || '').trim()];
