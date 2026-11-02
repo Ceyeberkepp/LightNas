@@ -60,11 +60,11 @@ test('installer enables the local App Store engine while keeping System Containe
 });
 
 
-test('existing private NAT installs are automatically reprovisioned toward the host LAN', async () => {
+test('existing private NAT installs preserve guest networks until approved migration', async () => {
   const installer = await readFile(new URL('../install.sh', import.meta.url), 'utf8');
   assert.match(installer, /LIGHTNAS_NETWORK_MODE=lxc-nat/);
   assert.match(installer, /Existing private container NAT detected/);
-  assert.match(installer, /automatic migration to the LightNAS host LAN/);
+  assert.match(installer, /Migration requires an approved rollback-capable plan/);
   assert.match(installer, /RUNTIME_PROVISION_NEEDED=1/);
 });
 
