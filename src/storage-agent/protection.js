@@ -267,5 +267,21 @@ export class ProtectionAdapter{
    return impact.result;
   }catch(error){const {rm}=await import('node:fs/promises');for(const saved of restore.reverse())try{if(saved.old===null)await rm(saved.path,{force:true});else await atomic(saved.path,saved.old);}catch{error.recovery='Protection configuration restoration incomplete';}throw error;}
  }
- async record(id,values){const runtime=await this.runtime();runtime[id]={...(Object.hasOwn(runtime,id)?runtime[id]:{}),...values};await atomic(join(this.dir,'runtime.json'),JSON.stringify(runtime));}
+ async record(id,values){
+  // The scheduler and a completing job can update independent task records
+  // concurrently. Without serializing the read/modify/write, both readers
+  // observe the same old JSON and the last atomic rename silently drops the
+  // other task's run state (including its nextRun claim).
+  // This adapter is owned by the single root-only storage-agent process.
+  // Serialize writes in-process and continue accepting writes after a failed
+  // operation, while still reporting that failure to the original caller.
+  const write=async()=>{
+   const runtime=await this.runtime();
+   runtime[id]={...(Object.hasOwn(runtime,id)?runtime[id]:{}),...values};
+   await atomic(join(this.dir,'runtime.json'),JSON.stringify(runtime));
+  };
+  const pending=(this.recordQueue||Promise.resolve()).catch(()=>{}).then(write);
+  this.recordQueue=pending;
+  await pending;
+ }
 }
