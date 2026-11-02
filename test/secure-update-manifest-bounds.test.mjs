@@ -5,7 +5,7 @@ import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {arch,platform} from 'node:process';
-import {checkSignedUpdates,readBoundedManifest} from '../src/secure-updates.mjs';
+import {checkSignedUpdates,readBoundedManifest,parseReleaseVersion} from '../src/secure-updates.mjs';
 
 function streamed(parts) {
   const queue=[...parts];
@@ -122,5 +122,57 @@ test('bounded signed feed still verifies valid Ed25519 metadata but cannot insta
     if(originalKey===undefined)delete process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE;
     else process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE=originalKey;
     await rm(directory,{recursive:true,force:true});
+  }
+});
+
+test('signed release versions reject precision loss, ambiguous syntax and non-string values', () => {
+  assert.deepEqual(parseReleaseVersion('1.2.3'), [1,2,3]);
+  assert.deepEqual(parseReleaseVersion('9007199254740991.0.0'), [Number.MAX_SAFE_INTEGER,0,0]);
+  for (const value of [
+    '9007199254740992.0.0', '999999999999999999999999.0.0',
+    '1.9007199254740993.0', '1.0.9007199254740992',
+    '01.2.3', '1.02.3', '1.2.03', '1.2.3-beta', '1e2.0.0',
+    'Infinity.0.0', '1.2', 123, null, {}, ''
+  ]) {
+    assert.throws(() => parseReleaseVersion(value), /release version/i,
+      'Must reject unsafe signed version: ' + String(value));
+  }
+});
+
+test('validly signed but unsafe release versions fail closed before update availability', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.LIGHTNAS_UPDATE_MANIFEST_URL;
+  const originalKey = process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE;
+  const directory = await mkdtemp(join(tmpdir(), 'lightnas-version-precision-test-'));
+  try {
+    const {publicKey,privateKey} = generateKeyPairSync('ed25519');
+    const keyPath = join(directory, 'update-public.pem');
+    await writeFile(keyPath, publicKey.export({type:'spki',format:'pem'}));
+    process.env.LIGHTNAS_UPDATE_MANIFEST_URL = 'https://updates.example.invalid/manifest';
+    process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE = keyPath;
+    for (const version of ['9007199254740992.0.0', '1.0002.0', '999999999999999999999.0.0']) {
+      const payload = {
+        product:'lightnas-nas', tier:'community', channel:'stable',
+        arch, platform, version,
+        expiresAt:new Date(Date.now()+60000).toISOString()
+      };
+      const signature = sign(null, Buffer.from(JSON.stringify(payload)), privateKey).toString('base64');
+      globalThis.fetch = async () => ({
+        ok:true, status:200,
+        body:streamed([Buffer.from(JSON.stringify({payload,signature}))]).response.body
+      });
+      const result = await checkSignedUpdates({currentVersion:'1.0.0'});
+      assert.equal(result.checkStatus, 'error', 'Unsafe version must be rejected: '+version);
+      assert.equal(result.updateAvailable, false);
+      assert.equal(result.updateEnabled, false);
+      assert.match(result.message, /release version/i);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.LIGHTNAS_UPDATE_MANIFEST_URL;
+    else process.env.LIGHTNAS_UPDATE_MANIFEST_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE;
+    else process.env.LIGHTNAS_UPDATE_PUBLIC_KEY_FILE = originalKey;
+    await rm(directory, {recursive:true,force:true});
   }
 });
