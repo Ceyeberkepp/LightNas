@@ -8,9 +8,9 @@ import {join} from 'node:path';
 const created='tank/data@lightnas-BackupTask-1700000000';
 const older=['tank/data@lightnas-BackupTask-1699999998','tank/data@lightnas-BackupTask-1699999999'];
 
-function isolatedJob({visible=[true],replication=false,prune=older,failSend=false,sourceGuid='81234567',targetGuid='81234567',sourceCheckOk=true,targetCheckOk=true}={}){
+function isolatedJob({visible=[true],replication=false,prune=older,failSend=false,sourceGuid='81234567',targetGuid='81234567',sourceCheckOk=true,targetCheckOk=true,datasetGuid='12345',datasetCheckOk=true}={}){
  const commands=[],events=[];
- let inventoryReads=0,sourceGuidReads=0;
+ let inventoryReads=0,sourceGuidReads=0,datasetGuidReads=0;
  const datasets={inventory:async()=>{
   const present=visible[Math.min(inventoryReads++,visible.length-1)];
   events.push('inventory:'+present);
@@ -20,6 +20,11 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
   dir:'/unused-isolated-backup-test',
   datasets,
   run:async(bin,args)=>{
+   if(args[0]==='get'&&args.includes('guid')&&args.at(-1)==='tank/data'){
+    events.push('verify-dataset-guid');
+    const value=Array.isArray(datasetGuid)?datasetGuid[Math.min(datasetGuidReads++,datasetGuid.length-1)]:datasetGuid;
+    return {ok:datasetCheckOk,stdout:String(value)+'\n'};
+   }
    if(args[0]==='get'&&args.includes('guid')){
     events.push('verify-source-guid');
     const value=Array.isArray(sourceGuid)?sourceGuid[Math.min(sourceGuidReads++,sourceGuid.length-1)]:sourceGuid;
@@ -42,7 +47,8 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
  const impact={
   type:'protection.run',
   context:{
-   task:{id:'BackupTask',kind:replication?'replication':'snapshot'},
+   task:{id:'BackupTask',kind:replication?'replication':'snapshot',source:'tank/data'},
+   source:{name:'tank/data',guid:'12345'},
    snapshot:created,
    prune,
    ...(replication?{pipeline:[{bin:'zfs',args:['send',created]},{bin:'ssh',args:['receive']}],remoteVerification:{source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',created]},target:{bin:'/usr/bin/ssh',args:['-o','StrictHostKeyChecking=yes','zfs get -H -o value guid backup/data@lightnas-BackupTask-1700000000']},snapshot:'backup/data@lightnas-BackupTask-1700000000'}}:{})
@@ -52,6 +58,53 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
  };
  return {adapter,impact,commands,events,reads:()=>inventoryReads};
 }
+
+test('backup source dataset GUID is verified before snapshot and each retention deletion',async()=>{
+ const {adapter,impact,commands,events}=isolatedJob();
+ await adapter.apply(impact);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot','destroy','destroy']);
+ assert.equal(events.filter(e=>e==='verify-dataset-guid').length,3);
+ assert.ok(events.indexOf('verify-dataset-guid')<events.indexOf('snapshot:'+created));
+});
+
+test('failure injection: replaced source dataset before execution prevents any ZFS operation',async()=>{
+ const {adapter,impact,commands}=isolatedJob({datasetGuid:'99999'});
+ await assert.rejects(adapter.apply(impact),/Backup source dataset identity changed/);
+ assert.deepEqual(commands,[]);
+});
+
+test('failure injection: unavailable source dataset identity prevents snapshot creation',async()=>{
+ const {adapter,impact,commands}=isolatedJob({datasetCheckOk:false});
+ await assert.rejects(adapter.apply(impact),/Backup source dataset identity changed/);
+ assert.deepEqual(commands,[]);
+});
+
+test('failure injection: missing planned dataset identity cannot authorize snapshot creation',async()=>{
+ const {adapter,impact,commands}=isolatedJob();
+ delete impact.context.source;
+ await assert.rejects(adapter.apply(impact),/Backup source dataset identity missing/);
+ assert.deepEqual(commands,[]);
+});
+
+test('failure injection: source dataset replacement before first retention preserves all old snapshots',async()=>{
+ const {adapter,impact,commands}=isolatedJob({datasetGuid:['12345','99999']});
+ await assert.rejects(adapter.apply(impact),/Backup source dataset identity changed/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+});
+
+test('failure injection: source dataset replacement between retention deletes stops further pruning',async()=>{
+ const {adapter,impact,commands}=isolatedJob({datasetGuid:['12345','12345','99999']});
+ await assert.rejects(adapter.apply(impact),/Backup source dataset identity changed/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot','destroy']);
+ assert.deepEqual(commands[1].args,['destroy',older[0]]);
+});
+
+test('failure injection: source dataset changes before remote send and replication never starts',async()=>{
+ const {adapter,impact,commands,events}=isolatedJob({replication:true,datasetGuid:['12345','99999']});
+ await assert.rejects(adapter.apply(impact),/Backup source dataset identity changed/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+ assert.equal(events.includes('remote-send'),false);
+});
 
 test('failure injection: successful snapshot command without ZFS inventory proof never prunes older recovery points',async()=>{
  const {adapter,impact,commands,events}=isolatedJob({visible:[false]});

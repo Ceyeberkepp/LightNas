@@ -88,6 +88,19 @@ export class ProtectionAdapter{
  async validate(impact){if(digest(await this.plan(impact.input))!==digest(impact))throw Error('Protection policy or data source changed; request another preview');}
  async apply(impact){await this.init();
   if(impact.type==='protection.run'){
+   // A dataset name is not an ownership identity. A pool/dataset can be
+   // destroyed and recreated under the same path after preview. Verify the
+   // pinned immutable dataset GUID before creating or pruning snapshots.
+   const verifySourceDataset=async()=>{
+    if(!['snapshot','replication'].includes(impact.context?.task?.kind))return;
+    const expected=impact.context.source,task=impact.context.task;
+    if(expected?.name!==task.source||!/^[0-9]+$/.test(String(expected?.guid??'')))
+     throw Error('Backup source dataset identity missing; refusing to operate');
+    const live=await this.run('/usr/sbin/zfs',['get','-H','-o','value','guid',expected.name],120000);
+    if(!live.ok||String(live.stdout||'').trim()!==String(expected.guid))
+     throw Error('Backup source dataset identity changed; refusing to operate');
+   };
+   await verifySourceDataset();
    if(impact.context?.task?.kind==='rsync'){
     // A bind mount can alias one directory through unrelated absolute paths.
     // Recheck both inodes immediately before a destructive mirror command,
@@ -115,6 +128,7 @@ export class ProtectionAdapter{
    let verifiedReplicaGuid=null;
    const guid=result=>result?.ok&&/^[0-9]+$/.test(String(result.stdout||'').trim())?result.stdout.trim():null;
    if(impact.context.pipeline){
+    await verifySourceDataset();
     await this.pipeline(impact.context.pipeline);
     if(impact.context.task?.kind==='replication'){
      const verification=impact.context.remoteVerification;
@@ -130,6 +144,7 @@ export class ProtectionAdapter{
     await verifyCreatedSnapshot();
    }
    for(const snap of impact.context.prune||[]){
+    await verifySourceDataset();
     await verifyCreatedSnapshot();
     // A snapshot name can be reused after deletion; never prune based on a
     // replacement local snapshot that was not the one replicated remotely.
