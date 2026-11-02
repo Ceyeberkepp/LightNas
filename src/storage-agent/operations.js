@@ -9,10 +9,40 @@ export {atomic} from './persistence.js';
 import {atomic} from './persistence.js';
 import {FeatureAdapter,FEATURE_TYPES} from './features.js';
 
+// Approved previews may temporarily contain SSH private keys or cloud tokens.
+// Keep them in volatile process memory for that approval, never in jobs.json.
+// Remove sensitive *fields*, rather than persisting placeholders which could
+// later be mistaken for executable credentials after a process restart.
+const SECRET_JOURNAL_FIELD=/(private|password|passwd|secret|token|credential|authorization|api.?key|host.?key|access.?key)|^key$/i;
+export function safeJournalSnapshot(value){
+ if(Array.isArray(value))return value.map(safeJournalSnapshot);
+ if(value&&typeof value==='object'){
+  return Object.fromEntries(Object.entries(value)
+   .filter(([field])=>!SECRET_JOURNAL_FIELD.test(field))
+   .map(([field,entry])=>[field,safeJournalSnapshot(entry)]));
+ }
+ return value;
+}
+
 export class Operations extends EventEmitter {
  constructor({dir,adapter,discover,volumes=new VolumeAdapter(),resources=new ResourceAdapter(),features=new FeatureAdapter({dir}),allowInitialization=false}){super();this.dir=dir;this.adapter=adapter;this.discover=discover;this.volumes=volumes;this.resources=resources;this.features=features;this.allowInitialization=allowInitialization;this.jobs=new Map();this.busy=false;}
- async init(){await mkdir(this.dir,{recursive:true,mode:0o700});try{const jobs=JSON.parse(await readFile(this.dir+'/jobs.json','utf8'));for(const j of jobs){if(['queued','running'].includes(j.status)){j.status='interrupted';j.logs.push('Service restarted; inspect rollback metadata before retrying.');}this.jobs.set(j.id,j);}await this.save();}catch(e){if(e.code!=='ENOENT')throw e;}}
- async save(){const text=JSON.stringify([...this.jobs.values()]);this.saving=(this.saving||Promise.resolve()).catch(()=>{}).then(()=>atomic(this.dir+'/jobs.json',text));await this.saving;}
+ async init(){await mkdir(this.dir,{recursive:true,mode:0o700});try{const jobs=JSON.parse(await readFile(this.dir+'/jobs.json','utf8'));for(const j of jobs){
+  if(j.status==='preview'){
+   // A restored preview must not authorize an operation with in-memory
+   // secrets that were deliberately excluded from the durable journal.
+   j.status='interrupted';
+   j.logs.push('Approval preview expired on service restart; request a new preview.');
+  }else if(['queued','running'].includes(j.status)){
+   j.status='interrupted';
+   j.logs.push('Service restarted; inspect rollback metadata before retrying.');
+  }
+  this.jobs.set(j.id,j);
+ }await this.save();}catch(e){if(e.code!=='ENOENT')throw e;}}
+ async save(){
+  const text=JSON.stringify(safeJournalSnapshot([...this.jobs.values()]));
+  this.saving=(this.saving||Promise.resolve()).catch(()=>{}).then(()=>atomic(this.dir+'/jobs.json',text));
+  await this.saving;
+ }
  async preview(input){
   if(this.jobs.size>=1000)throw Error('Job retention limit reached; archive old jobs before continuing');
   if(FEATURE_TYPES.includes(input.type))return this.previewFeature(input);
