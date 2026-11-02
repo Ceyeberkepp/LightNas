@@ -1,5 +1,5 @@
 import {constants} from 'node:fs';
-import {lstat,mkdtemp,open,rm,writeFile} from 'node:fs/promises';
+import {lstat,mkdtemp,open,rm,statfs,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {digest} from './storage.js';
 
@@ -35,7 +35,12 @@ export async function pinBackupCredentials({directory,kind,expected,profile}){
    throw Error(kind==='cloud'?'Cloud backup credentials changed since preview; refusing to run':'Replication SSH identity changed since preview; refusing to run');
   values.push([filename,bytes]);
  }
- const staging=await mkdtemp(join(directory,'.credential-run-'));
+ // Never leave private keys or cloud credentials on persistent appliance disks
+ // if the service is killed before the finally cleanup can run.
+ const sharedMemory='/dev/shm';
+ const fs=await statfs(sharedMemory);
+ if(fs.type!==0x01021994)throw Error('Ephemeral tmpfs credential staging is unavailable');
+ const staging=await mkdtemp(join(sharedMemory,'lightnas-credential-run-'));
  try{
   const paths=new Map();
   for(const [filename,bytes] of values){
