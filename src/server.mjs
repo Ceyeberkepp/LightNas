@@ -3149,7 +3149,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     } else {
       console.error('LightNAS failed to bind the management interface:', error);
     }
-    process.exitCode = 1;
+    process.exit(1);
   });
   controlPlane.listen(port, host, () => {
     console.log(`LightNAS is running at ${tls ? 'https' : 'http'}://${host}:${port}`);
