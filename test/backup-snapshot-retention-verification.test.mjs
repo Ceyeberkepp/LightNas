@@ -1,12 +1,22 @@
-import test from 'node:test';
+import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
 import {ProtectionAdapter} from '../src/storage-agent/protection.js';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync,chmodSync} from 'node:fs';
+import {digest} from '../src/storage-agent/storage.js';
 
 const created='tank/data@lightnas-BackupTask-1700000000';
 const older=['tank/data@lightnas-BackupTask-1699999998','tank/data@lightnas-BackupTask-1699999999'];
+const FIXTURE_DIR=mkdtempSync(join(tmpdir(),'lightnas-retention-replication-'));
+const FIXTURE_KEY='isolated replication private key fixture';
+const FIXTURE_HOST_KEY='backup.example ssh-ed25519 isolated pinned host key fixture';
+mkdirSync(join(FIXTURE_DIR,'protection'),{mode:0o700});
+chmodSync(join(FIXTURE_DIR,'protection'),0o700);
+writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.key'),FIXTURE_KEY,{mode:0o600});
+writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),FIXTURE_HOST_KEY,{mode:0o600});
+after(()=>rmSync(FIXTURE_DIR,{recursive:true,force:true}));
 
 function isolatedJob({visible=[true],replication=false,prune=older,failSend=false,sourceGuid='81234567',targetGuid='81234567',sourceCheckOk=true,targetCheckOk=true,datasetGuid='12345',datasetCheckOk=true}={}){
  const commands=[],events=[];
@@ -17,7 +27,7 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
   return {available:true,snapshots:present?[{name:created}]:[]};
  }};
  const adapter=new ProtectionAdapter({
-  dir:'/unused-isolated-backup-test',
+  dir:FIXTURE_DIR,
   datasets,
   run:async(bin,args)=>{
    if(args[0]==='get'&&args.includes('guid')&&args.at(-1)==='tank/data'){
@@ -47,11 +57,11 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
  const impact={
   type:'protection.run',
   context:{
-   task:{id:'BackupTask',kind:replication?'replication':'snapshot',source:'tank/data'},
+   task:{id:'BackupTask',kind:replication?'replication':'snapshot',source:'tank/data',...(replication?{profile:'RemoteBackup'}:{})},
    source:{name:'tank/data',guid:'12345'},
    snapshot:created,
    prune,
-   ...(replication?{pipeline:[{bin:'zfs',args:['send',created]},{bin:'ssh',args:['receive']}],remoteVerification:{source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',created]},target:{bin:'/usr/bin/ssh',args:['-o','StrictHostKeyChecking=yes','zfs get -H -o value guid backup/data@lightnas-BackupTask-1700000000']},snapshot:'backup/data@lightnas-BackupTask-1700000000'}}:{})
+   ...(replication?{credentialState:{key:digest(FIXTURE_KEY),hostKey:digest(FIXTURE_HOST_KEY)},pipeline:[{bin:'zfs',args:['send',created]},{bin:'/usr/bin/ssh',args:['-F','/dev/null','-o','UserKnownHostsFile='+join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),'-i',join(FIXTURE_DIR,'protection','RemoteBackup.key'),'receive']}],remoteVerification:{source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',created]},target:{bin:'/usr/bin/ssh',args:['-F','/dev/null','-o','UserKnownHostsFile='+join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),'-i',join(FIXTURE_DIR,'protection','RemoteBackup.key'),'zfs get -H -o value guid backup/data@lightnas-BackupTask-1700000000']},snapshot:'backup/data@lightnas-BackupTask-1700000000'}}:{})
   },
   commands:[{bin:'/usr/sbin/zfs',args:['snapshot',created]}],
   result:{id:'BackupTask',kind:replication?'replication':'snapshot'}
@@ -214,7 +224,7 @@ test('failure injection: missing replica verification plan cannot authorize rete
  const {adapter,impact,commands}=isolatedJob({replication:true});
  delete impact.context.remoteVerification;
  await assert.rejects(adapter.apply(impact),/Remote replica verification missing/);
- assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+ assert.deepEqual(commands,[],'Missing remote verification must now block even the initial snapshot');
 });
 
 test('failure injection: source snapshot replacement during retention stops further pruning',async()=>{
@@ -242,7 +252,11 @@ test('replication plan pins SSH host identity and verifies the exact received ZF
   assert.equal(impact.context.remoteVerification.snapshot,'backup/data/lightnas-BackupTask-1700000000@lightnas-BackupTask-1700000000');
   assert.deepEqual(impact.context.remoteVerification.source.args,['get','-H','-o','value','guid',created]);
   const ssh=impact.context.remoteVerification.target.args;
+  assert.deepEqual(ssh.slice(0,2),['-F','/dev/null'],'Ignore ambient user/system SSH config');
   assert.ok(ssh.includes('StrictHostKeyChecking=yes'));
+  assert.ok(ssh.includes('GlobalKnownHostsFile=/dev/null'),'Never trust ambient global host keys');
+  assert.ok(ssh.includes('VerifyHostKeyDNS=no'),'DNS SSHFP must not override the pinned host key');
+  assert.ok(ssh.includes('UpdateHostKeys=no'),'Do not silently expand host key trust');
   assert.ok(ssh.includes('UserKnownHostsFile='+join(config,'RemoteBackup.known_hosts')));
   assert.equal(ssh.at(-1),'zfs get -H -o value guid '+impact.context.remoteVerification.snapshot);
   assert.equal(impact.context.pipeline[1].args.at(-1),'zfs receive -u backup/data/lightnas-BackupTask-1700000000');

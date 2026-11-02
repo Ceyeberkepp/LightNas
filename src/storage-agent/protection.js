@@ -5,6 +5,7 @@ import {atomic} from './persistence.js';
 import {command,digest} from './storage.js';
 import {dataPath,datasetName,snapshotName} from './datasets.js';
 import {assertSeparateRsyncTrees} from './mount-identity.js';
+import {pinBackupCredentials} from './credential-snapshot.js';
 export const PROTECTION_TYPES=['protection.task.save','protection.task.delete','protection.run','cloud.remote.save','replication.profile.save'];
 const name=value=>{if(typeof value!=='string'||!/^[A-Za-z][A-Za-z0-9_-]{1,47}$/.test(value))throw Error('Use a 2–48 character task/profile name');return value;};
 const remoteFields={s3:['provider','access_key_id','secret_access_key','region','endpoint'],drive:['token','root_folder_id','service_account_credentials','client_id','client_secret'],googlephotos:['token','client_id','client_secret','read_only'],dropbox:['token'],azureblob:['account','key','sas_url'],b2:['account','key'],tardigrade:['access_grant']};
@@ -17,9 +18,10 @@ export function nextRun(schedule,now=new Date()){
  else{next.setUTCHours(hour,minute);if(schedule.frequency==='weekly'){let days=(schedule.weekday-next.getUTCDay()+7)%7;if(days===0&&next<=now)days=7;next.setUTCDate(next.getUTCDate()+days);}else if(next<=now)next.setUTCDate(next.getUTCDate()+1);}
  return next.toISOString();
 }
+const TRANSPORT_ENV=Object.freeze({PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C'});
 export async function replicate(commands,timeout=1800000){
  return new Promise((resolve,reject)=>{
-  const sender=spawn(commands[0].bin,commands[0].args,{stdio:['ignore','pipe','pipe']}),receiver=spawn(commands[1].bin,commands[1].args,{stdio:['pipe','ignore','pipe']});let completed=0,failed=false;const codes=[];
+  const sender=spawn(commands[0].bin,commands[0].args,{stdio:['ignore','pipe','pipe'],env:TRANSPORT_ENV}),receiver=spawn(commands[1].bin,commands[1].args,{stdio:['pipe','ignore','pipe'],env:TRANSPORT_ENV});let completed=0,failed=false;const codes=[];
   const fail=()=>{if(failed)return;failed=true;clearTimeout(timer);sender.kill('SIGKILL');receiver.kill('SIGKILL');reject(Error('Replication failed; inspect source snapshot and destination before retrying'));};
   const timer=setTimeout(fail,timeout);sender.stdout.on('error',fail);receiver.stdin.on('error',fail);sender.stdout.pipe(receiver.stdin);sender.stderr.resume();receiver.stderr.resume();
   for(const [index,child] of [sender,receiver].entries()){child.on('error',fail);child.on('close',code=>{codes[index]=code;if(++completed===2){clearTimeout(timer);if(codes.some(c=>c!==0))fail();else if(!failed)resolve();}});}
@@ -70,7 +72,7 @@ export class ProtectionAdapter{
      // snapshot exists. Compare the immutable ZFS snapshot GUID at both ends.
      const remoteDataset=datasetName(task.target+'/lightnas-'+task.id+'-'+input.runStamp);
      const remoteSnapshot=snapshotName(remoteDataset+'@'+snap.split('@')[1]);
-     const sshArgs=['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','UserKnownHostsFile='+join(this.dir,profile.name+'.known_hosts'),'-i',join(this.dir,profile.name+'.key'),'-p',String(profile.port),profile.user+'@'+profile.host];
+     const sshArgs=['-F','/dev/null','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','GlobalKnownHostsFile=/dev/null','-o','VerifyHostKeyDNS=no','-o','UpdateHostKeys=no','-o','IdentitiesOnly=yes','-o','UserKnownHostsFile='+join(this.dir,profile.name+'.known_hosts'),'-i',join(this.dir,profile.name+'.key'),'-p',String(profile.port),profile.user+'@'+profile.host];
      context.pipeline=[{bin:'/usr/sbin/zfs',args:['send',snap]},{bin:'/usr/bin/ssh',args:[...sshArgs,'zfs receive -u '+remoteDataset]}];
      context.remoteVerification={
       source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',snap]},
@@ -100,6 +102,43 @@ export class ProtectionAdapter{
     if(!live.ok||String(live.stdout||'').trim()!==String(expected.guid))
      throw Error('Backup source dataset identity changed; refusing to operate');
    };
+   // Pin the actual subprocess input bytes, not only the preflight hashes.
+   // A rotated source credential cannot alter the private per-run copy.
+   const taskKind=impact.context?.task?.kind;
+   const staged=await pinBackupCredentials({
+    directory:this.dir,kind:taskKind,expected:impact.context?.credentialState,
+    profile:impact.context?.task?.profile
+   });
+   try{
+    const rewrite=command=>staged?{...command,args:staged.rewrite(command.args)}:command;
+    const commands=impact.commands.map(rewrite);
+    const pipeline=impact.context.pipeline?.map(rewrite);
+    const remoteVerification=impact.context.remoteVerification?{
+     ...impact.context.remoteVerification,
+     source:rewrite(impact.context.remoteVerification.source),
+     target:rewrite(impact.context.remoteVerification.target)
+    }:null;
+    // A validated preview cannot authorize a command that bypasses the
+    // exact, private credential snapshot opened by the subprocess.
+    if(taskKind==='cloud'){
+     const args=commands[0]?.args||[];
+     const stagedConfig=staged.paths.get(join(this.dir,'rclone.conf'));
+     if(commands.length!==1||commands[0].bin!=='/usr/bin/rclone'||!args.includes('--config')||
+        args[args.indexOf('--config')+1]!==stagedConfig)
+      throw Error('Cloud backup must execute using pinned credentials');
+    }
+    if(taskKind==='replication'){
+     if(!remoteVerification?.source||!remoteVerification?.target||!remoteVerification.snapshot)
+      throw Error('Remote replica verification missing; existing recovery snapshots retained');
+     const profile=impact.context.task.profile;
+     const stagedKey=staged.paths.get(join(this.dir,profile+'.key'));
+     const stagedKnown=staged.paths.get(join(this.dir,profile+'.known_hosts'));
+     const safeSSH=c=>c?.bin==='/usr/bin/ssh'&&
+      c.args.includes('-i')&&c.args[c.args.indexOf('-i')+1]===stagedKey&&
+      c.args.includes('UserKnownHostsFile='+stagedKnown);
+     if(!pipeline||pipeline.length!==2||!safeSSH(pipeline[1])||!safeSSH(remoteVerification?.target))
+      throw Error('Replication must execute using pinned SSH credentials and host trust');
+    }
    await verifySourceDataset();
    if(impact.context?.task?.kind==='rsync'){
     // A bind mount can alias one directory through unrelated absolute paths.
@@ -115,7 +154,7 @@ export class ProtectionAdapter{
     if(!priorSource||!priorTarget||source.dev!==priorSource.dev||source.ino!==priorSource.ino||target.dev!==priorTarget.dev||target.ino!==priorTarget.ino)
      throw Error('Backup source or target changed since preview; refusing to run');
    }
-   for(const c of impact.commands){const result=await this.run(c.bin,c.args,1800000);if(!result.ok)throw Error('Protection command failed; inspect task destination and operation history');}
+   for(const c of commands){const result=await this.run(c.bin,c.args,1800000);if(!result.ok)throw Error('Protection command failed; inspect task destination and operation history');}
    // Do not destroy the last usable recovery points when a snapshot command
    // reports success but ZFS inventory does not contain the new snapshot.
    const verifyCreatedSnapshot=async()=>{
@@ -135,11 +174,11 @@ export class ProtectionAdapter{
     verifiedLocalGuid=guid(result);
     if(!verifiedLocalGuid)throw Error('Created snapshot GUID not verified; existing recovery snapshots retained');
    }
-   if(impact.context.pipeline){
+   if(pipeline){
     await verifySourceDataset();
-    await this.pipeline(impact.context.pipeline);
+    await this.pipeline(pipeline);
     if(impact.context.task?.kind==='replication'){
-     const verification=impact.context.remoteVerification;
+     const verification=remoteVerification;
      if(!verification?.source||!verification?.target||!verification.snapshot)
       throw Error('Remote replica verification missing; existing recovery snapshots retained');
      const source=await this.run(verification.source.bin,verification.source.args,120000);
@@ -162,7 +201,7 @@ export class ProtectionAdapter{
       throw Error('Created snapshot identity changed before retention; existing recovery snapshots retained');
     }
     if(verifiedReplicaGuid){
-     const source=impact.context.remoteVerification.source;
+     const source=remoteVerification.source;
      const current=await this.run(source.bin,source.args,120000);
      if(guid(current)!==verifiedReplicaGuid)
       throw Error('Replicated source snapshot changed before retention; existing recovery snapshots retained');
@@ -171,6 +210,7 @@ export class ProtectionAdapter{
     if(!result.ok)throw Error('Task completed, but snapshot retention failed; inspect the snapshot list');
    }
    return {...impact.result,snapshot:impact.context.snapshot||null};
+   }finally{if(staged)await staged.cleanup();}
   }
   const restore=[];const write=async(path,value)=>{let old=null;try{old=await readFile(path);}catch(e){if(e.code!=='ENOENT')throw e;}restore.push({path,old});await atomic(path,value);};
   try{
