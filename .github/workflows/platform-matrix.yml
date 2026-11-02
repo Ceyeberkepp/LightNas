@@ -88,6 +88,22 @@ jobs:
           # systemd-resolved's 127.0.0.53 stub is host-local. Supply the
           # real upstream resolver configuration, not the loopback stub.
           test -s /run/systemd/resolve/resolv.conf
+          # Compare host, amd64 and ia32 DNS under unchanged Docker security.
+          echo "Host resolver:"; getent ahostsv4 deb.debian.org
+          echo "AMD64 resolver baseline:"
+          docker run --rm --network host --platform linux/amd64 -v /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro debian:bookworm-slim bash -ec '
+            uname -m
+            grep -E "^(Seccomp|Seccomp_filters):" /proc/self/status
+            getent ahostsv4 deb.debian.org
+          '
+          echo "i386 resolver diagnosis:"
+          docker run --rm --network host --platform linux/386 -v /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro debian:bookworm-slim bash -ec '
+            uname -m
+            dpkg --print-architecture
+            grep -E "^(Seccomp|Seccomp_filters):" /proc/self/status
+            cat /etc/resolv.conf
+            getent ahostsv4 deb.debian.org
+          '
           docker run --rm --network host --platform linux/386 -v /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro -v "$PWD:/source:ro" debian:bookworm-slim bash -ec '
             cat /etc/resolv.conf
             getent ahostsv4 deb.debian.org
