@@ -594,6 +594,27 @@ class CheckpointTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Recovered NetworkManager profiles differ"):
             self.cp.recover_pending()
 
+    def test_default_network_checkpoint_uses_root_owned_private_directory(self):
+        self.assertEqual(
+            checkpoint.NetworkCheckpoint().journal,
+            Path("/var/lib/lightnas-network/network-pending.json"),
+        )
+        installer = (ROOT / "install.sh").read_text()
+        self.assertIn(
+            "install -d -o root -g root -m 0700 /var/lib/lightnas-network",
+            installer,
+        )
+        self.assertIn("RequiresMountsFor=/var/lib/lightnas-network", installer)
+        self.assertIn("legacy_checkpoint=/var/lib/lightnas/network-pending.json", installer)
+
+    def test_unconfirmed_legacy_journal_fails_closed_before_network_operations(self):
+        with patch.object(checkpoint, "LEGACY_JOURNAL", Path(self.temp.name) / "legacy-journal"), \
+             patch.object(checkpoint, "DEFAULT_JOURNAL", self.cp.journal):
+            checkpoint.LEGACY_JOURNAL.write_text('{"pending":true}')
+            with self.assertRaisesRegex(RuntimeError, "legacy network checkpoint"):
+                self.cp.recover_pending()
+        self.assertEqual(self.calls, [])
+
     def test_no_management_writes_in_source_api_without_checkpoint(self):
         source=(ROOT/"scripts"/"lightnas-host-agent.py").read_text()
         self.assertIn("NETWORK_CHECKPOINT.begin(action, lambda: network_action(data, _checkpointed=True))",source)
