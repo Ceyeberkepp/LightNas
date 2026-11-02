@@ -110,10 +110,11 @@ export class ProtectionAdapter{
     const current=digest(await readFile(join(this.dir,'rclone.conf'),'utf8'));
     if(current!==expected)throw Error('Cloud backup credentials changed since preview; refusing to run');
    }
-   if(taskKind==='replication'&&impact.context.credentialState){
+   if(taskKind==='replication'){
     const expected=impact.context.credentialState,profile=impact.context.task.profile;
-    if(typeof expected.key!=='string'||typeof expected.hostKey!=='string')
-     throw Error('Replication credential identity invalid; request another preview');
+    // Missing preview identity must fail closed, not silently skip pinning.
+    if(!expected||typeof expected.key!=='string'||!expected.key||typeof expected.hostKey!=='string'||!expected.hostKey)
+     throw Error('Replication credential identity missing or invalid; request another preview');
     const currentKey=digest(await readFile(join(this.dir,profile+'.key'),'utf8'));
     const currentHostKey=digest(await readFile(join(this.dir,profile+'.known_hosts'),'utf8'));
     if(currentKey!==expected.key||currentHostKey!==expected.hostKey)
