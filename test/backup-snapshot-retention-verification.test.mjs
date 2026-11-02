@@ -224,7 +224,7 @@ test('failure injection: missing replica verification plan cannot authorize rete
  const {adapter,impact,commands}=isolatedJob({replication:true});
  delete impact.context.remoteVerification;
  await assert.rejects(adapter.apply(impact),/Remote replica verification missing/);
- assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+ assert.deepEqual(commands,[],'Missing remote verification must now block even the initial snapshot');
 });
 
 test('failure injection: source snapshot replacement during retention stops further pruning',async()=>{
