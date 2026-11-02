@@ -611,6 +611,13 @@ systemctl start lightnas-network-recovery.service
 systemctl enable lightnas-host-agent.service
 systemctl restart lightnas-host-agent.service
 systemctl enable "${SERVICE_NAME}"
+# The installed unit is the only systemd-managed control plane. Stop it first
+# so the port inspection cannot confuse its old listener with an orphan.
+# A second, unmanaged copy of this *same* LightNAS entrypoint can then be
+# gracefully retired; an unrelated port owner is never killed.
+systemctl stop "${SERVICE_NAME}.service"
+python3 "${INSTALL_DIRECTORY}/scripts/reconcile-management-port.py" \
+  --port 3080 --server "${INSTALL_DIRECTORY}/src/server.mjs"
 systemctl restart "${SERVICE_NAME}"
 # A new instance must be usable immediately: fail loudly if core services
 # cannot start rather than incorrectly reporting a completed installation.
@@ -658,7 +665,9 @@ esac
 
 echo "[6/6] Verifying LightNAS..."
 for attempt in {1..15}; do
-  if curl -kfsS "$([[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo https || echo http)://127.0.0.1:3080/api/status" >/dev/null 2>&1; then
+  if systemctl is-active --quiet "${SERVICE_NAME}.service" && \
+     curl -kfsS --connect-timeout 2 --max-time 3 "$([[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]] && echo https || echo http)://127.0.0.1:3080/api/status" 2>/dev/null | \
+       python3 -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d.get("version"),str) and isinstance(d.get("setupRequired"),bool)' 2>/dev/null; then
     address="$(hostname -I 2>/dev/null | awk '{print $1}')"
     echo
     echo "LightNAS installation completed. Runtime results:"
