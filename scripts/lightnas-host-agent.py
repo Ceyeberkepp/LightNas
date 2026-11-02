@@ -2742,6 +2742,17 @@ UNPROTECTED_MUTATIONS = frozenset({
 
 def network_action(data: dict, *, _checkpointed: bool = False) -> dict:
     action = str(data.get("action") or "")
+    # Windows owns WSL2's virtual NIC, default route, DNS and forwarding.
+    # NetworkManager checkpoints cannot recover Windows-managed network state.
+    # Allow inspection/rollback of any existing transaction, but never begin
+    # a new mutation that could disconnect the WSL instance.
+    if "microsoft" in platform.release().lower() and action not in {
+        "network-transaction-status", "network-confirm", "network-rollback"
+    }:
+        raise ValueError(
+            "WSL2 networking is managed by Windows; LightNAS cannot change "
+            "host network, firewall, bridges or uplinks in this environment"
+        )
     if action == "network-transaction-status":
         return NETWORK_CHECKPOINT.status()
     if action in {"network-confirm", "network-rollback"}:
