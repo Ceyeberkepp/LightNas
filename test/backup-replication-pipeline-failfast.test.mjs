@@ -59,7 +59,7 @@ test('failure injection: pipeline timeout rejects both otherwise healthy but hun
 
 test('failure injection: synchronous sender spawn validation rejects without starting receiver',async()=>{
  await assert.rejects(replicate([
-  {bin:process.execPath,args:['\\0']},
+  {bin:process.execPath,args:['\0']},
   command('process.exit(0)')
  ],10000),/Replication failed/);
 });
@@ -71,7 +71,7 @@ test('failure injection: synchronous receiver spawn rejection never orphans send
   const script=`require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setInterval(()=>{},1000)`;
   await assert.rejects(replicate([
    command(script),
-   {bin:process.execPath,args:['\\0']}
+   {bin:process.execPath,args:['\0']}
   ],10000),/Replication failed/);
   // A sender that was scheduled but killed before its first instruction may
   // never write its PID. If it did start, it must have been reaped.
