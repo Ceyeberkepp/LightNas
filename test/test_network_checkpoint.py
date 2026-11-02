@@ -1,6 +1,7 @@
 """Isolated validation of the complete NetworkManager checkpoint lifecycle."""
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -111,6 +112,49 @@ class CheckpointTests(unittest.TestCase):
             self.cp.begin("connection-update", lambda: self.fail("must not modify network"))
         self.assertEqual(self.calls, [])
         self.assertFalse(self.cp.journal.exists())
+
+    def test_failure_injection_world_writable_lock_directory_blocks_checkpoint(self):
+        # A writable parent lets another local process replace the lock inode,
+        # defeating cross-process serialization of network changes.
+        parent = self.cp.journal.parent
+        original = parent.stat().st_mode & 0o777
+        try:
+            parent.chmod(0o777)
+            with self.assertRaisesRegex(RuntimeError, "Unsafe network transaction lock directory"):
+                self.cp.begin("connection-update", lambda: self.fail("must not modify network"))
+            self.assertEqual(self.calls, [])
+            self.assertFalse(self.cp.journal.exists())
+        finally:
+            parent.chmod(original)
+
+    def test_failure_injection_public_lockfile_blocks_checkpoint(self):
+        lockfile = self.cp.journal.parent / "network-checkpoint.lock"
+        lockfile.write_text("untrusted lock")
+        lockfile.chmod(0o644)
+        with self.assertRaisesRegex(RuntimeError, "Unsafe network transaction lock file"):
+            self.cp.begin("connection-update", lambda: self.fail("must not modify network"))
+        self.assertEqual(self.calls, [])
+        self.assertFalse(self.cp.journal.exists())
+
+    def test_failure_injection_hardlinked_lockfile_blocks_checkpoint(self):
+        lockfile = self.cp.journal.parent / "network-checkpoint.lock"
+        lockfile.touch(mode=0o600)
+        os.link(lockfile, self.cp.journal.parent / "another-name")
+        with self.assertRaisesRegex(RuntimeError, "Unsafe network transaction lock file"):
+            self.cp.begin("connection-update", lambda: self.fail("must not modify network"))
+        self.assertEqual(self.calls, [])
+        self.assertFalse(self.cp.journal.exists())
+
+    def test_failure_injection_symlinked_lock_directory_blocks_checkpoint(self):
+        alias = Path(self.temp.name) / "alias"
+        real = Path(self.temp.name) / "real"
+        real.mkdir()
+        alias.symlink_to(real, target_is_directory=True)
+        self.cp.journal = alias / "network-pending.json"
+        with self.assertRaisesRegex(RuntimeError, "Unsafe network transaction lock directory"):
+            self.cp.begin("connection-update", lambda: self.fail("must not modify network"))
+        self.assertEqual(self.calls, [])
+        self.assertFalse((real / "network-pending.json").exists())
 
     def test_confirm_valid_token_commits_and_removes_journal(self):
         pending=self.cp.begin("connection-update", lambda: {"ok":True})
