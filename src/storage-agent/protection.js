@@ -18,9 +18,10 @@ export function nextRun(schedule,now=new Date()){
  else{next.setUTCHours(hour,minute);if(schedule.frequency==='weekly'){let days=(schedule.weekday-next.getUTCDay()+7)%7;if(days===0&&next<=now)days=7;next.setUTCDate(next.getUTCDate()+days);}else if(next<=now)next.setUTCDate(next.getUTCDate()+1);}
  return next.toISOString();
 }
+const TRANSPORT_ENV=Object.freeze({PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C'});
 export async function replicate(commands,timeout=1800000){
  return new Promise((resolve,reject)=>{
-  const sender=spawn(commands[0].bin,commands[0].args,{stdio:['ignore','pipe','pipe']}),receiver=spawn(commands[1].bin,commands[1].args,{stdio:['pipe','ignore','pipe']});let completed=0,failed=false;const codes=[];
+  const sender=spawn(commands[0].bin,commands[0].args,{stdio:['ignore','pipe','pipe'],env:TRANSPORT_ENV}),receiver=spawn(commands[1].bin,commands[1].args,{stdio:['pipe','ignore','pipe'],env:TRANSPORT_ENV});let completed=0,failed=false;const codes=[];
   const fail=()=>{if(failed)return;failed=true;clearTimeout(timer);sender.kill('SIGKILL');receiver.kill('SIGKILL');reject(Error('Replication failed; inspect source snapshot and destination before retrying'));};
   const timer=setTimeout(fail,timeout);sender.stdout.on('error',fail);receiver.stdin.on('error',fail);sender.stdout.pipe(receiver.stdin);sender.stderr.resume();receiver.stderr.resume();
   for(const [index,child] of [sender,receiver].entries()){child.on('error',fail);child.on('close',code=>{codes[index]=code;if(++completed===2){clearTimeout(timer);if(codes.some(c=>c!==0))fail();else if(!failed)resolve();}});}
