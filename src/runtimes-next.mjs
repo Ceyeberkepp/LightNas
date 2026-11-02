@@ -10,6 +10,7 @@ import { localContainerInventory, localCreateContainer, localManageContainer, lo
 import { listContainerTemplates, resolveContainerTemplate } from './templates.mjs';
 import { listStoragePools, listContentAcrossPools, resolveStoragePool } from './storage-pools.mjs';
 import { ensureWindowsVirtioDrivers, vmGuestToolsInventory } from './guest-tools.mjs';
+import { nativeDockerPlatform } from './native-docker-platform.mjs';
 
 const execute = promisify(execFile);
 const dataRoot = dirname(process.env.NAS_DATA_FILE || 'data/state.json');
@@ -1105,8 +1106,15 @@ async function runDocker(args, timeout = 180000) {
   return response.output;
 }
 
-async function pullDockerImage(image) {
-  try { return await runDocker(['pull', image], 600000); }
+async function hostNativeDockerPlatform() {
+  const result = await command('dpkg', ['--print-architecture'], 5000);
+  if (!result.ok) throw Object.assign(new Error('Cannot verify the native host architecture for Docker application installation.'), {status:409});
+  try { return nativeDockerPlatform(result.output.trim()); }
+  catch (error) { throw Object.assign(error, {status:409}); }
+}
+
+async function pullDockerImage(image, platform) {
+  try { return await runDocker(['pull', '--platform', platform, image], 600000); }
   catch (error) { throw Object.assign(new Error(`Unable to download Docker image ${image}: ${error.message.replace(/^Docker:\s*/, '')}`), { status: error.status || 409 }); }
 }
 
@@ -1269,11 +1277,12 @@ export async function installCatalogApp(id, input = {}) {
     throw Object.assign(new Error('Host port must be 0 (automatic) or a valid TCP port from 1 to 65535.'), { status: 400 });
   }
 
-  await pullDockerImage(app.image);
+  const nativePlatform = await hostNativeDockerPlatform();
+  await pullDockerImage(app.image, nativePlatform);
   const publish = requestedPort > 0
     ? `0.0.0.0:${requestedPort}:${app.containerPort}`
     : `0.0.0.0::${app.containerPort}`;
-  const args = ['run', '-d', '--name', name,
+  const args = ['run', '--platform', nativePlatform, '-d', '--name', name,
     '--label', 'lightnas.managed=true',
     '--label', `lightnas.catalog=${app.id}`,
     '--label', `lightnas.instance=${instanceName}`,
