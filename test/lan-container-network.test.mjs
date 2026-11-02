@@ -29,14 +29,12 @@ test('host agent creates nested system containers with safe direct-LAN macvlan o
   assert.match(agent, /return \[parent\]/);
 });
 
-test('runtime provisioning migrates old private NAT containers to direct host LAN automatically', async () => {
+test('runtime provisioning never stops or rewrites existing LXC guests', async () => {
   const provision = await readFile(new URL('../scripts/provision-runtimes.sh', import.meta.url), 'utf8');
-  assert.match(provision, /set_flag LIGHTNAS_ALLOW_NESTED_LXC 1/);
-  assert.match(provision, /nested-\(macvlan\|ipvlan\)/);
-  assert.match(provision, /direct_type="\$\{network_mode#nested-\}"/);
-  assert.match(provision, /lxc\.net\.0\.macvlan\.mode = bridge/);
-  assert.match(provision, /lxc\.net\.0\.ipvlan\.mode = l2/);
-  assert.match(provision, /LIGHTNAS_CONTAINER_PARENT/);
+  assert.match(provision, /migration_pending/);
+  assert.match(provision, /separately approved, rollback-capable plan/);
+  assert.doesNotMatch(provision, /lxc-stop -n|lxc-start -n|restore_guest_lan_dhcp/);
+  assert.doesNotMatch(provision, /ip link delete lightnas0|systemctl disable --now lxc-net/);
 });
 
 test('Proxmox installer preserves net0 settings and only disables its firewall flag for nested MACs', async () => {
@@ -89,17 +87,11 @@ test('nested networking never bridges over the appliance management interface', 
 });
 
 
-test('legacy 10.77 guest profiles are restored to DHCP during LAN migration', async () => {
+test('legacy 10.77 guest profiles are preserved until approved migration', async () => {
   const provision = await readFile(new URL('../scripts/provision-runtimes.sh', import.meta.url), 'utf8');
-  assert.match(provision, /restore_guest_lan_dhcp\(\)/);
-  assert.match(provision, /Address=10\\\.77\\\.0/);
-  assert.match(provision, /DHCP=ipv4/);
-  assert.match(provision, /ClientIdentifier=mac/);
-  assert.match(provision, /automaticFallback.*False/);
-  assert.match(provision, /lxc\\\.net\\\.0\\\.ipv4\\\.address/);
-  assert.match(provision, /lxc\\\.net\\\.0\\\.ipv4\\\.gateway/);
+  assert.doesNotMatch(provision, /restore_guest_lan_dhcp|ClientIdentifier=duid/);
+  assert.match(provision, /Guest DHCP profiles and metadata are preserved/);
 });
-
 
 test('nested LightNAS derives a managed pool from its own LAN address', async () => {
   const network = await readFile(new URL('../scripts/configure-appliance-network.sh', import.meta.url), 'utf8');
