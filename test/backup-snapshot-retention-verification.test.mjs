@@ -61,7 +61,7 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
    source:{name:'tank/data',guid:'12345'},
    snapshot:created,
    prune,
-   ...(replication?{credentialState:{key:digest(FIXTURE_KEY),hostKey:digest(FIXTURE_HOST_KEY)},pipeline:[{bin:'zfs',args:['send',created]},{bin:'ssh',args:['receive']}],remoteVerification:{source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',created]},target:{bin:'/usr/bin/ssh',args:['-o','StrictHostKeyChecking=yes','zfs get -H -o value guid backup/data@lightnas-BackupTask-1700000000']},snapshot:'backup/data@lightnas-BackupTask-1700000000'}}:{})
+   ...(replication?{credentialState:{key:digest(FIXTURE_KEY),hostKey:digest(FIXTURE_HOST_KEY)},pipeline:[{bin:'zfs',args:['send',created]},{bin:'/usr/bin/ssh',args:['-F','/dev/null','-o','UserKnownHostsFile='+join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),'-i',join(FIXTURE_DIR,'protection','RemoteBackup.key'),'receive']}],remoteVerification:{source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',created]},target:{bin:'/usr/bin/ssh',args:['-F','/dev/null','-o','UserKnownHostsFile='+join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),'-i',join(FIXTURE_DIR,'protection','RemoteBackup.key'),'zfs get -H -o value guid backup/data@lightnas-BackupTask-1700000000']},snapshot:'backup/data@lightnas-BackupTask-1700000000'}}:{})
   },
   commands:[{bin:'/usr/sbin/zfs',args:['snapshot',created]}],
   result:{id:'BackupTask',kind:replication?'replication':'snapshot'}
