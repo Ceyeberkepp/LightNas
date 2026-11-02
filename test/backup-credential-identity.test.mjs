@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,rm,chmod,readFile,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {ProtectionAdapter} from '../src/storage-agent/protection.js';
+import {ProtectionAdapter,replicate} from '../src/storage-agent/protection.js';
 import {digest} from '../src/storage-agent/storage.js';
 
 async function fixture(t){
@@ -156,4 +156,21 @@ test('symlinked or world-readable cloud credentials fail before any transfer',as
  await chmod(file,0o644);
  await assert.rejects(adapter.apply(impact),/permissions or size are unsafe/);
  assert.deepEqual(calls,[]);
+});
+
+test('real replication subprocesses do not inherit ambient secrets or SSH overrides',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'lightnas-replication-env-'));
+ t.after(()=>rm(dir,{recursive:true,force:true}));
+ const output=join(dir,'environment.txt');
+ const previous=process.env.LIGHTNAS_TEST_SECRET;
+ process.env.LIGHTNAS_TEST_SECRET='must-never-reach-ssh-or-zfs';
+ try{
+  await replicate([{bin:'/usr/bin/env',args:[]},{bin:'/usr/bin/tee',args:[output]}],10000);
+  const captured=await readFile(output,'utf8');
+  assert.doesNotMatch(captured,/LIGHTNAS_TEST_SECRET|must-never-reach-ssh-or-zfs/);
+  assert.match(captured,/LANG=C/);
+ }finally{
+  if(previous===undefined)delete process.env.LIGHTNAS_TEST_SECRET;
+  else process.env.LIGHTNAS_TEST_SECRET=previous;
+ }
 });
