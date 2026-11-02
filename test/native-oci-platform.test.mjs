@@ -6,7 +6,7 @@ import {nativeDockerPlatform} from '../src/native-docker-platform.mjs';
 test('all full LightNAS host architecture targets select only native Docker manifest platforms',()=>{
  for(const [arch,expected] of Object.entries({
   amd64:'linux/amd64',i386:'linux/386',arm64:'linux/arm64',
-  armhf:'linux/arm/v7',armel:'linux/arm/v6',riscv64:'linux/riscv64'
+  armhf:'linux/arm/v7',armel:'linux/arm/v5',riscv64:'linux/riscv64'
  })) assert.equal(nativeDockerPlatform(arch),expected,arch);
 });
 
