@@ -18,9 +18,9 @@ writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.key'),FIXTURE_KEY,{mod
 writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),FIXTURE_HOST_KEY,{mode:0o600});
 after(()=>rmSync(FIXTURE_DIR,{recursive:true,force:true}));
 
-function isolatedJob({visible=[true],replication=false,prune=older,failSend=false,sourceGuid='81234567',targetGuid='81234567',sourceCheckOk=true,targetCheckOk=true,datasetGuid='12345',datasetCheckOk=true}={}){
+function isolatedJob({visible=[true],replication=false,prune=older,failSend=false,sourceGuid='81234567',targetGuid='81234567',sourceCheckOk=true,targetCheckOk=true,datasetGuid='12345',datasetCheckOk=true,pruneGuid='24680',pruneGuidOk=true}={}){
  const commands=[],events=[];
- let inventoryReads=0,sourceGuidReads=0,datasetGuidReads=0;
+ let inventoryReads=0,sourceGuidReads=0,datasetGuidReads=0,pruneGuidReads=0;
  const datasets={inventory:async()=>{
   const present=visible[Math.min(inventoryReads++,visible.length-1)];
   events.push('inventory:'+present);
@@ -30,6 +30,11 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
   dir:FIXTURE_DIR,
   datasets,
   run:async(bin,args)=>{
+   if(args[0]==='get'&&args.includes('guid')&&older.includes(args.at(-1))){
+    events.push('verify-prune-guid:'+args.at(-1));
+    const value=Array.isArray(pruneGuid)?pruneGuid[Math.min(pruneGuidReads++,pruneGuid.length-1)]:pruneGuid;
+    return {ok:pruneGuidOk,stdout:String(value)+'\n'};
+   }
    if(args[0]==='get'&&args.includes('guid')&&args.at(-1)==='tank/data'){
     events.push('verify-dataset-guid');
     const value=Array.isArray(datasetGuid)?datasetGuid[Math.min(datasetGuidReads++,datasetGuid.length-1)]:datasetGuid;
@@ -61,6 +66,7 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
    source:{name:'tank/data',guid:'12345'},
    snapshot:created,
    prune,
+   pruneGuids:Object.fromEntries(prune.map(s=>[s,'24680'])),
    ...(replication?{credentialState:{key:digest(FIXTURE_KEY),hostKey:digest(FIXTURE_HOST_KEY)},pipeline:[{bin:'zfs',args:['send',created]},{bin:'/usr/bin/ssh',args:['-F','/dev/null','-o','UserKnownHostsFile='+join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),'-i',join(FIXTURE_DIR,'protection','RemoteBackup.key'),'receive']}],remoteVerification:{source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',created]},target:{bin:'/usr/bin/ssh',args:['-F','/dev/null','-o','UserKnownHostsFile='+join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),'-i',join(FIXTURE_DIR,'protection','RemoteBackup.key'),'zfs get -H -o value guid backup/data@lightnas-BackupTask-1700000000']},snapshot:'backup/data@lightnas-BackupTask-1700000000'}}:{})
   },
   commands:[{bin:'/usr/sbin/zfs',args:['snapshot',created]}],
@@ -261,4 +267,57 @@ test('replication plan pins SSH host identity and verifies the exact received ZF
   assert.equal(ssh.at(-1),'zfs get -H -o value guid '+impact.context.remoteVerification.snapshot);
   assert.equal(impact.context.pipeline[1].args.at(-1),'zfs receive -u backup/data/lightnas-BackupTask-1700000000');
  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+
+test('retention preview pins old immutable ZFS GUIDs before any snapshot creation',async()=>{
+ const commands=[];
+ const datasets={inventory:async()=>({
+  available:true,datasets:[{name:'tank/data',guid:'12345'}],
+  snapshots:older.map((name,i)=>({name,created:i+1}))
+ })};
+ const adapter=new ProtectionAdapter({dir:'/unused-retention-preview-test',datasets,run:async(bin,args)=>{
+  commands.push({bin,args});
+  if(bin==='/usr/sbin/zfs'&&args[0]==='get'&&args.includes('guid')&&older.includes(args.at(-1)))
+   return {ok:true,stdout:(older.indexOf(args.at(-1))+7000)+'\n'};
+  throw Error('Unexpected operation during retention preview');
+ }});
+ adapter.registry=async()=>({tasks:[{id:'BackupTask',kind:'snapshot',source:'tank/data',target:'',retention:1,mode:'copy',direction:'push',schedule:{frequency:'on-demand'},enabled:true}],cloudRemotes:[],replicationProfiles:[]});
+ const impact=await adapter.plan({type:'protection.run',id:'BackupTask',runStamp:1700000000});
+ assert.deepEqual(impact.context.prune,older);
+ assert.deepEqual(impact.context.pruneGuids,Object.fromEntries(older.map((snap,i)=>[snap,String(7000+i)])));
+ assert.deepEqual(commands.map(command=>command.args[0]),['get','get']);
+});
+
+test('retention refuses to plan deletion if an old GUID is unreadable',async()=>{
+ const datasets={inventory:async()=>({available:true,datasets:[{name:'tank/data',guid:'12345'}],snapshots:older.map((name,i)=>({name,created:i+1}))})};
+ const adapter=new ProtectionAdapter({dir:'/unused-retention-preview-test',datasets,run:async()=>({ok:true,stdout:'-\n'})});
+ adapter.registry=async()=>({tasks:[{id:'BackupTask',kind:'snapshot',source:'tank/data',target:'',retention:1,mode:'copy',direction:'push',schedule:{frequency:'on-demand'},enabled:true}],cloudRemotes:[],replicationProfiles:[]});
+ await assert.rejects(adapter.plan({type:'protection.run',id:'BackupTask',runStamp:1700000000}),/Retention snapshot identity unavailable/);
+});
+
+test('missing previewed old snapshot identity blocks all destructive retention',async()=>{
+ const {adapter,impact,commands}=isolatedJob();
+ delete impact.context.pruneGuids;
+ await assert.rejects(adapter.apply(impact),/Retention snapshot identity missing/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+});
+
+test('replacement old snapshot before first retention is not destroyed',async()=>{
+ const {adapter,impact,commands}=isolatedJob({pruneGuid:'24681'});
+ await assert.rejects(adapter.apply(impact),/Retention snapshot identity changed since preview/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+});
+
+test('replacement of a second old snapshot stops any further deletion',async()=>{
+ const {adapter,impact,commands}=isolatedJob({pruneGuid:['24680','24681']});
+ await assert.rejects(adapter.apply(impact),/Retention snapshot identity changed since preview/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot','destroy']);
+ assert.deepEqual(commands[1].args,['destroy',older[0]]);
+});
+
+test('unreadable old snapshot GUID preserves old recovery points',async()=>{
+ const {adapter,impact,commands}=isolatedJob({pruneGuidOk:false});
+ await assert.rejects(adapter.apply(impact),/Retention snapshot identity changed since preview/);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
 });
