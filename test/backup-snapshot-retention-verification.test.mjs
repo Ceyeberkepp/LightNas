@@ -1,12 +1,21 @@
-import test from 'node:test';
+import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
 import {ProtectionAdapter} from '../src/storage-agent/protection.js';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
+import {digest} from '../src/storage-agent/storage.js';
 
 const created='tank/data@lightnas-BackupTask-1700000000';
 const older=['tank/data@lightnas-BackupTask-1699999998','tank/data@lightnas-BackupTask-1699999999'];
+const FIXTURE_DIR=mkdtempSync(join(tmpdir(),'lightnas-retention-replication-'));
+const FIXTURE_KEY='isolated replication private key fixture';
+const FIXTURE_HOST_KEY='backup.example ssh-ed25519 isolated pinned host key fixture';
+mkdirSync(join(FIXTURE_DIR,'protection'));
+writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.key'),FIXTURE_KEY);
+writeFileSync(join(FIXTURE_DIR,'protection','RemoteBackup.known_hosts'),FIXTURE_HOST_KEY);
+after(()=>rmSync(FIXTURE_DIR,{recursive:true,force:true}));
 
 function isolatedJob({visible=[true],replication=false,prune=older,failSend=false,sourceGuid='81234567',targetGuid='81234567',sourceCheckOk=true,targetCheckOk=true,datasetGuid='12345',datasetCheckOk=true}={}){
  const commands=[],events=[];
@@ -17,7 +26,7 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
   return {available:true,snapshots:present?[{name:created}]:[]};
  }};
  const adapter=new ProtectionAdapter({
-  dir:'/unused-isolated-backup-test',
+  dir:FIXTURE_DIR,
   datasets,
   run:async(bin,args)=>{
    if(args[0]==='get'&&args.includes('guid')&&args.at(-1)==='tank/data'){
@@ -47,11 +56,11 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
  const impact={
   type:'protection.run',
   context:{
-   task:{id:'BackupTask',kind:replication?'replication':'snapshot',source:'tank/data'},
+   task:{id:'BackupTask',kind:replication?'replication':'snapshot',source:'tank/data',...(replication?{profile:'RemoteBackup'}:{})},
    source:{name:'tank/data',guid:'12345'},
    snapshot:created,
    prune,
-   ...(replication?{pipeline:[{bin:'zfs',args:['send',created]},{bin:'ssh',args:['receive']}],remoteVerification:{source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',created]},target:{bin:'/usr/bin/ssh',args:['-o','StrictHostKeyChecking=yes','zfs get -H -o value guid backup/data@lightnas-BackupTask-1700000000']},snapshot:'backup/data@lightnas-BackupTask-1700000000'}}:{})
+   ...(replication?{credentialState:{key:digest(FIXTURE_KEY),hostKey:digest(FIXTURE_HOST_KEY)},pipeline:[{bin:'zfs',args:['send',created]},{bin:'ssh',args:['receive']}],remoteVerification:{source:{bin:'/usr/sbin/zfs',args:['get','-H','-o','value','guid',created]},target:{bin:'/usr/bin/ssh',args:['-o','StrictHostKeyChecking=yes','zfs get -H -o value guid backup/data@lightnas-BackupTask-1700000000']},snapshot:'backup/data@lightnas-BackupTask-1700000000'}}:{})
   },
   commands:[{bin:'/usr/sbin/zfs',args:['snapshot',created]}],
   result:{id:'BackupTask',kind:replication?'replication':'snapshot'}
