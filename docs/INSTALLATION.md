@@ -129,14 +129,23 @@ systemctl status lightnas-host-agent --no-pager --full
 cat /var/lib/lightnas/runtime-status.txt
 ```
 
-On a new installation, the web control center uses local HTTPS:
+All fresh **and existing/upgraded** installations require the web control center
+to use local HTTPS on each appliance's own IP and port 3080. A leftover
+`/opt/lightnas/.git` checkout cannot make the installer choose HTTP.
+
+The one-click installer automatically runs the guarded HTTPS migration if
+`lightnas.service` was already active before the update. It stops if the
+current HTTP service cannot be migrated, rather than falsely reporting success
+or silently reverting to HTTP. Plaintext `LIGHTNAS_LOCAL_TLS=0` is rejected.
+The final health check verifies the appliance's certificate with
+`curl --cacert`, not `curl -k`. The expected URL is:
 
 ```text
 https://<LIGHTNAS-IP>:3080
 ```
 
-An existing installation can be migrated to **the same port**, without
-rerunning the whole installer:
+For a running existing installation, the same migration can be performed
+immediately **without rerunning the entire installer**:
 
 ```bash
 cd /opt/lightnas
@@ -169,8 +178,10 @@ address as a subject alternative name, or use an operator-owned HTTPS hostname
 with an appropriate trusted certificate. Never distribute a shared private
 key or tell users to disable browser certificate checking.
 
-Existing customer tunnels and proxies may currently forward **HTTP** to
-port 3080. After migration they must explicitly change their upstream to
+**Important for upgrades:** Existing customer tunnels and proxies may
+currently forward **HTTP** to port 3080. The one-click installer now migrates
+these listeners to HTTPS automatically. After migration these deployments
+must explicitly change their upstream to
 HTTPS and validate the local certificate. If doing so would disconnect
 remote management, migrate from a local console or during an approved
 maintenance window. No automatic plaintext HTTP fallback is exposed on the
