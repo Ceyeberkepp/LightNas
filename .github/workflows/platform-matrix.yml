@@ -80,7 +80,12 @@ jobs:
       - uses: actions/checkout@v5
       - name: Build native 32-bit runtime and test live API and security regressions
         run: |
-          docker run --rm --platform linux/386 -v "$PWD:/source:ro" debian:bookworm-slim bash -ec '
+          # The hosted runner's Docker bridge DNS repeatedly failed to resolve
+          # deb.debian.org for the linux/386 container (exit 100 before tests).
+          # Use the runner's network namespace, preserving the full native
+          # ia32 source build, package signature checks and test suite.
+          getent ahostsv4 deb.debian.org >/dev/null
+          docker run --rm --network host --platform linux/386 -v "$PWD:/source:ro" debian:bookworm-slim bash -ec '
             apt-get update
             apt-get install -y --no-install-recommends python3 curl ca-certificates
             cp -a /source /work
