@@ -64,3 +64,18 @@ test('replication refuses changed pinned SSH key or host key before ZFS mutation
  await assert.rejects(adapter.apply(impact),/Replication SSH identity changed since preview/);
  assert.deepEqual(calls,[]);
 });
+
+test('failure injection: absent or incomplete replication preview identity cannot create a snapshot',async t=>{
+ const {adapter,config,calls}=await fixture(t);
+ await writeFile(join(config,'RemoteBackup.key'),'original private key fixture');
+ await writeFile(join(config,'RemoteBackup.known_hosts'),'backup.example ssh-ed25519 original-host-key-fixture');
+ const impact={type:'protection.run',context:{
+  task:{kind:'replication',profile:'RemoteBackup',source:'tank/data'},
+  source:{name:'tank/data',guid:'12345'}
+ },commands:[{bin:'/usr/sbin/zfs',args:['snapshot','tank/data@lightnas-Backup-1']}],result:{id:'Backup'}};
+ for(const state of [undefined,{}, {key:digest('original private key fixture')}, {hostKey:digest('backup.example ssh-ed25519 original-host-key-fixture')}]){
+  impact.context.credentialState=state;
+  await assert.rejects(adapter.apply(impact),/Replication credential identity missing or invalid/);
+  assert.deepEqual(calls,[],'No ZFS operation is authorized without both pinned credentials');
+ }
+});
