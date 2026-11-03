@@ -189,9 +189,17 @@ has_existing_network_ownership() {
     fi
     [[ -z "$nm_profiles" ]] || return 0
   fi
+  # Include vendor and generated configuration, not only /etc. These
+  # managers can own an interface before it has acquired any address.
+  # NetworkManager keyfiles need not have a .nmconnection suffix.
   for config in /etc/systemd/network/*.network /run/systemd/network/*.network \
+                /usr/lib/systemd/network/*.network /lib/systemd/network/*.network \
                 /etc/netplan/*.yaml /etc/netplan/*.yml \
-                /etc/NetworkManager/system-connections/*.nmconnection; do
+                /run/netplan/*.yaml /run/netplan/*.yml \
+                /lib/netplan/*.yaml /lib/netplan/*.yml \
+                /etc/NetworkManager/system-connections/* \
+                /run/NetworkManager/system-connections/* \
+                /usr/lib/NetworkManager/system-connections/*; do
     [[ -f "${config}" ]] && return 0
   done
   # Read all input without a short-circuiting pipeline. Inspection errors

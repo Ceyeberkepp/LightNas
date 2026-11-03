@@ -136,3 +136,39 @@ if bootstrap_wired_dhcp eth0; then exit 20; fi
     assert.doesNotMatch(output, /MUTATION/);
   }
 });
+
+
+test('vendor and runtime network policy prevents first-boot DHCP takeover', async () => {
+  const network = await readFile(new URL('../scripts/configure-appliance-network.sh', import.meta.url), 'utf8');
+  const guard = network.match(/^has_existing_network_ownership\(\) \{[\s\S]*?^\}/m)[0];
+  const isolatedGuard = guard.replaceAll('/etc/', '${work}/etc/')
+    .replaceAll('/run/', '${work}/run/').replaceAll('/usr/lib/', '${work}/usr/lib/')
+    .replaceAll(' /lib/', ' ${work}/lib/');
+  const policies = [
+    'usr/lib/systemd/network/80-management.network',
+    'lib/systemd/network/80-management.network',
+    'run/netplan/management.yaml',
+    'lib/netplan/management.yaml',
+    'run/NetworkManager/system-connections/management.nmconnection',
+    'usr/lib/NetworkManager/system-connections/management.nmconnection',
+    'etc/NetworkManager/system-connections/legacy-profile'
+  ];
+  for (const policy of [...policies, 'none']) {
+    const script = `set -Eeuo pipefail
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+ip() { return 0; }
+nmcli() { return 0; }
+if [[ "$TEST_POLICY" != none ]]; then
+  mkdir -p "$work/$(dirname "$TEST_POLICY")"
+  printf '[Network]\\nDHCP=yes\\n' > "$work/$TEST_POLICY"
+fi
+${isolatedGuard}
+if has_existing_network_ownership; then printf owned; else printf unowned; fi
+`;
+    const output = execFileSync('bash', ['-c', script], {
+      env: { ...process.env, TEST_POLICY: policy }, encoding: 'utf8'
+    });
+    assert.equal(output, policy === 'none' ? 'unowned' : 'owned', policy);
+  }
+});
