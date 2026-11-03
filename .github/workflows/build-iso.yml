@@ -14,18 +14,9 @@ on:
       - 'scripts/lightnas-network-wizard.sh'
       - 'public/assets/lightnas-logo.png'
       - 'install.sh'
+  # Always produce the lightweight "validate" check on every PR so that
+  # GitHub rulesets can require the job without deadlocking on path filters.
   pull_request:
-    paths:
-      - 'iso/**'
-      - 'src/**'
-      - 'public/**'
-      - 'config/**'
-      - '.github/workflows/build-iso.yml'
-      - 'scripts/lightnas-install-hub.py'
-      - 'scripts/lightnas-network-*.py'
-      - 'scripts/lightnas-network-wizard.sh'
-      - 'public/assets/lightnas-logo.png'
-      - 'install.sh'
   workflow_dispatch:
 
 permissions:
