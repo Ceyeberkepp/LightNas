@@ -288,6 +288,8 @@ test('retention preview pins old immutable ZFS GUIDs before any snapshot creatio
  adapter.registry=async()=>({tasks:[{id:'BackupTask',kind:'snapshot',source:'tank/data',target:'',retention:1,mode:'copy',direction:'push',schedule:{frequency:'on-demand'},enabled:true}],cloudRemotes:[],replicationProfiles:[]});
  const impact=await adapter.plan({type:'protection.run',id:'BackupTask',runStamp:1700000000});
  assert.deepEqual(impact.context.prune,older);
+ assert.equal(impact.dataErased,false,'preview must not claim automatic destructive pruning');
+ assert.match(impact.warning,/Automatic ZFS pruning is suspended/);
  assert.deepEqual(impact.context.pruneGuids,Object.fromEntries(older.map((snap,i)=>[snap,String(7000+i)])));
  assert.deepEqual(commands.map(command=>command.args[0]),['get','get']);
 });
