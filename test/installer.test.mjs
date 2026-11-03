@@ -74,8 +74,8 @@ test('physical host network bootstrap preserves management connectivity instead 
   assert.match(network, /physical-bridge-approval-required/);
   assert.match(network, /existing.*bridge detected/);
   assert.match(network, /LIGHTNAS_NETWORK_MODE=pending-uplink/);
-  for (const unsafe of [/net-destroy default/, /net-undefine default/, /nmcli connection down/, /ip route replace default/, /ip addr del "\\$\\{address\\}"/, /sysctl\\.d\\/99-lightnas/]) {
-    assert.doesNotMatch(network, unsafe, 'installer may not mutate live physical network or destroy libvirt network');
+  for (const unsafe of ['net-destroy default','net-undefine default','nmcli connection down','ip route replace default','ip addr del "${address}"','sysctl.d/99-lightnas']) {
+    assert.equal(network.includes(unsafe), false, 'installer may not mutate the physical management network: '+unsafe);
   }
 });
 
