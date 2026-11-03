@@ -23,12 +23,12 @@ export function evaluate(checks,expected=REQUIRED_CHECKS){
   const source=REQUIRED_SOURCES[check.name];
   if(!expected.includes(check.name)||!source)continue;
   if(check.app?.slug!=='github-actions'||check.workflow_name!==source[0]||check.workflow_path!==source[1])continue;
-  // A new queued job has no started_at. Never let an older started job
-  // outrank a newer queued check from the same exact SHA.
-  if(!check.created_at||!Number.isSafeInteger(check.id))continue;
+  // GitHub check-run objects have started_at/completed_at but NO created_at.
+  // A queued job may have neither timestamp; monotonically increasing check
+  // run IDs retain newest-attempt precedence without trusting started_at.
+  if(!Number.isSafeInteger(check.id))continue;
   const prior=statuses.get(check.name);
-  if(!prior||check.created_at>prior.created_at||
-     (check.created_at===prior.created_at&&check.id>prior.id))statuses.set(check.name,check);
+  if(!prior||check.id>prior.id)statuses.set(check.name,check);
  }
  const pending=[],failed=[];
  for(const name of expected){
