@@ -279,7 +279,7 @@ test('retention preview pins old immutable ZFS GUIDs before any snapshot creatio
   available:true,datasets:[{name:'tank/data',guid:'12345'}],
   snapshots:older.map((name,i)=>({name,created:i+1}))
  })};
- const adapter=new ProtectionAdapter({dir:'/unused-retention-preview-test',datasets,run:async(bin,args)=>{
+ const adapter=new ProtectionAdapter({dir:'/unused-retention-preview-test',datasets,retentionDelete:async()=>({ok:true}),run:async(bin,args)=>{
   commands.push({bin,args});
   if(bin==='/usr/sbin/zfs'&&args[0]==='get'&&args.includes('guid')&&older.includes(args.at(-1)))
    return {ok:true,stdout:(older.indexOf(args.at(-1))+7000)+'\n'};
@@ -296,7 +296,7 @@ test('retention preview pins old immutable ZFS GUIDs before any snapshot creatio
 
 test('retention refuses to plan deletion if an old GUID is unreadable',async()=>{
  const datasets={inventory:async()=>({available:true,datasets:[{name:'tank/data',guid:'12345'}],snapshots:older.map((name,i)=>({name,created:i+1}))})};
- const adapter=new ProtectionAdapter({dir:'/unused-retention-preview-test',datasets,run:async()=>({ok:true,stdout:'-\n'})});
+ const adapter=new ProtectionAdapter({dir:'/unused-retention-preview-test',datasets,retentionDelete:async()=>({ok:true}),run:async()=>({ok:true,stdout:'-\n'})});
  adapter.registry=async()=>({tasks:[{id:'BackupTask',kind:'snapshot',source:'tank/data',target:'',retention:1,mode:'copy',direction:'push',schedule:{frequency:'on-demand'},enabled:true}],cloudRemotes:[],replicationProfiles:[]});
  await assert.rejects(adapter.plan({type:'protection.run',id:'BackupTask',runStamp:1700000000}),/Retention snapshot identity unavailable/);
 });
@@ -351,4 +351,17 @@ test('production ZFS pruning does not call name-based destroy',async()=>{
  const source=await (await import('node:fs/promises')).readFile(new URL('../src/storage-agent/protection.js',import.meta.url),'utf8');
  assert.doesNotMatch(source,/this\.run\('\/usr\/sbin\/zfs',\['destroy'/);
  assert.match(source,/atomic-identity-pruning-unavailable/);
+});
+
+test('normal backup planning still succeeds if obsolete retention snapshots cannot be looked up',async()=>{
+ const datasets={inventory:async()=>({available:true,datasets:[{name:'tank/data',guid:'12345'}],snapshots:older.map((name,i)=>({name,created:i+1}))})};
+ const adapter=new ProtectionAdapter({dir:'/unused-normal-retention-preview',datasets,run:async()=>{
+  throw Error('No old-snapshot GUID reads are permitted in deferred retention planning');
+ }});
+ adapter.registry=async()=>({tasks:[{id:'BackupTask',kind:'snapshot',source:'tank/data',target:'',retention:1,mode:'copy',direction:'push',schedule:{frequency:'on-demand'},enabled:true}],cloudRemotes:[],replicationProfiles:[]});
+ const impact=await adapter.plan({type:'protection.run',id:'BackupTask',runStamp:1700000000});
+ assert.deepEqual(impact.context.prune,older);
+ assert.deepEqual(impact.context.pruneGuids,{});
+ assert.equal(impact.dataErased,false);
+ assert.match(impact.warning,/storage usage can grow/);
 });
