@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run from install.sh after the lightnas account exists. This does not change disks or PVE configuration.
+# Run from install.sh after the lightnas account exists. Never migrate existing guests during provisioning.
 set -Eeuo pipefail
 
 status_file="${LIGHTNAS_RUNTIME_STATUS_FILE:-/var/lib/lightnas/runtime-status.txt}"
@@ -28,18 +28,9 @@ mkdir -p "$(dirname "${status_file}")" "$(dirname "${runtime_env}")"
 if [[ ! -e "$runtime_env" ]]; then install -m 0600 /dev/null "$runtime_env"; fi
 chmod 0600 "$runtime_env"
 
-# If first boot has not obtained an upstream LAN lease yet, do not create a
-# misleading private 10.77.0.0/24 network. Leave guest networking pending and
-# let the appliance LAN bootstrap be retried once a real uplink is available.
-if [[ "${network_mode}" == "pending-uplink" ]]; then
-  systemctl disable --now lxc-net.service >/dev/null 2>&1 || true
-  systemctl disable --now lightnas-container-network.service >/dev/null 2>&1 || true
-  if ip link show lightnas0 >/dev/null 2>&1; then
-    ip link set lightnas0 down >/dev/null 2>&1 || true
-    ip link delete lightnas0 type bridge >/dev/null 2>&1 || true
-  fi
-fi
-
+# Legacy networks remain in place when uplink discovery fails.
+# Retiring active bridges/services requires an approved, durable migration.
+#
 set_flag() {
   local key="$1" value="$2"
   sed -i "/^${key}=/d" "$runtime_env"
@@ -49,67 +40,10 @@ report() { printf '%s: %s\n' "$1" "$2" | tee -a "${status_file}"; }
 : > "${status_file}"
 chmod 0644 "${status_file}"
 
-restore_guest_lan_dhcp() {
-  local config="$1" rootfs metadata network_file explicit_mode=""
-  rootfs="$(sed -nE 's#^lxc\.rootfs\.path\s*=\s*(dir:)?(.+?)\s*$#\2#p' "$config" | head -1)"
-  [[ -n "$rootfs" ]] || return 0
-  metadata="$(dirname "$config")/lightnas.json"
-  network_file="$rootfs/etc/systemd/network/10-lightnas-eth0.network"
-
-  if [[ -f "$metadata" ]] && command -v python3 >/dev/null 2>&1; then
-    explicit_mode="$(python3 - "$metadata" <<'PY'
-import json, sys
-try:
-    print(json.load(open(sys.argv[1], encoding="utf-8")).get("ipv4Mode", ""))
-except Exception:
-    print("")
-PY
-)"
-  fi
-
-  # Respect a user-selected manual/static address. Only undo LightNAS's
-  # automatic 10.77 fallback when migrating the guest onto the real LAN.
-  if [[ "$explicit_mode" == "manual" ]]; then
-    return 0
-  fi
-
-  if [[ -f "$network_file" ]] && grep -Eq '^Address=10\.77\.0\.[0-9]+/24$|^Gateway=10\.77\.0\.1$' "$network_file"; then
-    mkdir -p "$(dirname "$network_file")"
-    cat >"$network_file" <<'EOF'
-[Match]
-Name=eth0
-
-[Network]
-DHCP=ipv4
-IPv6AcceptRA=yes
-
-[DHCPv4]
-ClientIdentifier=mac
-EOF
-  fi
-
-  if [[ -f "$metadata" ]] && command -v python3 >/dev/null 2>&1; then
-    python3 - "$metadata" <<'PY'
-import json, os, sys, tempfile
-path=sys.argv[1]
-try:
-    data=json.load(open(path, encoding="utf-8"))
-except Exception:
-    data={}
-if data.get("ipv4Mode") != "manual":
-    data["ipv4Mode"]="dhcp"
-    data["ipv4Address"]=""
-    data["gateway"]=""
-    data["automaticFallback"]=False
-fd,tmp=tempfile.mkstemp(prefix=".lightnas-meta-", dir=os.path.dirname(path))
-with os.fdopen(fd, "w", encoding="utf-8") as handle:
-    json.dump(data, handle, indent=2, sort_keys=True)
-    handle.write("\n")
-os.replace(tmp, path)
-PY
-  fi
-}
-
+# Guest DHCP profiles and metadata are preserved during installer/upgrade.
+# Network migration requires an immutable approved plan, durable prior-state
+# snapshots, graceful quiescence and independently validated rollback.
+#
 # A nested LightNAS appliance should work without a separate operator flag.
 # Enable the feature automatically; the privileged host agent still performs
 # cgroup, namespace and veth capability checks before allowing LXC creation.
@@ -119,76 +53,17 @@ fi
 
 # Native system containers are built into LightNAS through LXC/liblxc.
 if command -v lxc-create >/dev/null 2>&1 && command -v lxc-start >/dev/null 2>&1; then
-  if [[ "${network_mode}" =~ ^nested-(macvlan|ipvlan)$ && -n "${container_parent}" && -e "/sys/class/net/${container_parent}" ]]; then
-    # Existing LightNAS containers created on the old private 10.77.0.0/24
-    # network are moved automatically to macvlan on the already-working outer
-    # Proxmox uplink. The LightNAS management address on that uplink is not
-    # changed.
-    for config in /var/lib/lxc/*/config; do
-      [[ -f "$config" ]] || continue
-      link="$(sed -nE 's/^lxc\.net\.[0-9]+\.link\s*=\s*([^[:space:]]+).*/\1/p' "$config" | head -1)"
-      type="$(sed -nE 's/^lxc\.net\.[0-9]+\.type\s*=\s*([^[:space:]]+).*/\1/p' "$config" | head -1)"
-      if [[ "$link" =~ ^(lightnas0|lxcbr0|virbr0)$ ]]; then
-        :
-      elif [[ "$link" == "${container_parent}" && "$type" != "${network_mode#nested-}" ]]; then
-        :
-      else
-        continue
-      fi
-      name="$(basename "$(dirname "$config")")"
-      was_running=0
-      [[ "$(lxc-info -n "$name" -sH 2>/dev/null || true)" == "RUNNING" ]] && was_running=1
-      [[ "$was_running" == "1" ]] && lxc-stop -n "$name" -t 30 >/dev/null 2>&1 || true
-      sed -i '/^lxc\.net\.0\.type\s*=/d;/^lxc\.net\.0\.link\s*=/d;/^lxc\.net\.0\.macvlan\.mode\s*=/d;/^lxc\.net\.0\.ipvlan\.mode\s*=/d;/^lxc\.net\.0\.vlan\.id\s*=/d;/^lxc\.net\.0\.ipv4\.address\s*=/d;/^lxc\.net\.0\.ipv4\.gateway\s*=/d' "$config"
-      direct_type="${network_mode#nested-}"
-      printf '%s\n' "lxc.net.0.type = ${direct_type}" "lxc.net.0.link = ${container_parent}" >>"$config"
-      if [[ "${direct_type}" == "macvlan" ]]; then
-        printf '%s\n' 'lxc.net.0.macvlan.mode = bridge' >>"$config"
-      else
-        printf '%s\n' 'lxc.net.0.ipvlan.mode = l2' >>"$config"
-      fi
-      restore_guest_lan_dhcp "$config"
-      if [[ "${direct_type}" == "ipvlan" ]]; then
-        rootfs="$(sed -nE 's#^lxc\.rootfs\.path\s*=\s*(dir:)?(.+?)\s*$#\2#p' "$config" | head -1)"
-        network_file="$rootfs/etc/systemd/network/10-lightnas-eth0.network"
-        [[ -f "$network_file" ]] && sed -i 's/^ClientIdentifier=mac$/ClientIdentifier=duid/' "$network_file"
-      fi
-      [[ "$was_running" == "1" ]] && lxc-start -n "$name" -d >/dev/null 2>&1 || true
-    done
-    systemctl disable --now lightnas-container-network.service >/dev/null 2>&1 || true
-    systemctl disable --now lxc-net.service >/dev/null 2>&1 || true
-    if ip link show lightnas0 >/dev/null 2>&1; then
-      ip link set lightnas0 down >/dev/null 2>&1 || true
-      ip link delete lightnas0 type bridge >/dev/null 2>&1 || true
+  # Read-only legacy guest discovery: no guest shutdown/redefinition/restart.
+  # Older guest links: lightnas0|lxcbr0|virbr0. Preserve the guest's config.
+  migration_pending=0
+  for config in /var/lib/lxc/*/config; do
+    [[ -f "$config" ]] || continue
+    if grep -Eq '^[[:space:]]*lxc\.net\.[0-9]+\.link[[:space:]]*=[[:space:]]*(lightnas0|lxcbr0|virbr0)([[:space:]]|$)' "$config"; then
+      migration_pending=$((migration_pending + 1))
     fi
-  fi
-  # TrueNAS/Proxmox-style default: when LightNAS has a real LAN bridge,
-  # every system container attaches directly to it and receives its own LAN IP.
-  # Upgrade older installations automatically from the private 10.77.0.0/24
-  # bridge without requiring per-container changes.
-  if [[ "${lan_bridge_ready}" == "1" ]]; then
-    for config in /var/lib/lxc/*/config; do
-      [[ -f "$config" ]] || continue
-      link="$(sed -nE 's/^lxc\.net\.[0-9]+\.link\s*=\s*([^[:space:]]+).*/\1/p' "$config" | head -1)"
-      [[ "$link" =~ ^(lightnas0|lxcbr0)$ ]] || continue
-      name="$(basename "$(dirname "$config")")"
-      was_running=0
-      [[ "$(lxc-info -n "$name" -sH 2>/dev/null || true)" == "RUNNING" ]] && was_running=1
-      [[ "$was_running" == "1" ]] && lxc-stop -n "$name" -t 30 >/dev/null 2>&1 || true
-      sed -Ei "s#^(lxc\.net\.[0-9]+\.link\s*=\s*)(lightnas0|lxcbr0)\s*$#\1${lan_bridge}#" "$config"
-      sed -i '/^lxc\.net\.0\.ipv4\.address\s*=/d;/^lxc\.net\.0\.ipv4\.gateway\s*=/d' "$config"
-      restore_guest_lan_dhcp "$config"
-      [[ "$was_running" == "1" ]] && lxc-start -n "$name" -d >/dev/null 2>&1 || true
-    done
-
-    # The private NAT bridge is no longer needed after migration. Disable both
-    # implementations used by older LightNAS releases.
-    systemctl disable --now lightnas-container-network.service >/dev/null 2>&1 || true
-    systemctl disable --now lxc-net.service >/dev/null 2>&1 || true
-    if ip link show lightnas0 >/dev/null 2>&1; then
-      ip link set lightnas0 down >/dev/null 2>&1 || true
-      ip link delete lightnas0 type bridge >/dev/null 2>&1 || true
-    fi
+  done
+  if [[ "$migration_pending" -gt 0 ]]; then
+    report Migration "$migration_pending legacy LXC guest configuration(s) preserved; LAN migration requires a separately approved, rollback-capable plan"
   fi
   # Do not create lightnas0 as a NAT router or run a private DHCP service.
   # Guest network is direct LAN only; a bridge is a layer-2 passthrough,
@@ -353,12 +228,9 @@ EOF
     virsh -c qemu:///system pool-autostart default >/dev/null 2>&1 || true
 
     if [[ "${lan_bridge_ready}" == "1" ]]; then
-      # The appliance LAN bridge is the VM network. Do not recreate libvirt's
-      # private 192.168.122.0/24 default network.
+      # Preserve existing libvirt network definitions, autostart and guests.
       if virsh -c qemu:///system net-info default >/dev/null 2>&1; then
-        virsh -c qemu:///system net-destroy default >/dev/null 2>&1 || true
-        virsh -c qemu:///system net-autostart default --disable >/dev/null 2>&1 || true
-        virsh -c qemu:///system net-undefine default >/dev/null 2>&1 || true
+        report Migration 'existing libvirt default network preserved; explicit network migration and rollback verification required'
       fi
     else
       if ! virsh -c qemu:///system net-info default >/dev/null 2>&1; then
@@ -380,58 +252,8 @@ EOF
       virsh -c qemu:///system net-autostart default >/dev/null 2>&1 || true
     fi
 
-    if [[ "${network_mode}" == "lxc-nat" ]] && command -v python3 >/dev/null 2>&1; then
-      python3 <<'PY'
-import os
-import subprocess
-import tempfile
-import time
-import xml.etree.ElementTree as ET
-
-def cmd(*args):
-    return subprocess.run(args, text=True, capture_output=True)
-
-names = [line.strip() for line in cmd("virsh", "-c", "qemu:///system", "list", "--all", "--name").stdout.splitlines() if line.strip()]
-for name in names:
-    dumped = cmd("virsh", "-c", "qemu:///system", "dumpxml", "--inactive", name)
-    if dumped.returncode != 0:
-        continue
-    root = ET.fromstring(dumped.stdout)
-    changed = False
-    for interface in root.findall("./devices/interface"):
-        if interface.get("type") != "bridge":
-            continue
-        source = interface.find("source")
-        if source is None or source.get("bridge") != "virbr0":
-            continue
-        interface.set("type", "network")
-        source.attrib.clear()
-        source.set("network", "default")
-        changed = True
-    if not changed:
-        continue
-
-    state = cmd("virsh", "-c", "qemu:///system", "domstate", name).stdout.strip().lower()
-    running = "running" in state or "paused" in state
-    if running:
-        cmd("virsh", "-c", "qemu:///system", "shutdown", name)
-        for _ in range(20):
-            time.sleep(1)
-            if "shut off" in cmd("virsh", "-c", "qemu:///system", "domstate", name).stdout.strip().lower():
-                break
-        else:
-            cmd("virsh", "-c", "qemu:///system", "destroy", name)
-
-    with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False) as handle:
-        ET.ElementTree(root).write(handle, encoding="unicode", xml_declaration=False)
-        path = handle.name
-    try:
-        cmd("virsh", "-c", "qemu:///system", "define", path)
-    finally:
-        os.unlink(path)
-    if running:
-        cmd("virsh", "-c", "qemu:///system", "start", name)
-PY
+    if [[ "${network_mode}" == "lxc-nat" ]]; then
+      report Migration 'legacy libvirt guest NICs preserved; installer will not change their network definitions'
     fi
 
     acceleration=unavailable

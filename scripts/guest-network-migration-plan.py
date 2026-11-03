@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""Read-only inventory of legacy guest networks; never applies a migration.
+
+This is planning groundwork, NOT an approval, executable migration or rollback
+implementation. A host-owned transaction protocol is required before cutover.
+"""
+import argparse
+import errno
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+import re
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+
+MAX_CONFIG_BYTES = 2 * 1024 * 1024
+LEGACY_LINKS = frozenset({"lightnas0", "lxcbr0", "virbr0"})
+LINK_RE = re.compile(r"^\s*lxc\.net\.(\d+)\.link\s*=\s*(\S+)", re.MULTILINE)
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def lxc_targets(root, mode, bridge, parent):
+    """Inventory guest configs via directory descriptors, never following links.
+
+    Directory-entry checks alone are unsafe: a guest directory or config can
+    be replaced with a symlink between glob/is_file and read_bytes. Opening
+    every component with O_NOFOLLOW binds the bytes to the inspected inode.
+    This is still a read-only plan, not authorization to mutate those inodes.
+    """
+    candidates = []
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        root_fd = os.open(root, directory_flags)
+    except FileNotFoundError:
+        # LXC may not be installed yet; no guest configuration exists.
+        return candidates
+    try:
+        with os.scandir(root_fd) as entries:
+            guest_names = []
+            for entry in entries:
+                if entry.is_symlink():
+                    raise ValueError(f"Refusing symlinked LXC guest directory: {entry.name}")
+                if entry.is_dir(follow_symlinks=False):
+                    guest_names.append(entry.name)
+        for name in sorted(guest_names):
+            guest_fd = os.open(name, directory_flags, dir_fd=root_fd)
+            try:
+                try:
+                    config_fd = os.open(
+                        "config",
+                        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                        dir_fd=guest_fd,
+                    )
+                except FileNotFoundError:
+                    continue
+                except OSError as exc:
+                    if exc.errno == errno.ELOOP:
+                        raise ValueError(f"Refusing symlinked LXC config: {name}/config") from exc
+                    raise
+                try:
+                    if not stat.S_ISREG(os.fstat(config_fd).st_mode):
+                        raise ValueError(f"Refusing non-regular LXC config: {name}/config")
+                    with os.fdopen(config_fd, "rb") as handle:
+                        config_fd = -1
+                        original = handle.read(MAX_CONFIG_BYTES + 1)
+                    if len(original) > MAX_CONFIG_BYTES:
+                        raise ValueError(f"Oversized LXC config: {name}/config")
+                finally:
+                    if config_fd >= 0:
+                        os.close(config_fd)
+            finally:
+                os.close(guest_fd)
+            content = original.decode("utf-8")
+            for index, link in LINK_RE.findall(content):
+                if link not in LEGACY_LINKS:
+                    continue
+                if mode == "bridge":
+                    target = {"type": "veth", "link": bridge}
+                elif mode in {"nested-macvlan", "nested-ipvlan"}:
+                    target = {"type": mode.removeprefix("nested-"), "link": parent}
+                else:
+                    continue
+                if link == target["link"]:
+                    continue
+                candidates.append({
+                    "kind": "lxc",
+                    "name": name,
+                    "networkIndex": int(index),
+                    "previousLink": link,
+                    "proposedTarget": target,
+                    "sourceSha256": sha256(original),
+                    "configurationPath": str(Path(root) / name / "config"),
+                    "requiresGuestStateSnapshot": True,
+                    "requiresConnectivityRollback": True,
+                })
+    finally:
+        os.close(root_fd)
+    return candidates
+
+
+def virsh_read(*args):
+    """Only read-only virsh commands are permitted."""
+    if not args or args[0] not in {"list", "dumpxml", "domstate"}:
+        raise ValueError("Only read-only libvirt inventory commands are supported")
+    completed = subprocess.run(
+        ["virsh", "-c", "qemu:///system", *args],
+        text=True, capture_output=True, check=True, timeout=30
+    )
+    return completed.stdout
+
+
+def libvirt_targets(mode):
+    """Read-only enumeration. Do not stop, define, destroy or restart any VM."""
+    candidates = []
+    names = [name.strip() for name in virsh_read("list", "--all", "--name").splitlines() if name.strip()]
+    for name in sorted(names):
+        original = virsh_read("dumpxml", "--inactive", name)
+        state = virsh_read("domstate", name).strip()
+        root = ET.fromstring(original)
+        for index, interface in enumerate(root.findall("./devices/interface")):
+            source = interface.find("source")
+            if interface.get("type") != "bridge" or source is None:
+                continue
+            if source.get("bridge") != "virbr0" or mode != "lxc-nat":
+                continue
+            candidates.append({
+                "kind": "libvirt",
+                "name": name,
+                "interfaceIndex": index,
+                "previousBridge": "virbr0",
+                "proposedTarget": {"type": "network", "name": "default"},
+                "sourceSha256": sha256(original.encode("utf-8")),
+                "observedState": state,
+                "requiresGuestStateSnapshot": True,
+                "requiresConnectivityRollback": True,
+            })
+    return candidates
+
+
+def build_plan(root, mode, bridge, parent, inspect_virsh=False):
+    if mode in {"nested-macvlan", "nested-ipvlan"} and not parent:
+        raise ValueError("Nested network plans require --parent")
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,32}", bridge):
+        raise ValueError("Invalid bridge name")
+    if parent and not re.fullmatch(r"[A-Za-z0-9_.:-]{1,32}", parent):
+        raise ValueError("Invalid parent name")
+    guests = lxc_targets(root, mode, bridge, parent)
+    vms = libvirt_targets(mode) if inspect_virsh else []
+    source = {
+        "schemaVersion": 1,
+        "mode": mode,
+        "bridge": bridge,
+        "parent": parent or None,
+        "lxcCandidates": guests,
+        "libvirtCandidates": vms,
+        "libvirtInventory": "complete" if inspect_virsh else "not-inspected",
+    }
+    return {
+        **source,
+        "planSha256": sha256(json.dumps(source, sort_keys=True, separators=(",", ":")).encode()),
+        "readOnly": True,
+        "approved": False,
+        "executable": False,
+        "warning": "Inventory only. Guest state, ownership, approval, safe shutdown and rollback are NOT verified.",
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--lxc-root", default="/var/lib/lxc")
+    parser.add_argument("--mode", required=True, choices=["bridge", "nested-macvlan", "nested-ipvlan", "lxc-nat"])
+    parser.add_argument("--bridge", default="virbr0")
+    parser.add_argument("--parent", default="")
+    parser.add_argument("--inspect-virsh", action="store_true", help="query libvirt read-only; fails on libvirt errors")
+    args = parser.parse_args()
+    try:
+        plan = build_plan(args.lxc_root, args.mode, args.bridge, args.parent, args.inspect_virsh)
+    except (OSError, UnicodeError, ValueError, ET.ParseError, subprocess.SubprocessError) as exc:
+        print(f"Migration inventory failed closed: {exc}", file=sys.stderr)
+        return 2
+    json.dump(plan, sys.stdout, indent=2, sort_keys=True)
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

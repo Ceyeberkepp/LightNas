@@ -1,0 +1,20 @@
+name: Guest network migration inventory safety
+on:
+  pull_request:
+    paths:
+      - 'scripts/guest-network-migration-plan.py'
+      - 'scripts/provision-runtimes.sh'
+      - 'test/test_guest_network_migration_plan.py'
+      - '.github/workflows/guest-network-plan.yml'
+permissions:
+  contents: read
+jobs:
+  read-only-inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m py_compile scripts/guest-network-migration-plan.py
+      - run: python3 -m unittest discover -s test -p 'test_guest_network_migration_plan.py' -v
