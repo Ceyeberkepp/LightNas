@@ -23,8 +23,12 @@ export function evaluate(checks,expected=REQUIRED_CHECKS){
   const source=REQUIRED_SOURCES[check.name];
   if(!expected.includes(check.name)||!source)continue;
   if(check.app?.slug!=='github-actions'||check.workflow_name!==source[0]||check.workflow_path!==source[1])continue;
+  // A new queued job has no started_at. Never let an older started job
+  // outrank a newer queued check from the same exact SHA.
+  if(!check.created_at||!Number.isSafeInteger(check.id))continue;
   const prior=statuses.get(check.name);
-  if(!prior||String(check.started_at||check.created_at||'')>String(prior.started_at||prior.created_at||''))statuses.set(check.name,check);
+  if(!prior||check.created_at>prior.created_at||
+     (check.created_at===prior.created_at&&check.id>prior.id))statuses.set(check.name,check);
  }
  const pending=[],failed=[];
  for(const name of expected){
@@ -59,10 +63,15 @@ async function pages(repo,resource,token,api,key){
  throw Error('Too many '+key+' results; refusing incomplete pagination');
 }
 export function trustedChecks(checks,runs,repo,sha){
- const trustedRuns=new Map();
+ // Only the latest workflow invocation per source path can qualify.
+ // A newer queued/running rerun at the same SHA invalidates older green jobs.
+ const latestRuns=new Map();
  for(const run of runs){
-  if(run.head_sha!==sha||run.event!=='pull_request'||!Number.isSafeInteger(run.id))continue;
-  trustedRuns.set(run.id,run);
+  if(run.head_sha!==sha||run.event!=='pull_request'||
+     !Number.isSafeInteger(run.id)||!run.created_at||!run.path)continue;
+  const prior=latestRuns.get(run.path);
+  if(!prior||run.created_at>prior.created_at||
+     (run.created_at===prior.created_at&&run.id>prior.id))latestRuns.set(run.path,run);
  }
  const prefix='https://github.com/'+repo+'/actions/runs/';
  return checks.flatMap(check=>{
@@ -71,10 +80,14 @@ export function trustedChecks(checks,runs,repo,sha){
   if(!url.startsWith(prefix))return [];
   const match=/^(\d+)\/job\/\d+(?:\?.*)?$/.exec(url.slice(prefix.length));
   if(!match)return [];
-  const run=trustedRuns.get(Number(match[1]));
   const expected=REQUIRED_SOURCES[check.name];
-  if(!run||!expected||run.name!==expected[0]||run.path!==expected[1])return [];
-  return [{...check,workflow_name:run.name,workflow_path:run.path}];
+  if(!expected)return [];
+  const run=latestRuns.get(expected[1]);
+  if(!run||run.id!==Number(match[1])||run.name!==expected[0])return [];
+  const workflowFailed=run.status==='completed'&&run.conclusion!=='success';
+  return [{...check,workflow_name:run.name,workflow_path:run.path,
+   status:workflowFailed?'completed':run.status==='completed'?check.status:run.status,
+   conclusion:workflowFailed?(run.conclusion||'failure'):check.conclusion}];
  });
 }
 export async function verify({repo,prNumber,sha,token,api=fetch,baseBranch='main'}){

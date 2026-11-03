@@ -4,10 +4,10 @@ import {evaluate,assertHead,REQUIRED_CHECKS,REQUIRED_SOURCES,verify,trustedCheck
 const head='a'.repeat(40),baseSha='b'.repeat(40),repo='example/nas';
 const workflows=new Map();
 for(const [name,[workflow,path]] of Object.entries(REQUIRED_SOURCES))workflows.set(path,{name:workflow,path});
-const runs=[...workflows.values()].map((x,i)=>({id:100+i,event:'pull_request',head_sha:head,...x}));
+const runs=[...workflows.values()].map((x,i)=>({id:100+i,event:'pull_request',head_sha:head,created_at:'2026-11-02T00:00:00Z',status:'completed',conclusion:'success',...x}));
 const runFor=name=>runs.find(r=>r.path===REQUIRED_SOURCES[name][1]);
 function items(conclusion='success'){
- return REQUIRED_CHECKS.map((name,i)=>({name,status:'completed',conclusion,head_sha:head,app:{slug:'github-actions'},details_url:'https://github.com/'+repo+'/actions/runs/'+runFor(name).id+'/job/'+(200+i),workflow_name:REQUIRED_SOURCES[name][0],workflow_path:REQUIRED_SOURCES[name][1]}));
+ return REQUIRED_CHECKS.map((name,i)=>({name,id:300+i,created_at:'2026-11-02T00:00:00Z',status:'completed',conclusion,head_sha:head,app:{slug:'github-actions'},details_url:'https://github.com/'+repo+'/actions/runs/'+runFor(name).id+'/job/'+(200+i),workflow_name:REQUIRED_SOURCES[name][0],workflow_path:REQUIRED_SOURCES[name][1]}));
 }
 function mock(responses){const seen=[];return {seen,api:async(url)=>{const path=new URL(url).pathname.replace('/repos/'+repo,'')+new URL(url).search;seen.push(path);return {ok:true,json:async()=>responses[path]};}};}
 function responses(checks=items(),workflowRuns=runs){return {
@@ -68,4 +68,34 @@ test('missing SHA, non-Actions app, wrong workflow file or foreign repository ca
 test('successful exact-head workflow matrix passes with provenance checks',async()=>{
  const {api}=mock(responses());
  assert.equal((await verify({repo,prNumber:91,sha:head,token:'test',api})).passed,true);
+});
+
+test('new queued check outranks overlapping older success even with null started_at',()=>{
+ const checks=items();
+ checks[0].started_at='2026-11-02T03:00:00Z';
+ checks.push({...checks[0],id:999,created_at:'2026-11-02T02:00:00Z',
+   started_at:null,status:'queued',conclusion:null});
+ assert.ok(evaluate(checks).pending.includes(checks[0].name));
+});
+test('newer queued workflow at same SHA blocks old green jobs',async()=>{
+ const newer={...runFor('full-i386'),id:999,created_at:'2026-11-02T04:00:00Z',
+   status:'queued',conclusion:null};
+ const {api}=mock(responses(items(),[...runs,newer]));
+ const result=await verify({repo,prNumber:91,sha:head,token:'test',api});
+ assert.equal(result.passed,false);
+ assert.ok(result.pending.includes('full-i386'));
+});
+test('newer failed workflow at same SHA cannot reuse old green jobs',()=>{
+ const newer={...runFor('full-i386'),id:999,created_at:'2026-11-02T04:00:00Z',
+   status:'completed',conclusion:'failure'};
+ const result=evaluate(trustedChecks(items(),[...runs,newer],repo,head));
+ assert.equal(result.passed,false);
+ assert.ok(result.pending.includes('full-i386'));
+});
+
+test('trusted workflow job URL parser accepts valid /job/ and rejects /jobs/ or cross-repository paths',()=>{
+ const good=items();
+ assert.equal(trustedChecks(good,runs,repo,head).length,REQUIRED_CHECKS.length);
+ const bad=good.map(c=>({...c,details_url:c.details_url.replace('/job/','/jobs/')}));
+ assert.equal(trustedChecks(bad,runs,repo,head).length,0);
 });
