@@ -58,6 +58,9 @@ function isolatedJob({visible=[true],replication=false,prune=older,failSend=fals
    if(failSend)throw Error('Injected remote send failure');
   }
  });
+ // Legacy deletion-order tests use an injected fake executor only. Production
+ // never injects an executor and therefore safely defers pruning.
+ adapter.retentionDelete=(snap)=>adapter.run('/usr/sbin/zfs',['destroy',snap],120000);
  adapter.init=async()=>{};
  const impact={
   type:'protection.run',
@@ -320,4 +323,30 @@ test('unreadable old snapshot GUID preserves old recovery points',async()=>{
  const {adapter,impact,commands}=isolatedJob({pruneGuidOk:false});
  await assert.rejects(adapter.apply(impact),/Retention snapshot identity changed since preview/);
  assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+});
+
+test('production retention defers deletions even if the final GUID check races an external replacement',async()=>{
+ const {adapter,impact,commands,events}=isolatedJob();
+ adapter.retentionDelete=null;
+ const result=await adapter.apply(impact);
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+ assert.equal(result.retention.status,'deferred');
+ assert.equal(result.retention.reason,'atomic-identity-pruning-unavailable');
+ assert.deepEqual(result.retention.candidates.map(c=>c.name),older);
+ assert.equal(events.some(e=>e.startsWith('destroy:')),false);
+});
+
+test('all old recovery points survive multiple retention candidates with changed identities',async()=>{
+ const {adapter,impact,commands}=isolatedJob({prune:older,pruneGuid:['24680','99999']});
+ adapter.retentionDelete=null;
+ const result=await adapter.apply(impact);
+ assert.equal(result.retention.status,'deferred');
+ assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+ assert.equal(result.retention.candidates.length,2);
+});
+
+test('production ZFS pruning does not call name-based destroy',async()=>{
+ const source=await (await import('node:fs/promises')).readFile(new URL('../src/storage-agent/protection.js',import.meta.url),'utf8');
+ assert.doesNotMatch(source,/this\.run\('\/usr\/sbin\/zfs',\['destroy'/);
+ assert.match(source,/atomic-identity-pruning-unavailable/);
 });
