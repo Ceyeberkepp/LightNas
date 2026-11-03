@@ -64,7 +64,7 @@ test('unattended physical DHCP fallback cannot take over existing host policy (#
 
   // Exercise the exact preflight function with read-only mocked host commands.
   // Both IPv6-only management and dormant NM profiles must refuse takeover.
-  for (const owner of ['ipv6', 'nm-profile']) {
+  for (const owner of ['ipv6', 'nm-profile', 'nm-failed']) {
     const script = `set -Eeuo pipefail
 ip() {
   if [[ "$TEST_OWNER" == "ipv6" && "$1" == "-6" ]]; then
@@ -72,6 +72,9 @@ ip() {
   fi
 }
 nmcli() {
+  if [[ "$TEST_OWNER" == "nm-failed" ]]; then
+    return 1
+  fi
   if [[ "$TEST_OWNER" == "nm-profile" ]]; then
     printf '123e4567-e89b-12d3-a456-426614174000\\n'
   fi
