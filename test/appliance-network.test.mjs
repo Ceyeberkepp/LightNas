@@ -50,14 +50,14 @@ test('network bootstrap service never performs a nested management-interface cut
 
 test('unattended physical DHCP fallback cannot take over existing host policy (#449)', async () => {
   const network = await readFile(new URL('../scripts/configure-appliance-network.sh', import.meta.url), 'utf8');
-  const guard = network.match(/^has_existing_network_ownership\\(\\) \\{[\\s\\S]*?^\\}/m)?.[0];
+  const guard = network.match(/^has_existing_network_ownership\(\) \{[\s\S]*?^\}/m)?.[0];
   assert.ok(guard, 'host network ownership preflight must exist');
   assert.ok(network.indexOf('if has_existing_network_ownership; then') <
             network.indexOf('ip link set "${uplink}" up'),
             'ownership check must precede any device mutation');
-  assert.doesNotMatch(network, /^\\s*nmcli device connect /m,
+  assert.doesNotMatch(network, /^\s*nmcli device connect /m,
                       'may activate foreign/dormant management profiles');
-  assert.doesNotMatch(network, /^\\s*nmcli connection modify /m,
+  assert.doesNotMatch(network, /^\s*nmcli connection modify /m,
                       'may modify a foreign physical management profile');
   assert.match(network, /existing-network-policy-approval-required/);
   assert.match(network, /LIGHTNAS_NETWORK_ERROR=%s/);
