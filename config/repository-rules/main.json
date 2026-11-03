@@ -1,0 +1,89 @@
+{
+  "name": "LightNAS main qualification",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/main"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 1,
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": true,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "test",
+            "integration_id": 15368
+          },
+          {
+            "context": "release-qualification",
+            "integration_id": 15368
+          },
+          {
+            "context": "repository-protection-audit",
+            "integration_id": 15368
+          },
+          {
+            "context": "qualification (22)",
+            "integration_id": 15368
+          },
+          {
+            "context": "qualification (24)",
+            "integration_id": 15368
+          },
+          {
+            "context": "dependency-audit",
+            "integration_id": 15368
+          },
+          {
+            "context": "native-runtime (amd64, linux/amd64, node:22-bookworm-slim)",
+            "integration_id": 15368
+          },
+          {
+            "context": "native-runtime (arm64, linux/arm64, node:22-bookworm-slim)",
+            "integration_id": 15368
+          },
+          {
+            "context": "native-runtime (armhf, linux/arm/v7, node:22-bookworm-slim)",
+            "integration_id": 15368
+          },
+          {
+            "context": "native-runtime (riscv64, linux/riscv64, debian:sid-slim)",
+            "integration_id": 15368
+          },
+          {
+            "context": "full-i386",
+            "integration_id": 15368
+          },
+          {
+            "context": "validate",
+            "integration_id": 15368
+          }
+        ]
+      }
+    }
+  ]
+}
