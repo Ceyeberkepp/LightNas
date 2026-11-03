@@ -172,6 +172,33 @@ discover_wired_uplink() {
   [[ -n "${first}" ]] && printf '%s\n' "${first}"
 }
 
+# Read-only ownership preflight. A missing IPv4 default route is NOT
+# evidence that LightNAS owns this appliance's physical management NIC.
+has_existing_network_ownership() {
+  local config
+  if ip -4 -o addr show scope global 2>/dev/null | grep -q . ||
+     ip -6 -o addr show scope global 2>/dev/null | grep -q .; then
+    return 0
+  fi
+  if command -v nmcli >/dev/null 2>&1 &&
+     nmcli -t -f UUID connection show 2>/dev/null | grep -q .; then
+    return 0
+  fi
+  for config in /etc/systemd/network/*.network /run/systemd/network/*.network \
+                /etc/netplan/*.yaml /etc/netplan/*.yml \
+                /etc/NetworkManager/system-connections/*.nmconnection; do
+    [[ -f "${config}" ]] && return 0
+  done
+  if [[ -r /etc/network/interfaces ]] &&
+     grep -E '^[[:space:]]*iface[[:space:]]+' /etc/network/interfaces |
+       grep -Ev '^[[:space:]]*iface[[:space:]]+lo[[:space:]]' |
+       grep -q .; then
+    return 0
+  fi
+  return 1
+}
+
+bootstrap_error=""
 bootstrap_wired_dhcp() {
   local uplink profile
   uplink="${1:-}"
@@ -185,28 +212,34 @@ bootstrap_wired_dhcp() {
     return 1
   fi
 
-  echo "LightNAS network: no IPv4 route yet; bringing up ${uplink} with DHCP."
+  # Only an unconfigured first-boot interface may be initialized here.
+  # Do not replace NetworkManager, netplan, networkd or IPv6-only policy.
+  if has_existing_network_ownership; then
+    bootstrap_error="existing-network-policy-approval-required"
+    echo "LightNAS network: existing host policy detected; unattended DHCP takeover of ${uplink} refused." >&2
+    return 1
+  fi
+  echo "LightNAS network: unconfigured ${uplink}; attempting first-boot DHCP."
   ip link set "${uplink}" up >/dev/null 2>&1 || true
 
   if command -v nmcli >/dev/null 2>&1; then
     systemctl enable NetworkManager.service >/dev/null 2>&1 || true
     systemctl start NetworkManager.service >/dev/null 2>&1 || true
 
-    # Debian live/install images can expose the NIC as unmanaged or leave it
-    # without an autoconnect profile. Take ownership and create a deterministic
-    # DHCP profile only when the NIC still has no IPv4 address.
-    nmcli device set "${uplink}" managed yes >/dev/null 2>&1 || true
-    if ! ip -4 addr show dev "${uplink}" scope global 2>/dev/null | grep -q 'inet '; then
-      if ! nmcli device connect "${uplink}" >/dev/null 2>&1; then
-        profile="lightnas-auto-${uplink}"
-        if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "${profile}"; then
-          nmcli connection modify "${profile}" connection.interface-name "${uplink}" connection.autoconnect yes ipv4.method auto ipv6.method auto >/dev/null 2>&1 || true
-        else
-          nmcli connection add type ethernet ifname "${uplink}" con-name "${profile}" connection.autoconnect yes ipv4.method auto ipv6.method auto >/dev/null 2>&1 || true
-        fi
-        nmcli connection up "${profile}" >/dev/null 2>&1 || true
-      fi
+    # Never use 'nmcli device connect': it can reactivate a dormant host
+    # profile. Never mutate any existing profile during unattended install.
+    profile="lightnas-auto-${uplink}"
+    if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "${profile}"; then
+      bootstrap_error="existing-network-policy-approval-required"
+      echo "LightNAS network: refusing to overwrite existing NM profile ${profile}." >&2
+      return 1
     fi
+    nmcli device set "${uplink}" managed yes >/dev/null 2>&1 || true
+    if ! nmcli connection add type ethernet ifname "${uplink}" con-name "${profile}" connection.autoconnect yes ipv4.method auto ipv6.method auto >/dev/null 2>&1; then
+      bootstrap_error="first-boot-dhcp-profile-creation-failed"
+      return 1
+    fi
+    nmcli connection up "${profile}" >/dev/null 2>&1 || true
   elif command -v dhclient >/dev/null 2>&1; then
     dhclient -1 -v "${uplink}" >/dev/null 2>&1 || true
   fi
@@ -244,7 +277,11 @@ fi
 
 if [[ -z "${default_dev}" ]]; then
   pending_uplink="$(discover_wired_uplink || true)"
+  if [[ -n "${bootstrap_error}" ]]; then
+    printf 'LIGHTNAS_NETWORK_MODE=pending-uplink\\nLIGHTNAS_UPLINK=%s\\nLIGHTNAS_NETWORK_ERROR=%s\\n' "${pending_uplink}" "${bootstrap_error}" >"${STATE_FILE}"
+  else
   printf 'LIGHTNAS_NETWORK_MODE=pending-uplink\nLIGHTNAS_UPLINK=%s\n' "${pending_uplink}" >"${STATE_FILE}"
+  fi
   echo "LightNAS network: no LAN DHCP/default route is available; guest networking will wait instead of creating a private fallback bridge." >&2
   exit 0
 fi
