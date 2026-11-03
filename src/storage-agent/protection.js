@@ -56,7 +56,7 @@ export async function replicate(commands,timeout=1800000){
  });
 }
 export class ProtectionAdapter{
- constructor({dir='/var/lib/lightnas-storage',datasets,run=command,pipeline=replicate,mountInfo=()=>readFile('/proc/self/mountinfo','utf8')}={}){this.dir=join(dir,'protection');this.dataDir=dirname(resolve(process.env.NAS_DATA_FILE||'/var/lib/lightnas/state.json'));this.datasets=datasets;this.run=run;this.pipeline=pipeline;this.mountInfo=mountInfo;}
+ constructor({dir='/var/lib/lightnas-storage',datasets,run=command,pipeline=replicate,retentionDelete=null,mountInfo=()=>readFile('/proc/self/mountinfo','utf8')}={}){this.dir=join(dir,'protection');this.dataDir=dirname(resolve(process.env.NAS_DATA_FILE||'/var/lib/lightnas/state.json'));this.datasets=datasets;this.run=run;this.pipeline=pipeline;this.retentionDelete=retentionDelete;this.mountInfo=mountInfo;}
  async rsyncTopology(source,target){return assertSeparateRsyncTrees(source,target,await this.mountInfo());}
  async init(){await mkdir(this.dir,{recursive:true,mode:0o700});}
  async registry(){return json(join(this.dir,'registry.json'),{tasks:[],cloudRemotes:[],replicationProfiles:[]});}
@@ -124,7 +124,7 @@ export class ProtectionAdapter{
   }
   const fileState=[];for(const path of files){try{const bytes=await readFile(path);fileState.push({path,exists:true,bytes:bytes.length,fingerprint:digest(bytes.toString('base64'))});}catch(error){if(error.code!=='ENOENT')throw error;fileState.push({path,exists:false});}}
   const policy=type==='protection.run'?context.task:type==='protection.task.save'?result:null;const mirror=policy?.mode==='mirror';const destination=policy?.kind==='cloud'&&policy.direction==='pull'?policy.source:policy?.target;
-  return {type,input,before,after,context,result,private:privateValues,commands,files,fileState,dataErased:!!context.prune?.length||!!mirror,confirmation:mirror?(type==='protection.task.save'?'AUTHORIZE MIRROR '+policy.id:'MIRROR '+destination):undefined,permissionChanges:false,affectedServices:[],warning:mirror?'Mirror policy can delete destination-only files and overwrite matching files. The approved schedule authorizes future deletions at this exact destination.':type==='protection.task.save'?'Approves this recurring policy. Future runs include files present at execution time. Snapshot retention can remove only this task’s own old snapshots.':type==='protection.run'?'Copies may replace destination files of the same name. Copy jobs do not delete unrelated destination files. A remote receive creates a new unmounted dataset.':'Stores only this task/profile configuration.',rollback:type==='protection.run'?'No automatic file/remote rollback. Inspect partially copied data or received datasets after failure.':'Restore saved configuration; already executed task runs cannot be undone.'};
+  return {type,input,before,after,context,result,private:privateValues,commands,files,fileState,dataErased:!!mirror,confirmation:mirror?(type==='protection.task.save'?'AUTHORIZE MIRROR '+policy.id:'MIRROR '+destination):undefined,permissionChanges:false,affectedServices:[],warning:mirror?'Mirror policy can delete destination-only files and overwrite matching files. The approved schedule authorizes future deletions at this exact destination.':type==='protection.task.save'?'Approves this recurring policy. Future runs include files present at execution time. Automatic snapshot retention deletion is suspended until identity-atomic pruning is proven safe; recovery snapshots are preserved.':type==='protection.run'?'Copies may replace destination files of the same name. Copy jobs do not delete unrelated destination files. A remote receive creates a new unmounted dataset.':'Stores only this task/profile configuration.',rollback:type==='protection.run'?'No automatic file/remote rollback. Inspect partially copied data or received datasets after failure.':'Restore saved configuration; already executed task runs cannot be undone.'};
  }
  async validate(impact){if(digest(await this.plan(impact.input))!==digest(impact))throw Error('Protection policy or data source changed; request another preview');}
  async apply(impact){await this.init();
@@ -229,6 +229,16 @@ export class ProtectionAdapter{
     // Recheck after a potentially long remote transfer before retention.
     await verifyCreatedSnapshot();
    }
+   // GUID lookup and zfs destroy are NOT atomic. An external ZFS writer can
+   // rename or recreate the target between the commands. Production never
+   // supplies a retentionDelete executor: pending snapshots are preserved.
+   // Only isolated legacy tests inject a fake executor to test ordering.
+   if((impact.context.prune||[]).length && typeof this.retentionDelete !== 'function'){
+    return {...impact.result,snapshot:impact.context.snapshot||null,retention:{
+     status:'deferred',reason:'atomic-identity-pruning-unavailable',
+     candidates:impact.context.prune.map(s=>({name:s,expectedGuid:impact.context.pruneGuids?.[s]||null}))
+    }};
+   }
    for(const snap of impact.context.prune||[]){
     await verifySourceDataset();
     await verifyCreatedSnapshot();
@@ -252,7 +262,7 @@ export class ProtectionAdapter{
     const oldIdentity=await this.run('/usr/sbin/zfs',['get','-H','-o','value','guid',snap],120000);
     if(guid(oldIdentity)!==expectedOldGuid)
      throw Error('Retention snapshot identity changed since preview; refusing to delete');
-    const result=await this.run('/usr/sbin/zfs',['destroy',snap],120000);
+    const result=await this.retentionDelete(snap,expectedOldGuid);
     if(!result.ok)throw Error('Task completed, but snapshot retention failed; inspect the snapshot list');
    }
    return {...impact.result,snapshot:impact.context.snapshot||null};
