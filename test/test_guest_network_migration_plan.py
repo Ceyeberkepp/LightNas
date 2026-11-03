@@ -97,7 +97,7 @@ class ReadOnlyGuestNetworkPlanTests(unittest.TestCase):
                 return real_open(path, flags, *args, **kwargs)
 
             with patch.object(module.os, "open", side_effect=replace_during_open):
-                with self.assertRaises(OSError):
+                with self.assertRaisesRegex(ValueError, "symlinked LXC config"):
                     module.build_plan(p, "bridge", "virbr0", "")
             self.assertTrue(swapped)
             self.assertEqual(outside.read_text(), "lxc.net.0.link = lxcbr0\\n")
