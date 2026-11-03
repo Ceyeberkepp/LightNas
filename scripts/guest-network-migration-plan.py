@@ -5,6 +5,7 @@ This is planning groundwork, NOT an approval, executable migration or rollback
 implementation. A host-owned transaction protocol is required before cutover.
 """
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -58,6 +59,10 @@ def lxc_targets(root, mode, bridge, parent):
                     )
                 except FileNotFoundError:
                     continue
+                except OSError as exc:
+                    if exc.errno == errno.ELOOP:
+                        raise ValueError(f"Refusing symlinked LXC config: {name}/config") from exc
+                    raise
                 try:
                     if not stat.S_ISREG(os.fstat(config_fd).st_mode):
                         raise ValueError(f"Refusing non-regular LXC config: {name}/config")
