@@ -175,14 +175,19 @@ discover_wired_uplink() {
 # Read-only ownership preflight. A missing IPv4 default route is NOT
 # evidence that LightNAS owns this appliance's physical management NIC.
 has_existing_network_ownership() {
-  local config
-  if ip -4 -o addr show scope global 2>/dev/null | grep -q . ||
-     ip -6 -o addr show scope global 2>/dev/null | grep -q .; then
-    return 0
-  fi
-  if command -v nmcli >/dev/null 2>&1 &&
-     nmcli -t -f UUID connection show 2>/dev/null | grep -q .; then
-    return 0
+  local config ipv4 ipv6 nm_profiles
+  # Capture the full result: grep -q under pipefail can SIGPIPE an upstream
+  # command and accidentally label an owned NIC as unconfigured.
+  ipv4="$(ip -4 -o addr show scope global 2>/dev/null || true)"
+  ipv6="$(ip -6 -o addr show scope global 2>/dev/null || true)"
+  [[ -z "$ipv4" && -z "$ipv6" ]] || return 0
+  if command -v nmcli >/dev/null 2>&1; then
+    # An unreadable management profile database means ownership is unknown.
+    # Refuse to take control if detection is unavailable.
+    if ! nm_profiles="$(nmcli -t -f UUID connection show 2>/dev/null)"; then
+      return 0
+    fi
+    [[ -z "$nm_profiles" ]] || return 0
   fi
   for config in /etc/systemd/network/*.network /run/systemd/network/*.network \
                 /etc/netplan/*.yaml /etc/netplan/*.yml \
@@ -196,7 +201,6 @@ has_existing_network_ownership() {
     return 0
   fi
   return 1
-}
 
 bootstrap_error=""
 bootstrap_wired_dhcp() {
