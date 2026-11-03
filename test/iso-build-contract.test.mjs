@@ -34,7 +34,11 @@ test('ISO partition recipe fits the documented 35 GB minimum and does not force 
 test('ISO workflow avoids doc-only rebuild noise and performs a QEMU smoke boot', async () => {
   const workflow = await readFile(new URL('../.github/workflows/build-iso.yml', import.meta.url), 'utf8');
   assert.match(workflow, /concurrency:/);
-  assert.match(workflow, /cancel-in-progress: false/);
+  // Superseded PR validation may be cancelled, but production ISO builds
+  // must remain serialized and cannot be cancelled by a newer PR.
+  assert.match(workflow, /cancel-in-progress: \\$\\{\\{ github\\.event_name == 'pull_request' \\}\\}/);
+  assert.match(workflow, /'lightnas-iso-build'/);
+  assert.match(workflow, /'lightnas-iso-pr-\\{0\\}'/);
   assert.match(workflow, /BIOS boot smoke test/);
   assert.match(workflow, /UEFI boot smoke test/);
   assert.match(workflow, /qemu-system-x86_64/);
