@@ -178,6 +178,13 @@ bootstrap_wired_dhcp() {
   [[ -n "${uplink}" ]] || uplink="$(discover_wired_uplink || true)"
   [[ -n "${uplink}" ]] || return 1
 
+  # An existing static/leased address is potentially remote management;
+  # never replace its profile merely because the default route is missing.
+  if ip -4 addr show dev "${uplink}" scope global 2>/dev/null | grep -q 'inet '; then
+    echo "LightNAS network: existing IPv4 address on ${uplink} preserved; DHCP repair requires explicit approval." >&2
+    return 1
+  fi
+
   echo "LightNAS network: no IPv4 route yet; bringing up ${uplink} with DHCP."
   ip link set "${uplink}" up >/dev/null 2>&1 || true
 
@@ -220,31 +227,13 @@ bootstrap_wired_dhcp() {
 default_dev="$(ip -4 route show default 2>/dev/null | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')"
 default_gw="$(ip -4 route show default 2>/dev/null | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="via"){print $(i+1); exit}}')"
 
-# A user-selected physical interface wins over automatic route discovery. If
-# NetworkManager already knows a Wi-Fi profile, bring it up; for Ethernet,
-# acquire DHCP. Do not silently switch to another adapter after selection.
+# Changing the active management uplink is a network cutover. Preferences
+# only declare intent: never disconnect/reconfigure an existing uplink during
+# unattended install, upgrades or retries.
 if [[ -n "${preferred_uplink}" && "${default_dev}" != "${preferred_uplink}" ]]; then
-  echo "LightNAS network: applying selected management uplink ${preferred_uplink}."
-  ip link set "${preferred_uplink}" up >/dev/null 2>&1 || true
-  if [[ -d "/sys/class/net/${preferred_uplink}/wireless" ]]; then
-    if command -v nmcli >/dev/null 2>&1; then
-      systemctl enable NetworkManager.service >/dev/null 2>&1 || true
-      systemctl start NetworkManager.service >/dev/null 2>&1 || true
-      nmcli device set "${preferred_uplink}" managed yes >/dev/null 2>&1 || true
-      nmcli device connect "${preferred_uplink}" >/dev/null 2>&1 || true
-    fi
-  else
-    bootstrap_wired_dhcp "${preferred_uplink}" || true
-  fi
-  preferred_route="$(ip -4 route show default dev "${preferred_uplink}" 2>/dev/null | head -1 || true)"
-  if [[ -n "${preferred_route}" ]]; then
-    default_dev="${preferred_uplink}"
-    default_gw="$(awk '{for(i=1;i<=NF;i++) if($i=="via"){print $(i+1); exit}}' <<<"${preferred_route}")"
-  elif [[ -d "/sys/class/net/${preferred_uplink}/wireless" ]]; then
-    printf 'LIGHTNAS_NETWORK_MODE=pending-wifi\nLIGHTNAS_UPLINK=%s\n' "${preferred_uplink}" >"${STATE_FILE}"
-    echo "LightNAS network: selected Wi-Fi adapter ${preferred_uplink} is not connected yet. Configure its Wi-Fi connection from Networking." >&2
-    exit 0
-  fi
+  printf 'LIGHTNAS_NETWORK_MODE=pending-uplink\nLIGHTNAS_UPLINK=%s\nLIGHTNAS_NETWORK_ERROR=approved-uplink-switch-required\n' "${preferred_uplink}" >"${STATE_FILE}"
+  echo "LightNAS network: saved uplink change requires a separately approved management migration." >&2
+  exit 0
 fi
 
 if [[ -z "${default_dev}" ]]; then
