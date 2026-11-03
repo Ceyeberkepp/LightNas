@@ -97,12 +97,18 @@ export class ProtectionAdapter{
     // approval must pin the immutable ZFS GUID of each snapshot to delete.
     // Resolve all identities during preview, before creating a new snapshot.
     context.pruneGuids={};
-    for(const oldSnapshot of context.prune){
-     const identity=await this.run('/usr/sbin/zfs',['get','-H','-o','value','guid',oldSnapshot],120000);
-     const oldGuid=String(identity?.stdout||'').trim();
-     if(!identity?.ok||!/^[0-9]+$/.test(oldGuid))
-      throw Error('Retention snapshot identity unavailable; refusing to schedule deletion');
-     context.pruneGuids[oldSnapshot]=oldGuid;
+    // Deferred retention does not require any old GUID lookups. An old
+    // snapshot may have been deleted/recreated out of band; that must not
+    // block a new backup when no destructive cleanup is authorized.
+    // Only the isolated legacy ordering-test executor pins old GUIDs.
+    if(typeof this.retentionDelete==='function'){
+     for(const oldSnapshot of context.prune){
+      const identity=await this.run('/usr/sbin/zfs',['get','-H','-o','value','guid',oldSnapshot],120000);
+      const oldGuid=String(identity?.stdout||'').trim();
+      if(!identity?.ok||!/^[0-9]+$/.test(oldGuid))
+       throw Error('Retention snapshot identity unavailable; refusing to schedule deletion');
+      context.pruneGuids[oldSnapshot]=oldGuid;
+     }
     }
     if(task.kind==='replication'){
      const profile=before.replicationProfiles.find(p=>p.name===task.profile);context.profile=profile;
