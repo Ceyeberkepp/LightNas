@@ -36,9 +36,9 @@ test('ISO workflow avoids doc-only rebuild noise and performs a QEMU smoke boot'
   assert.match(workflow, /concurrency:/);
   // Superseded PR validation may be cancelled, but production ISO builds
   // must remain serialized and cannot be cancelled by a newer PR.
-  assert.match(workflow, /cancel-in-progress: \\$\\{\\{ github\\.event_name == 'pull_request' \\}\\}/);
+  assert.ok(workflow.includes("cancel-in-progress: ${{ github.event_name == 'pull_request' }}"));
   assert.match(workflow, /'lightnas-iso-build'/);
-  assert.match(workflow, /'lightnas-iso-pr-\\{0\\}'/);
+  assert.ok(workflow.includes("format('lightnas-iso-pr-{0}', github.event.pull_request.number)"));
   assert.match(workflow, /BIOS boot smoke test/);
   assert.match(workflow, /UEFI boot smoke test/);
   assert.match(workflow, /qemu-system-x86_64/);
