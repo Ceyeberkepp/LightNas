@@ -78,7 +78,7 @@ export function trustedChecks(checks,runs,repo,sha){
   if(check.head_sha!==sha||check.app?.slug!=='github-actions')return [];
   const url=check.details_url||'';
   if(!url.startsWith(prefix))return [];
-  const match=/^(\\d+)\\/job\\/\\d+(?:\\?.*)?$/.exec(url.slice(prefix.length));
+  const match=/^(\d+)\/job\/\d+(?:\?.*)?$/.exec(url.slice(prefix.length));
   if(!match)return [];
   const expected=REQUIRED_SOURCES[check.name];
   if(!expected)return [];
