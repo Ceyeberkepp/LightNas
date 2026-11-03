@@ -69,14 +69,15 @@ test('existing private NAT installs preserve guest networks until approved migra
 });
 
 
-test('nested bridge migration keeps the appliance LAN address and only uses NAT last', async () => {
+test('physical host network bootstrap preserves management connectivity instead of cutting over', async () => {
   const network = await readFile(new URL('../scripts/configure-appliance-network.sh', import.meta.url), 'utf8');
-  assert.match(network, /ip addr replace "\$\{address\}" dev "\$\{BRIDGE\}"/);
-  assert.match(network, /ip route replace default via "\$\{default_gw\}" dev "\$\{BRIDGE\}"/);
-  assert.match(network, /ip addr del "\$\{address\}" dev "\$\{uplink\}"/);
+  assert.match(network, /physical-bridge-approval-required/);
+  assert.match(network, /existing.*bridge detected/);
   assert.match(network, /LIGHTNAS_NETWORK_MODE=pending-uplink/);
+  for (const unsafe of ['net-destroy default','net-undefine default','nmcli connection down','ip route replace default','ip addr del "${address}"','sysctl.d/99-lightnas']) {
+    assert.equal(network.includes(unsafe), false, 'installer may not mutate the physical management network: '+unsafe);
+  }
 });
-
 
 test('routine updates never restart live network bootstrap', async () => {
   const installer = await readFile(new URL('../install.sh', import.meta.url), 'utf8');

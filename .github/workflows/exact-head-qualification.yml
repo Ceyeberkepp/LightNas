@@ -1,0 +1,30 @@
+name: Full exact-head merge qualification
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+  checks: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: exact-head-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  release-qualification:
+    name: release-qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Require full exact-head architecture, dependency and ISO matrix
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+        run: node scripts/check-pr-exact-head.mjs

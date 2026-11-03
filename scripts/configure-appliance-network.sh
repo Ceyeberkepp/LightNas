@@ -71,33 +71,8 @@ bridge_uplink() {
   return 1
 }
 
-tune_transparent_bridge() {
-  local port="${1:-}"
-  [[ -e "/sys/class/net/${BRIDGE}" ]] || return 0
-  ip link set "${BRIDGE}" promisc on >/dev/null 2>&1 || true
-  if [[ -n "${port}" && -e "/sys/class/net/${port}" ]]; then
-    ip link set "${port}" promisc on >/dev/null 2>&1 || true
-    bridge link set dev "${port}" learning on flood on mcast_flood on bcast_flood on hairpin on >/dev/null 2>&1 || true
-  fi
-  for path in "/sys/class/net/${BRIDGE}/brif/"*; do
-    [[ -e "${path}" ]] || continue
-    local member
-    member="$(basename "${path}")"
-    bridge link set dev "${member}" learning on flood on mcast_flood on bcast_flood on >/dev/null 2>&1 || true
-  done
-
-  # Transparent guest traffic must remain Layer 2. br_netfilter would otherwise
-  # send bridged DHCP/ARP/IP frames through host firewall forwarding policy.
-  cat >/etc/sysctl.d/99-lightnas-transparent-bridge.conf <<'EOF'
-net.bridge.bridge-nf-call-iptables = 0
-net.bridge.bridge-nf-call-ip6tables = 0
-net.bridge.bridge-nf-call-arptables = 0
-EOF
-  modprobe br_netfilter >/dev/null 2>&1 || true
-  for setting in bridge-nf-call-iptables bridge-nf-call-ip6tables bridge-nf-call-arptables; do
-    [[ -e "/proc/sys/net/bridge/${setting}" ]] && printf '0' >"/proc/sys/net/bridge/${setting}" || true
-  done
-}
+# Host bridge sysctl/firewall changes are not part of read-only discovery.
+# No automatic bridge mutation is permitted during install or repair.
 
 derive_managed_lan_pool() {
   local dev="$1" cidr gateway
@@ -203,6 +178,13 @@ bootstrap_wired_dhcp() {
   [[ -n "${uplink}" ]] || uplink="$(discover_wired_uplink || true)"
   [[ -n "${uplink}" ]] || return 1
 
+  # An existing static/leased address is potentially remote management;
+  # never replace its profile merely because the default route is missing.
+  if ip -4 addr show dev "${uplink}" scope global 2>/dev/null | grep -q 'inet '; then
+    echo "LightNAS network: existing IPv4 address on ${uplink} preserved; DHCP repair requires explicit approval." >&2
+    return 1
+  fi
+
   echo "LightNAS network: no IPv4 route yet; bringing up ${uplink} with DHCP."
   ip link set "${uplink}" up >/dev/null 2>&1 || true
 
@@ -245,31 +227,13 @@ bootstrap_wired_dhcp() {
 default_dev="$(ip -4 route show default 2>/dev/null | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')"
 default_gw="$(ip -4 route show default 2>/dev/null | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="via"){print $(i+1); exit}}')"
 
-# A user-selected physical interface wins over automatic route discovery. If
-# NetworkManager already knows a Wi-Fi profile, bring it up; for Ethernet,
-# acquire DHCP. Do not silently switch to another adapter after selection.
+# Changing the active management uplink is a network cutover. Preferences
+# only declare intent: never disconnect/reconfigure an existing uplink during
+# unattended install, upgrades or retries.
 if [[ -n "${preferred_uplink}" && "${default_dev}" != "${preferred_uplink}" ]]; then
-  echo "LightNAS network: applying selected management uplink ${preferred_uplink}."
-  ip link set "${preferred_uplink}" up >/dev/null 2>&1 || true
-  if [[ -d "/sys/class/net/${preferred_uplink}/wireless" ]]; then
-    if command -v nmcli >/dev/null 2>&1; then
-      systemctl enable NetworkManager.service >/dev/null 2>&1 || true
-      systemctl start NetworkManager.service >/dev/null 2>&1 || true
-      nmcli device set "${preferred_uplink}" managed yes >/dev/null 2>&1 || true
-      nmcli device connect "${preferred_uplink}" >/dev/null 2>&1 || true
-    fi
-  else
-    bootstrap_wired_dhcp "${preferred_uplink}" || true
-  fi
-  preferred_route="$(ip -4 route show default dev "${preferred_uplink}" 2>/dev/null | head -1 || true)"
-  if [[ -n "${preferred_route}" ]]; then
-    default_dev="${preferred_uplink}"
-    default_gw="$(awk '{for(i=1;i<=NF;i++) if($i=="via"){print $(i+1); exit}}' <<<"${preferred_route}")"
-  elif [[ -d "/sys/class/net/${preferred_uplink}/wireless" ]]; then
-    printf 'LIGHTNAS_NETWORK_MODE=pending-wifi\nLIGHTNAS_UPLINK=%s\n' "${preferred_uplink}" >"${STATE_FILE}"
-    echo "LightNAS network: selected Wi-Fi adapter ${preferred_uplink} is not connected yet. Configure its Wi-Fi connection from Networking." >&2
-    exit 0
-  fi
+  printf 'LIGHTNAS_NETWORK_MODE=pending-uplink\nLIGHTNAS_UPLINK=%s\nLIGHTNAS_NETWORK_ERROR=approved-uplink-switch-required\n' "${preferred_uplink}" >"${STATE_FILE}"
+  echo "LightNAS network: saved uplink change requires a separately approved management migration." >&2
+  exit 0
 fi
 
 if [[ -z "${default_dev}" ]]; then
@@ -285,186 +249,38 @@ if [[ -z "${default_dev}" ]]; then
   exit 0
 fi
 
-# Already converted. Re-apply transparent switching settings every time so
-# existing installations are repaired after upgrades/reboots too.
+# Read-only existing topology verification. A host that has already been
+# bridged by its operator may continue using that existing configuration,
+# but automated install/repair MUST NOT alter a management uplink, NM
+# profiles, persistent networkd files, libvirt networks or bridge sysctls.
 if [[ "${default_dev}" == "${BRIDGE}" ]]; then
   uplink="$(bridge_uplink || true)"
-  if [[ -n "${uplink}" ]]; then
-    current_master="$(basename "$(readlink -f "/sys/class/net/${uplink}/master" 2>/dev/null || true)")"
-    if [[ "${current_master}" != "${BRIDGE}" ]]; then
-      ip link set "${uplink}" master "${BRIDGE}" >/dev/null 2>&1 || true
-      ip link set "${uplink}" up >/dev/null 2>&1 || true
-    fi
-  fi
-  tune_transparent_bridge "${uplink}"
   printf 'LIGHTNAS_NETWORK_MODE=bridge\nLIGHTNAS_LAN_BRIDGE=%s\nLIGHTNAS_UPLINK=%s\n' "${BRIDGE}" "${uplink}" >"${STATE_FILE}"
+  echo "LightNAS network: existing ${BRIDGE} bridge detected; preserving host and guest networking."
   exit 0
 fi
 
-# Wi-Fi cannot be transparently enslaved to an Ethernet bridge in ordinary
-# station mode. Leave it as the host uplink and let LightNAS provision NAT.
-if [[ -d "/sys/class/net/${default_dev}/wireless" ]] ||    command -v iw >/dev/null 2>&1 && iw dev "${default_dev}" info >/dev/null 2>&1; then
+# Wi-Fi station interfaces cannot be transparently bridged. Discovery here
+# preserves the existing uplink; existing separately configured NAT stays put.
+if [[ -d "/sys/class/net/${default_dev}/wireless" ]] || {
+  command -v iw >/dev/null 2>&1 && iw dev "${default_dev}" info >/dev/null 2>&1
+}; then
   printf 'LIGHTNAS_NETWORK_MODE=wifi-nat\nLIGHTNAS_UPLINK=%s\n' "${default_dev}" >"${STATE_FILE}"
-  echo "LightNAS network: Wi-Fi uplink ${default_dev}; using routed/NAT guest networking."
+  echo "LightNAS network: Wi-Fi uplink ${default_dev} preserved; no bridge cutover attempted."
   exit 0
 fi
 
 if is_virtual_name "${default_dev}"; then
   printf 'LIGHTNAS_NETWORK_MODE=virtual-uplink\nLIGHTNAS_UPLINK=%s\n' "${default_dev}" >"${STATE_FILE}"
-  echo "LightNAS network: default route is already on virtual interface ${default_dev}; leaving it unchanged."
+  echo "LightNAS network: virtual uplink ${default_dev} preserved."
   exit 0
 fi
 
-uplink="${default_dev}"
-mac="$(cat "/sys/class/net/${uplink}/address" 2>/dev/null || true)"
-address="$(ip -4 -o addr show dev "${uplink}" scope global | awk 'NR==1{print $4}')"
-dynamic=0
-ip -4 -o addr show dev "${uplink}" scope global dynamic 2>/dev/null | grep -q . && dynamic=1
-
-if [[ -z "${address}" || -z "${mac}" ]]; then
-  echo "LightNAS network: unable to determine address/MAC for wired uplink ${uplink}; leaving it unchanged." >&2
-  exit 0
-fi
-
-# libvirt's stock default network owns virbr0. Retire it before making virbr0
-# the actual appliance LAN bridge.
-if [[ "${BRIDGE}" == "virbr0" ]] && command -v virsh >/dev/null 2>&1; then
-  if virsh -c qemu:///system net-info default >/dev/null 2>&1; then
-    virsh -c qemu:///system net-destroy default >/dev/null 2>&1 || true
-    virsh -c qemu:///system net-autostart default --disable >/dev/null 2>&1 || true
-    virsh -c qemu:///system net-undefine default >/dev/null 2>&1 || true
-  fi
-fi
-
-if ip link show "${BRIDGE}" >/dev/null 2>&1; then
-  # Only delete an old private virbr0. Never tear down an already-routed LAN
-  # bridge that owns the current default route.
-  if ! ip -4 route show default dev "${BRIDGE}" 2>/dev/null | grep -q .; then
-    ip link set "${BRIDGE}" down >/dev/null 2>&1 || true
-    ip link delete "${BRIDGE}" type bridge >/dev/null 2>&1 || true
-  fi
-fi
-
-# Prefer NetworkManager when it actually manages the wired NIC.
-nm_state=""
-nm_connection=""
-if command -v nmcli >/dev/null 2>&1; then
-  nm_state="$(nmcli -g GENERAL.STATE device show "${uplink}" 2>/dev/null | head -1 || true)"
-  nm_connection="$(nmcli -g GENERAL.CONNECTION device show "${uplink}" 2>/dev/null | head -1 || true)"
-fi
-
-if [[ -n "${nm_state}" && "${nm_state}" != *unmanaged* && -n "${nm_connection}" && "${nm_connection}" != "--" ]]; then
-  method="$(nmcli -g ipv4.method connection show "${nm_connection}" 2>/dev/null | head -1 || true)"
-  while IFS=: read -r uuid name; do
-    [[ -n "${uuid}" ]] && nmcli connection delete uuid "${uuid}" >/dev/null 2>&1 || true
-  done < <(nmcli -t -f UUID,NAME connection show 2>/dev/null | awk -F: -v b="${BRIDGE}" '$2==b || $2==(b"-uplink"){print $1":"$2}')
-
-  nmcli connection add type bridge ifname "${BRIDGE}" con-name "${BRIDGE}" >/dev/null
-  nmcli connection modify "${BRIDGE}" connection.autoconnect yes bridge.stp no >/dev/null
-  nmcli connection modify "${BRIDGE}" 802-3-ethernet.cloned-mac-address "${mac}" >/dev/null 2>&1 || true
-
-  if [[ "${method}" == "manual" ]]; then
-    nmcli connection modify "${BRIDGE}" ipv4.method manual ipv4.addresses "${address}" >/dev/null
-    [[ -n "${default_gw}" ]] && nmcli connection modify "${BRIDGE}" ipv4.gateway "${default_gw}" >/dev/null
-    dns="$(nmcli -g IP4.DNS device show "${uplink}" 2>/dev/null | paste -sd, - || true)"
-    [[ -n "${dns}" ]] && nmcli connection modify "${BRIDGE}" ipv4.dns "${dns}" >/dev/null
-  else
-    nmcli connection modify "${BRIDGE}" ipv4.method auto >/dev/null
-  fi
-  nmcli connection add type ethernet ifname "${uplink}" con-name "${BRIDGE}-uplink" master "${BRIDGE}" slave-type bridge >/dev/null
-  nmcli connection down "${nm_connection}" >/dev/null 2>&1 || true
-  nmcli connection up "${BRIDGE}" >/dev/null
-else
-  # Proxmox LXC commonly presents eth0 as NetworkManager-unmanaged. Perform
-  # the bridge cutover live first so the appliance keeps its current address
-  # during installation, then persist the topology with systemd-networkd.
-  ip link add name "${BRIDGE}" type bridge 2>/dev/null || true
-  ip link set dev "${BRIDGE}" address "${mac}" 2>/dev/null || true
-  ip link set "${BRIDGE}" up
-  ip link set "${uplink}" master "${BRIDGE}"
-
-  # Keep the current appliance address alive while ownership moves from the
-  # physical NIC to the bridge. This prevents a management outage while DHCP
-  # or persistent network configuration catches up.
-  ip addr replace "${address}" dev "${BRIDGE}"
-  [[ -n "${default_gw}" ]] && ip route replace default via "${default_gw}" dev "${BRIDGE}"
-  ip addr del "${address}" dev "${uplink}" >/dev/null 2>&1 || true
-  ip link set "${uplink}" up
-
-  mkdir -p /etc/systemd/network
-  cat >"/etc/systemd/network/05-lightnas-${BRIDGE}.netdev" <<EOF
-[NetDev]
-Name=${BRIDGE}
-Kind=bridge
-MACAddress=${mac}
-
-[Bridge]
-STP=false
-EOF
-
-  cat >"/etc/systemd/network/06-lightnas-${uplink}.network" <<EOF
-[Match]
-Name=${uplink}
-
-[Network]
-Bridge=${BRIDGE}
-LinkLocalAddressing=no
-IPv6AcceptRA=no
-EOF
-
-  if [[ "${dynamic}" == "1" ]]; then
-    cat >"/etc/systemd/network/07-lightnas-${BRIDGE}.network" <<EOF
-[Match]
-Name=${BRIDGE}
-
-[Network]
-DHCP=yes
-IPv6AcceptRA=yes
-
-[DHCPv4]
-RouteMetric=50
-ClientIdentifier=mac
-EOF
-  else
-    cat >"/etc/systemd/network/07-lightnas-${BRIDGE}.network" <<EOF
-[Match]
-Name=${BRIDGE}
-
-[Network]
-Address=${address}
-${default_gw:+Gateway=${default_gw}}
-IPv6AcceptRA=yes
-EOF
-  fi
-
-  systemctl enable systemd-networkd.service >/dev/null 2>&1 || true
-  systemctl daemon-reload >/dev/null 2>&1 || true
-  networkctl reload >/dev/null 2>&1 || true
-  networkctl reconfigure "${uplink}" >/dev/null 2>&1 || true
-  networkctl reconfigure "${BRIDGE}" >/dev/null 2>&1 || true
-fi
-
-# Wait for the bridge to become the real appliance default route.
-for _ in {1..30}; do
-  if ip -4 route show default dev "${BRIDGE}" 2>/dev/null | grep -q . &&      ip -4 addr show dev "${BRIDGE}" scope global 2>/dev/null | grep -q 'inet '; then
-    break
-  fi
-  sleep 1
-done
-
-if ! ip -4 route show default dev "${BRIDGE}" 2>/dev/null | grep -q .; then
-  echo "LightNAS network: LAN bridge did not acquire the default route; restoring live address on ${uplink}." >&2
-  ip addr flush dev "${BRIDGE}" scope global >/dev/null 2>&1 || true
-  ip link set "${uplink}" nomaster >/dev/null 2>&1 || true
-  ip addr replace "${address}" dev "${uplink}" >/dev/null 2>&1 || true
-  [[ -n "${default_gw}" ]] && ip route replace default via "${default_gw}" dev "${uplink}" >/dev/null 2>&1 || true
-  exit 1
-fi
-
-# At this point eth0 (or the detected wired NIC) is a pure bridge port. The
-# appliance address/default route belong only to virbr0.
-ip addr flush dev "${uplink}" scope global >/dev/null 2>&1 || true
-tune_transparent_bridge "${uplink}"
-
-printf 'LIGHTNAS_NETWORK_MODE=bridge\nLIGHTNAS_LAN_BRIDGE=%s\nLIGHTNAS_UPLINK=%s\n' "${BRIDGE}" "${uplink}" >"${STATE_FILE}"
-echo "LightNAS network: ${uplink} is now the physical port for ${BRIDGE}; guests use the real LAN."
+# Physical ethernet cutovers require an immutable, approved, journalled plan
+# with verified reboot-safe rollback. That transaction is not implemented.
+# Even an operator-provided environment variable must NEVER bypass this.
+# Preserve working management DHCP/static configuration and guest networks.
+printf 'LIGHTNAS_NETWORK_MODE=pending-uplink\nLIGHTNAS_UPLINK=%s\nLIGHTNAS_NETWORK_ERROR=physical-bridge-approval-required\n' \
+  "${default_dev}" >"${STATE_FILE}"
+echo "LightNAS network: physical management uplink ${default_dev} preserved. Guest bridge migration needs an approved rollback-capable transaction." >&2
+exit 0
