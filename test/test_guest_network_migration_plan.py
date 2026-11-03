@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -45,6 +46,67 @@ class ReadOnlyGuestNetworkPlanTests(unittest.TestCase):
             target = Path(root) / "real"
             target.write_text("lxc.net.0.link = lightnas0")
             (p / "config").symlink_to(target)
+            with self.assertRaises(ValueError):
+                module.build_plan(root, "bridge", "virbr0", "")
+
+    def test_guest_directory_symlink_cannot_escape_inventory_root(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = Path(root)
+            outside = p / "outside"
+            outside.mkdir()
+            (outside / "config").write_text("lxc.net.0.link = lightnas0\\n")
+            guests = p / "guests"
+            guests.mkdir()
+            (guests / "ct-escape").symlink_to(outside, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                module.build_plan(guests, "bridge", "virbr0", "")
+
+    def test_symlink_root_and_nonregular_config_fail_closed(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = Path(root)
+            guests = p / "guests"
+            guests.mkdir()
+            link = p / "linked-guests"
+            link.symlink_to(guests, target_is_directory=True)
+            with self.assertRaises(OSError):
+                module.build_plan(link, "bridge", "virbr0", "")
+            ct = guests / "ct-fifo"
+            ct.mkdir()
+            os.mkfifo(ct / "config")
+            with self.assertRaises(ValueError):
+                module.build_plan(guests, "bridge", "virbr0", "")
+
+    def test_config_symlink_swap_during_open_is_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = Path(root)
+            ct = p / "ct-swap"
+            ct.mkdir()
+            config = ct / "config"
+            config.write_text("lxc.net.0.link = lightnas0\\n")
+            outside = p / "outside"
+            outside.write_text("lxc.net.0.link = lxcbr0\\n")
+            real_open = module.os.open
+            swapped = False
+
+            def replace_during_open(path, flags, *args, **kwargs):
+                nonlocal swapped
+                if path == "config" and not swapped:
+                    swapped = True
+                    config.rename(ct / "config-original")
+                    config.symlink_to(outside)
+                return real_open(path, flags, *args, **kwargs)
+
+            with patch.object(module.os, "open", side_effect=replace_during_open):
+                with self.assertRaises(OSError):
+                    module.build_plan(p, "bridge", "virbr0", "")
+            self.assertTrue(swapped)
+            self.assertEqual(outside.read_text(), "lxc.net.0.link = lxcbr0\\n")
+
+    def test_oversized_config_is_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            ct = Path(root) / "ct-large"
+            ct.mkdir()
+            (ct / "config").write_bytes(b"#" * (module.MAX_CONFIG_BYTES + 1))
             with self.assertRaises(ValueError):
                 module.build_plan(root, "bridge", "virbr0", "")
 
