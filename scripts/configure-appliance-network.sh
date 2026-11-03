@@ -278,9 +278,9 @@ fi
 if [[ -z "${default_dev}" ]]; then
   pending_uplink="$(discover_wired_uplink || true)"
   if [[ -n "${bootstrap_error}" ]]; then
-    printf 'LIGHTNAS_NETWORK_MODE=pending-uplink\\nLIGHTNAS_UPLINK=%s\\nLIGHTNAS_NETWORK_ERROR=%s\\n' "${pending_uplink}" "${bootstrap_error}" >"${STATE_FILE}"
+    printf 'LIGHTNAS_NETWORK_MODE=pending-uplink\nLIGHTNAS_UPLINK=%s\nLIGHTNAS_NETWORK_ERROR=%s\n' "${pending_uplink}" "${bootstrap_error}" >"${STATE_FILE}"
   else
-  printf 'LIGHTNAS_NETWORK_MODE=pending-uplink\nLIGHTNAS_UPLINK=%s\n' "${pending_uplink}" >"${STATE_FILE}"
+    printf 'LIGHTNAS_NETWORK_MODE=pending-uplink\nLIGHTNAS_UPLINK=%s\n' "${pending_uplink}" >"${STATE_FILE}"
   fi
   echo "LightNAS network: no LAN DHCP/default route is available; guest networking will wait instead of creating a private fallback bridge." >&2
   exit 0
