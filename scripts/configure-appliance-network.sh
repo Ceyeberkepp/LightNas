@@ -201,6 +201,7 @@ has_existing_network_ownership() {
     return 0
   fi
   return 1
+}
 
 bootstrap_error=""
 bootstrap_wired_dhcp() {
