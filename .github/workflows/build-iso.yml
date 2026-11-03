@@ -22,10 +22,11 @@ on:
 permissions:
   contents: read
 
-# Only one heavy ISO build at a time, across all branches and manual runs.
+# Heavy release ISO builds serialize, while lightweight PR validation does
+# not sit behind a 2.5 GB ISO build. Superseded PR checks are cancelled.
 concurrency:
-  group: lightnas-iso-build
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('lightnas-iso-pr-{0}', github.event.pull_request.number) || 'lightnas-iso-build' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # PRs run fast configuration checks, not another 2.5 GB ISO build.
