@@ -7,12 +7,15 @@ implementation. A host-owned transaction protocol is required before cutover.
 import argparse
 import hashlib
 import json
+import os
+import stat
 from pathlib import Path
 import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
+MAX_CONFIG_BYTES = 2 * 1024 * 1024
 LEGACY_LINKS = frozenset({"lightnas0", "lxcbr0", "virbr0"})
 LINK_RE = re.compile(r"^\s*lxc\.net\.(\d+)\.link\s*=\s*(\S+)", re.MULTILINE)
 
@@ -22,37 +25,77 @@ def sha256(data):
 
 
 def lxc_targets(root, mode, bridge, parent):
-    """Read legacy LXC configs without following a config-file symlink."""
+    """Inventory guest configs via directory descriptors, never following links.
+
+    Directory-entry checks alone are unsafe: a guest directory or config can
+    be replaced with a symlink between glob/is_file and read_bytes. Opening
+    every component with O_NOFOLLOW binds the bytes to the inspected inode.
+    This is still a read-only plan, not authorization to mutate those inodes.
+    """
     candidates = []
-    for path in sorted(Path(root).glob("*/config")):
-        if path.is_symlink():
-            raise ValueError(f"Refusing symlinked LXC configuration: {path}")
-        if not path.is_file():
-            continue
-        original = path.read_bytes()
-        content = original.decode("utf-8")
-        for index, link in LINK_RE.findall(content):
-            if link not in LEGACY_LINKS:
-                continue
-            if mode == "bridge":
-                target = {"type": "veth", "link": bridge}
-            elif mode in {"nested-macvlan", "nested-ipvlan"}:
-                target = {"type": mode.removeprefix("nested-"), "link": parent}
-            else:
-                continue
-            if link == target["link"]:
-                continue
-            candidates.append({
-                "kind": "lxc",
-                "name": path.parent.name,
-                "networkIndex": int(index),
-                "previousLink": link,
-                "proposedTarget": target,
-                "sourceSha256": sha256(original),
-                "configurationPath": str(path),
-                "requiresGuestStateSnapshot": True,
-                "requiresConnectivityRollback": True,
-            })
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        root_fd = os.open(root, directory_flags)
+    except FileNotFoundError:
+        # LXC may not be installed yet; no guest configuration exists.
+        return candidates
+    try:
+        with os.scandir(root_fd) as entries:
+            guest_names = []
+            for entry in entries:
+                if entry.is_symlink():
+                    raise ValueError(f"Refusing symlinked LXC guest directory: {entry.name}")
+                if entry.is_dir(follow_symlinks=False):
+                    guest_names.append(entry.name)
+        for name in sorted(guest_names):
+            guest_fd = os.open(name, directory_flags, dir_fd=root_fd)
+            try:
+                try:
+                    config_fd = os.open(
+                        "config",
+                        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                        dir_fd=guest_fd,
+                    )
+                except FileNotFoundError:
+                    continue
+                try:
+                    if not stat.S_ISREG(os.fstat(config_fd).st_mode):
+                        raise ValueError(f"Refusing non-regular LXC config: {name}/config")
+                    with os.fdopen(config_fd, "rb") as handle:
+                        config_fd = -1
+                        original = handle.read(MAX_CONFIG_BYTES + 1)
+                    if len(original) > MAX_CONFIG_BYTES:
+                        raise ValueError(f"Oversized LXC config: {name}/config")
+                finally:
+                    if config_fd >= 0:
+                        os.close(config_fd)
+            finally:
+                os.close(guest_fd)
+            content = original.decode("utf-8")
+            for index, link in LINK_RE.findall(content):
+                if link not in LEGACY_LINKS:
+                    continue
+                if mode == "bridge":
+                    target = {"type": "veth", "link": bridge}
+                elif mode in {"nested-macvlan", "nested-ipvlan"}:
+                    target = {"type": mode.removeprefix("nested-"), "link": parent}
+                else:
+                    continue
+                if link == target["link"]:
+                    continue
+                candidates.append({
+                    "kind": "lxc",
+                    "name": name,
+                    "networkIndex": int(index),
+                    "previousLink": link,
+                    "proposedTarget": target,
+                    "sourceSha256": sha256(original),
+                    "configurationPath": str(Path(root) / name / "config"),
+                    "requiresGuestStateSnapshot": True,
+                    "requiresConnectivityRollback": True,
+                })
+    finally:
+        os.close(root_fd)
     return candidates
 
 
