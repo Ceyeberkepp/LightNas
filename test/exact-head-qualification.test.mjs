@@ -99,3 +99,15 @@ test('trusted workflow job URL parser accepts valid /job/ and rejects /jobs/ or 
  const bad=good.map(c=>({...c,details_url:c.details_url.replace('/job/','/jobs/')}));
  assert.equal(trustedChecks(bad,runs,repo,head).length,0);
 });
+
+test('real GitHub check-run response omits created_at; completed jobs still qualify',()=>{
+ const checks=items().map(({created_at,...check})=>({...check,started_at:'2026-11-02T00:01:00Z'}));
+ assert.equal(evaluate(trustedChecks(checks,runs,repo,head)).passed,true);
+});
+test('new queued check without created_at or started_at invalidates older green check',()=>{
+ const checks=items().map(({created_at,...check})=>check);
+ checks.push({...checks[0],id:999,started_at:null,status:'queued',conclusion:null});
+ const result=evaluate(trustedChecks(checks,runs,repo,head));
+ assert.ok(result.pending.includes('qualification (22)'));
+ assert.equal(result.passed,false);
+});
