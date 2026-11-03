@@ -47,7 +47,7 @@ test('Proxmox installer preserves net0 settings and only disables its firewall f
 });
 
 
-test('fresh ISO boot acquires wired DHCP before guest networking is provisioned', async () => {
+test('fresh ISO boot initializes unowned wired DHCP before guest networking is provisioned', async () => {
   const [network, provision, iso] = await Promise.all([
     readFile(new URL('../scripts/configure-appliance-network.sh', import.meta.url), 'utf8'),
     readFile(new URL('../scripts/provision-runtimes.sh', import.meta.url), 'utf8'),
@@ -57,7 +57,10 @@ test('fresh ISO boot acquires wired DHCP before guest networking is provisioned'
   assert.match(network, /discover_wired_uplink\(\)/);
   assert.match(network, /bootstrap_wired_dhcp\(\)/);
   assert.match(network, /nmcli device set "\$\{uplink\}" managed yes/);
-  assert.match(network, /nmcli device connect "\$\{uplink\}"/);
+  assert.doesNotMatch(network, /^\s*nmcli device connect /m);
+  assert.match(network, /if has_existing_network_ownership; then/);
+  assert.match(network, /nmcli connection add type ethernet ifname "\$\{uplink\}"/);
+  assert.match(network, /existing-network-policy-approval-required/);
   assert.match(network, /ipv4\.method auto/);
   assert.match(network, /LIGHTNAS_NETWORK_MODE=pending-uplink/);
 
