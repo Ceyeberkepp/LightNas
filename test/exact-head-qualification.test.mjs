@@ -92,3 +92,10 @@ test('newer failed workflow at same SHA cannot reuse old green jobs',()=>{
  assert.equal(result.passed,false);
  assert.ok(result.pending.includes('full-i386'));
 });
+
+test('trusted workflow job URL parser accepts valid /job/ and rejects /jobs/ or cross-repository paths',()=>{
+ const good=items();
+ assert.equal(trustedChecks(good,runs,repo,head).length,REQUIRED_CHECKS.length);
+ const bad=good.map(c=>({...c,details_url:c.details_url.replace('/job/','/jobs/')}));
+ assert.equal(trustedChecks(bad,runs,repo,head).length,0);
+});
