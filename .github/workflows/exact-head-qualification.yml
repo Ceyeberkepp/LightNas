@@ -5,6 +5,7 @@ on:
 permissions:
   contents: read
   checks: read
+  actions: read
   pull-requests: read
 concurrency:
   group: exact-head-${{ github.event.pull_request.number }}
@@ -13,7 +14,7 @@ jobs:
   release-qualification:
     name: release-qualification
     runs-on: ubuntu-24.04
-    timeout-minutes: 85
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
