@@ -89,3 +89,50 @@ has_existing_network_ownership
     );
   }
 });
+
+test('ownership inspection errors and long ifupdown policy fail closed', async () => {
+  const network = await readFile(new URL('../scripts/configure-appliance-network.sh', import.meta.url), 'utf8');
+  const guard = network.match(/^has_existing_network_ownership\(\) \{[\s\S]*?^\}/m)[0];
+  for (const scenario of ['ip-failed', 'long-policy', 'policy-failed', 'include-policy']) {
+    const script = `set -Eeuo pipefail
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+ip() { [[ "$TEST_SCENARIO" != ip-failed ]]; }
+nmcli() { return 0; }
+mkdir -p "$work/interfaces.d"
+case "$TEST_SCENARIO" in
+  long-policy) for ((i=0; i<20000; i++)); do printf 'iface eth%s inet static\\n' "$i"; done > "$work/interfaces" ;;
+  include-policy) printf 'source /custom/network/*\\n' > "$work/interfaces" ;;
+  policy-failed) touch "$work/interfaces"; awk() { return 2; } ;;
+esac
+${guard.replaceAll('/etc/network/', '${work}/').replaceAll('/etc/', '${work}/etc/').replaceAll('/run/', '${work}/run/')}
+has_existing_network_ownership
+`;
+    execFileSync('bash', ['-c', script], { env: { ...process.env, TEST_SCENARIO: scenario }, stdio: 'pipe' });
+  }
+});
+
+test('NM profiles appearing after preflight or failed enumeration prevent mutations', async () => {
+  const network = await readFile(new URL('../scripts/configure-appliance-network.sh', import.meta.url), 'utf8');
+  const bootstrap = network.match(/^bootstrap_wired_dhcp\(\) \{[\s\S]*?^\}/m)[0];
+  for (const scenario of ['enumeration-failed', 'long-profiles']) {
+    const script = `set -Eeuo pipefail
+ip() { if [[ "$1" == link ]]; then echo MUTATION; fi; }
+systemctl() { echo MUTATION; }
+has_existing_network_ownership() { return 1; }
+nmcli() {
+  if [[ "$*" == '-t -f NAME connection show' ]]; then
+    [[ "$TEST_SCENARIO" != enumeration-failed ]] || return 1
+    printf 'lightnas-auto-eth0\\n'
+    for ((i=0; i<20000; i++)); do printf 'foreign-%s\\n' "$i"; done
+  else echo MUTATION; fi
+}
+${bootstrap}
+bootstrap_error=''
+if bootstrap_wired_dhcp eth0; then exit 20; fi
+[[ "$bootstrap_error" == existing-network-policy-approval-required ]]
+`;
+    const output = execFileSync('bash', ['-c', script], { env: { ...process.env, TEST_SCENARIO: scenario }, encoding: 'utf8' });
+    assert.doesNotMatch(output, /MUTATION/);
+  }
+});

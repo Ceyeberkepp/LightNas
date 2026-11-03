@@ -175,11 +175,11 @@ discover_wired_uplink() {
 # Read-only ownership preflight. A missing IPv4 default route is NOT
 # evidence that LightNAS owns this appliance's physical management NIC.
 has_existing_network_ownership() {
-  local config ipv4 ipv6 nm_profiles
+  local config ipv4 ipv6 nm_profiles iface_policy
   # Capture the full result: grep -q under pipefail can SIGPIPE an upstream
   # command and accidentally label an owned NIC as unconfigured.
-  ipv4="$(ip -4 -o addr show scope global 2>/dev/null || true)"
-  ipv6="$(ip -6 -o addr show scope global 2>/dev/null || true)"
+  if ! ipv4="$(ip -4 -o addr show scope global 2>/dev/null)"; then return 0; fi
+  if ! ipv6="$(ip -6 -o addr show scope global 2>/dev/null)"; then return 0; fi
   [[ -z "$ipv4" && -z "$ipv6" ]] || return 0
   if command -v nmcli >/dev/null 2>&1; then
     # An unreadable management profile database means ownership is unknown.
@@ -194,18 +194,24 @@ has_existing_network_ownership() {
                 /etc/NetworkManager/system-connections/*.nmconnection; do
     [[ -f "${config}" ]] && return 0
   done
-  if [[ -r /etc/network/interfaces ]] &&
-     grep -E '^[[:space:]]*iface[[:space:]]+' /etc/network/interfaces |
-       grep -Ev '^[[:space:]]*iface[[:space:]]+lo[[:space:]]' |
-       grep -q .; then
-    return 0
-  fi
+  # Read all input without a short-circuiting pipeline. Inspection errors
+  # mean ownership is unknown, never permission to initialize the NIC.
+  for config in /etc/network/interfaces /etc/network/interfaces.d/*; do
+    [[ -e "${config}" ]] || continue
+    [[ -f "${config}" && -r "${config}" ]] || return 0
+    if ! iface_policy="$(awk '$1 == "iface" && $2 != "lo" { owned = 1 }
+      $1 == "source" || $1 == "source-directory" { owned = 1 }
+      END { if (owned) print "owned" }' "${config}")"; then
+      return 0
+    fi
+    [[ -z "${iface_policy}" ]] || return 0
+  done
   return 1
 }
 
 bootstrap_error=""
 bootstrap_wired_dhcp() {
-  local uplink profile
+  local uplink profile nm_profiles
   uplink="${1:-}"
   [[ -n "${uplink}" ]] || uplink="$(discover_wired_uplink || true)"
   [[ -n "${uplink}" ]] || return 1
@@ -225,20 +231,25 @@ bootstrap_wired_dhcp() {
     return 1
   fi
   echo "LightNAS network: unconfigured ${uplink}; attempting first-boot DHCP."
-  ip link set "${uplink}" up >/dev/null 2>&1 || true
-
   if command -v nmcli >/dev/null 2>&1; then
-    systemctl enable NetworkManager.service >/dev/null 2>&1 || true
-    systemctl start NetworkManager.service >/dev/null 2>&1 || true
-
     # Never use 'nmcli device connect': it can reactivate a dormant host
     # profile. Never mutate any existing profile during unattended install.
     profile="lightnas-auto-${uplink}"
-    if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "${profile}"; then
+    if ! nm_profiles="$(nmcli -t -f NAME connection show 2>/dev/null)"; then
       bootstrap_error="existing-network-policy-approval-required"
-      echo "LightNAS network: refusing to overwrite existing NM profile ${profile}." >&2
+      echo "LightNAS network: cannot inspect NM profiles; DHCP takeover refused." >&2
       return 1
     fi
+    # A profile appearing since preflight may belong to another manager.
+    # Any existing profile requires review, regardless of its name.
+    if [[ -n "${nm_profiles}" ]]; then
+      bootstrap_error="existing-network-policy-approval-required"
+      echo "LightNAS network: existing NM profiles detected; DHCP takeover refused." >&2
+      return 1
+    fi
+    systemctl enable NetworkManager.service >/dev/null 2>&1 || true
+    systemctl start NetworkManager.service >/dev/null 2>&1 || true
+    ip link set "${uplink}" up >/dev/null 2>&1 || true
     nmcli device set "${uplink}" managed yes >/dev/null 2>&1 || true
     if ! nmcli connection add type ethernet ifname "${uplink}" con-name "${profile}" connection.autoconnect yes ipv4.method auto ipv6.method auto >/dev/null 2>&1; then
       bootstrap_error="first-boot-dhcp-profile-creation-failed"
@@ -246,6 +257,7 @@ bootstrap_wired_dhcp() {
     fi
     nmcli connection up "${profile}" >/dev/null 2>&1 || true
   elif command -v dhclient >/dev/null 2>&1; then
+    ip link set "${uplink}" up >/dev/null 2>&1 || true
     dhclient -1 -v "${uplink}" >/dev/null 2>&1 || true
   fi
 
