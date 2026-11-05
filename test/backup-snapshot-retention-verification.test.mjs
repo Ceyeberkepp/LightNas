@@ -365,3 +365,33 @@ test('normal backup planning still succeeds if obsolete retention snapshots cann
  assert.equal(impact.dataErased,false);
  assert.match(impact.warning,/storage usage can grow/);
 });
+
+test('deterministic replacement after final identity read survives fresh-adapter retries',async()=>{
+ const live=new Map(older.map(s=>[s,'24680']));
+ for(let attempt=0;attempt<2;attempt++){
+  const {adapter,impact,commands}=isolatedJob();
+  adapter.retentionDelete=null;
+  const underlying=adapter.run;
+  let replaced=false;
+  adapter.run=async(bin,args)=>{
+   const result=await underlying(bin,args);
+   if(args[0]==='get'&&args.includes('guid')&&args.at(-1)===created){
+    // The identity observation has completed. Simulate an out-of-band
+    // writer replacing every old candidate before any subsequent command.
+    for(const snap of older)live.set(snap,String(90000+attempt));
+    replaced=true;
+   }
+   if(args[0]==='destroy'){
+    live.delete(args.at(-1));
+    throw Error('Unapproved replacement reached a destructive command');
+   }
+   return result;
+  };
+  const result=await adapter.apply(impact);
+  assert.equal(replaced,true,'the interleaving must actually execute');
+  assert.equal(result.retention.status,'deferred');
+  assert.deepEqual([...live.keys()],older);
+  assert.ok([...live.values()].every(guid=>guid===String(90000+attempt)));
+  assert.deepEqual(commands.map(c=>c.args[0]),['snapshot']);
+ }
+});
