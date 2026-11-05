@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import secrets
+import shlex
 import stat
 import subprocess
 import threading
@@ -40,6 +41,10 @@ def transaction_locked(method):
 
 DEFAULT_JOURNAL = Path("/var/lib/lightnas-network/network-pending.json")
 LEGACY_JOURNAL = Path("/var/lib/lightnas/network-pending.json")
+
+
+class RollbackResultError(RuntimeError):
+    """NetworkManager replied, but did not verify every device rollback."""
 
 
 class NetworkCheckpoint:
@@ -440,6 +445,12 @@ class NetworkCheckpoint:
                 # back to the saved on-disk profiles before the service starts.
                 pass
             self._restore_profiles(record)
+            # A failed device rollback must survive retries: NM may delete the
+            # checkpoint after returning a partial result. Missing checkpoint
+            # on the next retry is not evidence that live recovery succeeded.
+            record = self._read() or record
+            if record.get("rollbackFailure"):
+                raise RollbackResultError(record["rollbackFailure"])
             self._clear()
             self._remove_backup(record)
             return {"recovered": True}
@@ -457,7 +468,30 @@ class NetworkCheckpoint:
         return self.call("CheckpointDestroy", "o", path)
 
     def _rollback(self, path):
-        return self.call("CheckpointRollback", "o", path)
+        output = self.call("CheckpointRollback", "o", path)
+        try:
+            fields = shlex.split(output)
+            if (len(fields) < 2 or fields[0] != "a{su}" or
+                    not re.fullmatch(r"[0-9]+", fields[1])):
+                raise ValueError("invalid result dictionary")
+            count = int(fields[1])
+            if count == 0 or len(fields) != 2 + count * 2:
+                raise ValueError("missing device results")
+            devices = set()
+            for index in range(count):
+                device, result = fields[2 + index * 2:4 + index * 2]
+                if (not re.fullmatch(r"/org/freedesktop/NetworkManager/Devices/[0-9]+", device)
+                        or device in devices or result != "0"):
+                    raise ValueError("device rollback failed or is unverified")
+                devices.add(device)
+        except (ValueError, TypeError) as error:
+            message = "NetworkManager device rollback is unverified; console recovery required"
+            record = self._read()
+            if record and record.get("checkpoint") == path:
+                record["rollbackFailure"] = message
+                self._write(record)
+            raise RollbackResultError(message) from error
+        return output
 
     def _read(self):
         try:
@@ -590,6 +624,8 @@ class NetworkCheckpoint:
             # the client reaches us through a stale connection.
             if commit and self.now() >= record["deadline"]:
                 raise RuntimeError("Network checkpoint confirmation expired; change must be retried")
+            if commit and record.get("rollbackFailure"):
+                raise RollbackResultError(record["rollbackFailure"])
             if commit:
                 self._destroy(record["checkpoint"])
             else:
