@@ -35,6 +35,8 @@ class NetworkSnapshotIntegrityTests(unittest.TestCase):
             self.calls.append(method)
             if method == "CheckpointCreate":
                 return 'o "/org/freedesktop/NetworkManager/Checkpoint/7"'
+            if method == "CheckpointRollback":
+                return 'a{su} 1 "/org/freedesktop/NetworkManager/Devices/1" 0'
             return ""
 
         self.cp = checkpoint.NetworkCheckpoint(

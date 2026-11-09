@@ -42,7 +42,55 @@ class CheckpointTests(unittest.TestCase):
             return 'o "/org/freedesktop/NetworkManager/Checkpoint/7"'
         if method == "CheckpointRollback" and self.fail_rollback:
             raise RuntimeError("NetworkManager unavailable")
+        if method == "CheckpointRollback":
+            return 'a{su} 1 "/org/freedesktop/NetworkManager/Devices/1" 0'
         return ""
+
+    def test_partial_device_rollback_retains_journal_and_blocks_commit_and_retry(self):
+        pending = self.cp.begin("connection-update", lambda: None)
+        original_bus = self.cp.call
+        def partial(method, signature, *args):
+            if method == "CheckpointRollback":
+                return ('a{su} 2 "/org/freedesktop/NetworkManager/Devices/1" 0 '
+                        '"/org/freedesktop/NetworkManager/Devices/2" 3')
+            return original_bus(method, signature, *args)
+        self.cp.call = partial
+        with self.assertRaises(checkpoint.RollbackResultError):
+            self.cp.resolve(pending)
+        self.assertTrue(self.cp.journal.exists())
+        self.assertIn("rollbackFailure", self.cp._read())
+        with self.assertRaises(checkpoint.RollbackResultError):
+            self.cp.resolve(pending, commit=True)
+        # NM discards a checkpoint even when an individual device failed.
+        # A new agent must preserve that failure across retry/restart.
+        self.cp.call = original_bus
+        self.fail_rollback = True
+        with self.assertRaises(checkpoint.RollbackResultError):
+            self.cp.recover_pending()
+        self.assertTrue(self.cp.journal.exists())
+        self.assertEqual(self.restores, [pending["transactionId"]])
+
+    def test_rollback_result_dictionary_rejects_malformed_and_failed_devices(self):
+        bad_results = ["", "a{su} 0", "a{su} 2", "a{su} nope", "garbage",
+                       'a{su} 1 "/org/freedesktop/NetworkManager/Devices/1" 1',
+                       'a{su} 1 "/org/freedesktop/NetworkManager/Devices/1" 2',
+                       'a{su} 1 "/org/freedesktop/NetworkManager/Devices/1" 99',
+                       'a{su} 1 "/invalid" 0',
+                       'a{su} 2 "/org/freedesktop/NetworkManager/Devices/1" 0 '
+                       '"/org/freedesktop/NetworkManager/Devices/1" 0']
+        for output in bad_results:
+            with self.subTest(output=output):
+                self.cp.call = lambda *args: output
+                with self.assertRaises(checkpoint.RollbackResultError):
+                    self.cp._rollback("/checkpoint")
+
+    def test_all_device_success_allows_rollback(self):
+        pending = self.cp.begin("connection-update", lambda: None)
+        self.cp.call = lambda *args: ('a{su} 2 '
+            '"/org/freedesktop/NetworkManager/Devices/1" 0 '
+            '"/org/freedesktop/NetworkManager/Devices/2" 0')
+        self.assertTrue(self.cp.resolve(pending)["rolledBack"])
+        self.assertFalse(self.cp.journal.exists())
 
     def test_create_applies_only_after_checkpoint_and_journal_are_durable(self):
         def apply():
