@@ -31,6 +31,12 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Enforce test coverage floor
+        # Ratchet, not a target: overall coverage is 35% lines / 53%
+        # branches / 44% functions (measured 2026-11-09). The floor
+        # stops it sliding backwards; raise it as gaps close.
+        run: npm run test:coverage
+
       - name: Enforce LightNAS platform contract
         run: npm run check:platform
 
