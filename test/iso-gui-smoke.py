@@ -4,6 +4,8 @@ import importlib.util
 import os
 from pathlib import Path
 import tkinter as tk
+import subprocess
+import time
 
 source = Path(__file__).resolve().parents[1] / "scripts/lightnas-guided-installer.py"
 spec = importlib.util.spec_from_file_location("lightnas_installer", source)
@@ -21,32 +23,43 @@ try:
     assert wizard.logo_image is not None, "Branded asset is missing or could not be loaded"
     assert wizard.step == 0
     assert wizard.next_btn.cget("state") == "normal"
-    # Exercise the REAL callback with Tk's button invocation.
-    wizard.next_btn.invoke()
-    root.update()
+    # XTest pointer events exercise the real rendered UI, not Python callbacks.
+    def click(widget):
+        root.update()
+        x = widget.winfo_rootx() + widget.winfo_width() // 2
+        y = widget.winfo_rooty() + widget.winfo_height() // 2
+        assert 0 <= x < root.winfo_screenwidth(), (x, y, "outside screen")
+        assert 0 <= y < root.winfo_screenheight(), (x, y, "outside screen")
+        subprocess.run(["xdotool", "mousemove", "--sync", str(x), str(y)], check=True)
+        subprocess.run(["xdotool", "click", "1"], check=True)
+        for _ in range(10):
+            root.update()
+            time.sleep(0.03)
+
+    click(wizard.next_btn)
     assert wizard.step == 1, "Next did not leave Welcome"
     wizard.disk.set("/dev/lightnas-TEST-ONLY")
-    wizard.next_btn.invoke()
+    click(wizard.next_btn)
     root.update()
     assert wizard.step == 2, "Next did not leave Storage"
-    wizard.back_btn.invoke()
+    click(wizard.back_btn)
     root.update()
     assert wizard.step == 1, "Back did not return to Storage"
-    wizard.next_btn.invoke()
-    wizard.next_btn.invoke()
+    click(wizard.next_btn)
+    click(wizard.next_btn)
     root.update()
     assert wizard.step == 3, "Administrator page not reachable"
     wizard.username.set("admin")
     wizard.password.set("Example-GUI-Test-Only-123")
     wizard.confirm_password.set("Example-GUI-Test-Only-123")
-    wizard.next_btn.invoke()
+    click(wizard.next_btn)
     root.update()
     assert wizard.step == 4, "Administrator validation blocked valid credentials"
     wizard.network_mode.set("Manual (open network setup)")
-    wizard.next_btn.invoke()
+    click(wizard.next_btn)
     root.update()
     assert wizard.step == 5, "Static IP mode incorrectly blocks the Summary page"
     assert not wizard.install_running
-    print("LightNAS GUI smoke PASS: real logo loaded; Next/Back/selection/validation/navigation work")
+    print("LightNAS GUI smoke PASS: real logo loaded; X11 mouse clicks, Next/Back, validation/navigation work")
 finally:
     root.destroy()
