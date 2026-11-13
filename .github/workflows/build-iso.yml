@@ -47,6 +47,10 @@ jobs:
           grep -q 'lightnas-native-live' iso/build.sh
           grep -q 'lightnas-guided-installer.py' scripts/lightnas-native-wizard.sh
           grep -q 'dpkg-query -S' iso/build.sh
+      - name: Install graphical smoke-test dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk
+      - name: Verify installer artwork and real GUI navigation
+        run: xvfb-run -a -s '-screen 0 1280x800x24' python3 test/iso-gui-smoke.py
   iso:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
@@ -59,7 +63,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             debootstrap xorriso squashfs-tools debian-archive-keyring cpio curl \
-            qemu-system-x86 ovmf
+            qemu-system-x86 ovmf xvfb python3-tk
           curl -fsSLo /tmp/live-build.deb \
             https://deb.debian.org/debian/pool/main/l/live-build/live-build_20250505+deb13u1_all.deb
           echo "58e09779881cbcc631c49ceb703413e0247a87db01823e597b2a1c40a2afd8f4  /tmp/live-build.deb" | sha256sum -c -
@@ -86,6 +90,7 @@ jobs:
           python3 -m py_compile scripts/lightnas-network-setup.py
           python3 -m py_compile scripts/lightnas-network-gui.py
           python3 -m py_compile scripts/lightnas-guided-installer.py
+          xvfb-run -a -s '-screen 0 1280x800x24' python3 test/iso-gui-smoke.py
           grep -q 'lightnas-installer.desktop' iso/build.sh
           grep -q 'python3-tk' iso/build.sh
           grep -q 'lightnas-network-setup.desktop' iso/build.sh
