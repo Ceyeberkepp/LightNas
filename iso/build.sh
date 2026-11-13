@@ -348,6 +348,7 @@ xserver-xorg-video-dummy
 libgl1-mesa-dri
 xserver-xorg-input-all
 xserver-xorg-input-libinput
+xinput
 libinput-tools
 usbutils
 fbset
