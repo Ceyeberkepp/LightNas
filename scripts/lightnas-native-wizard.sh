@@ -17,7 +17,7 @@ if command -v /opt/lightnas/scripts/lightnas-hardware-report.sh >/dev/null; then
 fi
 if [[ -n "${DISPLAY:-}" ]]; then
   :
-elif [[ -x /usr/bin/xinit && -f /opt/lightnas/scripts/lightnas-install-hub.py ]]; then
+elif [[ -x /usr/bin/xinit && -f /opt/lightnas/scripts/lightnas-guided-installer.py ]]; then
   # Attempt software-friendly X first. If no graphics, fall back automatically
   # to a keyboard-operated terminal wizard without stopping installation.
   # A working graphical installer must remain open until the user finishes.
@@ -36,7 +36,7 @@ elif [[ -x /usr/bin/xinit && -f /opt/lightnas/scripts/lightnas-install-hub.py ]]
   export LIBGL_ALWAYS_SOFTWARE=1
   export GALLIUM_DRIVER=llvmpipe
   # Redirect all Xorg output to a persistent diagnostic log on the live OS.
-  if xinit /usr/bin/python3 /opt/lightnas/scripts/lightnas-install-hub.py -- :0 vt1 -keeptty -nolisten tcp -logfile /var/log/lightnas-installer-xorg.log >/run/lightnas-installer-x.log 2>&1; then
+  if xinit /usr/bin/python3 /opt/lightnas/scripts/lightnas-guided-installer.py -- :0 vt1 -keeptty -nolisten tcp -logfile /var/log/lightnas-installer-xorg.log >/run/lightnas-installer-x.log 2>&1; then
     exit 0
   fi
   printf '\nLightNAS: graphical session could not start; using keyboard installer.\n'
