@@ -35,6 +35,10 @@ elif [[ -x /usr/bin/xinit && -f /opt/lightnas/scripts/lightnas-guided-installer.
   rm -f /etc/X11/xorg.conf.d/90-lightnas-virtualbox.conf
   export LIBGL_ALWAYS_SOFTWARE=1
   export GALLIUM_DRIVER=llvmpipe
+  # Verify that udev exposed input devices before launching the graphical wizard.
+  # VirtualBox may report a mouse-integration failure when its pointing-device
+  # setting is incompatible with the guest. Alt+N/Alt+B and Tab remain usable.
+  ls -l /dev/input/event* > /run/lightnas-input-devices.log 2>&1 || true
   # Redirect all Xorg output to a persistent diagnostic log on the live OS.
   if xinit /usr/bin/python3 /opt/lightnas/scripts/lightnas-guided-installer.py -- :0 vt1 -keeptty -nolisten tcp -logfile /var/log/lightnas-installer-xorg.log >/run/lightnas-installer-x.log 2>&1; then
     exit 0
