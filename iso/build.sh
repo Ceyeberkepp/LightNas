@@ -299,6 +299,7 @@ gnupg
 git
 systemd
 openssh-server
+sudo
 util-linux
 python3
 ffmpeg
