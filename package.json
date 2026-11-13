@@ -8,6 +8,7 @@
     "start": "node src/server.mjs",
     "dev": "NAS_DEV=1 node --watch src/server.mjs",
     "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=30 --test-coverage-branches=48 --test-coverage-functions=38",
     "check:platform": "node scripts/check-platform-contract.mjs",
     "start:sms-gateway": "node services/sms-gateway/server.mjs"
   },
