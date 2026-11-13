@@ -293,6 +293,7 @@ echo \
 #
 cat >config/package-lists/lightnas.list.chroot <<'EOF'
 ca-certificates
+openssl
 curl
 gnupg
 git
