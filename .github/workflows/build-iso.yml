@@ -48,7 +48,7 @@ jobs:
           grep -q 'lightnas-guided-installer.py' scripts/lightnas-native-wizard.sh
           grep -q 'dpkg-query -S' iso/build.sh
       - name: Install graphical smoke-test dependencies
-        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk
+        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk xdotool xdotool xdotool
       - name: Verify installer artwork and real GUI navigation
         run: xvfb-run -a -s '-screen 0 1280x800x24' python3 test/iso-gui-smoke.py
   iso:
@@ -63,7 +63,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             debootstrap xorriso squashfs-tools debian-archive-keyring cpio curl \
-            qemu-system-x86 ovmf xvfb python3-tk
+            qemu-system-x86 ovmf xvfb python3-tk xdotool xdotool
           curl -fsSLo /tmp/live-build.deb \
             https://deb.debian.org/debian/pool/main/l/live-build/live-build_20250505+deb13u1_all.deb
           echo "58e09779881cbcc631c49ceb703413e0247a87db01823e597b2a1c40a2afd8f4  /tmp/live-build.deb" | sha256sum -c -
