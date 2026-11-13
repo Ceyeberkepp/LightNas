@@ -119,6 +119,30 @@ chroot "$target" /usr/local/sbin/lightnas-console-banner || true
 touch "$target/etc/lightnas-installed"
 rm -f "$target/etc/systemd/system/multi-user.target.wants/lightnas-native-installer.service"
 for p in dev proc sys run; do mount --bind "/$p" "$target/$p"; done
+# Generate a unique appliance certificate, never ship TLS private keys in the ISO.
+command -v openssl >/dev/null || die "OpenSSL required for HTTPS setup"
+tls_dir="$target/etc/lightnas/tls"
+install -d -m 0750 "$tls_dir"
+host_san="$(cat "$target/etc/hostname")"
+san="DNS:localhost,DNS:$host_san,IP:127.0.0.1"
+if [[ -n "${LIGHTNAS_INSTALL_FQDN:-}" ]]; then san+=",DNS:$LIGHTNAS_INSTALL_FQDN"; fi
+while read -r ip; do
+  [[ "$ip" =~ ^[0-9]+(\.[0-9]+){3}$ ]] && san+=",IP:$ip"
+done < <(hostname -I | tr " " "\n" | sort -u)
+openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 397 \
+  -keyout "$tls_dir/nas.key" -out "$tls_dir/nas.crt" \
+  -subj "/CN=$host_san" -addext "subjectAltName=$san" \
+  -addext "extendedKeyUsage=serverAuth" >/dev/null 2>&1
+lightnas_gid="$(awk -F: '$1=="lightnas"{print $3}' "$target/etc/group")"
+[[ -n "$lightnas_gid" ]] || die "LightNAS service group missing"
+chown "0:$lightnas_gid" "$tls_dir" "$tls_dir/nas.key" "$tls_dir/nas.crt"
+chmod 0750 "$tls_dir"; chmod 0640 "$tls_dir/nas.key"; chmod 0644 "$tls_dir/nas.crt"
+install -d "$target/etc/systemd/system/lightnas.service.d"
+cat >"$target/etc/systemd/system/lightnas.service.d/20-iso-https.conf" <<'TLS_UNIT'
+[Service]
+Environment=LIGHTNAS_TLS_CERT_FILE=/etc/lightnas/tls/nas.crt
+Environment=LIGHTNAS_TLS_KEY_FILE=/etc/lightnas/tls/nas.key
+TLS_UNIT
 chroot "$target" grub-install --target=i386-pc --recheck "$disk"
 chroot "$target" grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=LightNAS --removable --no-nvram
 chroot "$target" update-grub
