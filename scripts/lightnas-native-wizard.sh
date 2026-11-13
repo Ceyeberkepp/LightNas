@@ -27,6 +27,9 @@ elif [[ -x /usr/bin/xinit && -f /opt/lightnas/scripts/lightnas-guided-installer.
   modprobe usbhid 2>/dev/null || true
   modprobe hid_generic 2>/dev/null || true
   modprobe psmouse 2>/dev/null || true
+  modprobe atkbd 2>/dev/null || true
+  modprobe i8042 2>/dev/null || true
+  modprobe hid_multitouch 2>/dev/null || true
   udevadm trigger --subsystem-match=input --action=add >/dev/null 2>&1 || true
   udevadm settle --timeout=10 >/dev/null 2>&1 || true
   # Prevent old generated Xorg configurations from forcing a nonexistent
