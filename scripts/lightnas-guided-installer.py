@@ -327,6 +327,12 @@ class Wizard:
             self.step -= 1
             self.render()
 
+    def reboot(self):
+        if not self.install_done:
+            return
+        if messagebox.askyesno("Reboot LightNAS", "Have you removed the installation ISO or USB media? Reboot now?"):
+            subprocess.Popen(["systemctl", "reboot"], close_fds=True)
+
     def cancel(self):
         if self.install_running:
             messagebox.showwarning("LightNAS", "Do not interrupt disk installation. Follow the install log.")
@@ -387,6 +393,8 @@ class Wizard:
                     fg=GREEN if self.install_done else "#ffb46d")
                 self.next_btn.configure(state="normal" if self.install_done else "disabled",
                                         text="Finish" if self.install_done else "Failed")
+                if self.install_done:
+                    self.button(self.content, "Reboot now (after removing ISO)", self.reboot, accent=True).pack(anchor="e")
                 if self.install_done:
                     messagebox.showinfo("LightNAS", "Installation completed. Remove the installation media and reboot.")
                 return
