@@ -105,6 +105,7 @@ class Wizard:
         root.bind_all("<Alt-b>", lambda _event: self.back())
         root.bind_all("<Escape>", lambda _event: self.cancel())
         root.bind_all("<F1>", lambda _event: self.show_help())
+        root.after(1000, self.capture_input_diagnostics)
         self.render()
         self.next_btn.focus_set()
 
@@ -124,6 +125,15 @@ class Wizard:
         except (tk.TclError, OSError) as exc:
             self.logo_error = str(exc)
             self.logo_image = None
+
+    def capture_input_diagnostics(self):
+        """Keep visible troubleshooting evidence for VirtualBox pointer failures."""
+        try:
+            details = command("xinput", "--list", "--short")
+            with open("/run/lightnas-installer-input.log", "w", encoding="utf-8") as log:
+                log.write(details or "xinput unavailable or X display has no input devices\n")
+        except OSError:
+            pass
 
     def show_help(self):
         messagebox.showinfo("LightNAS installer keyboard controls",
@@ -311,7 +321,10 @@ class Wizard:
     def open_network(self):
         path = os.path.join(HERE, "lightnas-network-gui.py")
         if os.path.isfile(path):
-            subprocess.Popen(["python3", path], close_fds=True)
+            try:
+                subprocess.Popen(["python3", path], close_fds=True)
+            except OSError as exc:
+                messagebox.showerror("LightNAS", f"Could not open Network Setup: {exc}")
         else:
             messagebox.showerror("LightNAS", "Network setup is unavailable.")
 
@@ -338,9 +351,6 @@ class Wizard:
                                     not all(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", part)
                                             for part in self.fqdn.get().split("."))):
                 messagebox.showerror("LightNAS", "Enter a valid FQDN.")
-                return False
-            if self.network_mode.get().startswith("Manual"):
-                messagebox.showinfo("LightNAS", "Configure the static address using Network Setup before continuing.")
                 return False
         return True
 
