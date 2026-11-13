@@ -41,8 +41,14 @@ class Wizard:
     def __init__(self, root):
         self.root = root
         root.title("LightNAS ISO Installer")
-        root.geometry("1280x760")
-        root.minsize(960, 640)
+        # Respect the detected virtual framebuffer. Fixed 1280x760 windows
+        # clipped controls on VirtualBox's initial 800x600 VGA surface.
+        screen_w, screen_h = root.winfo_screenwidth(), root.winfo_screenheight()
+        root.geometry(f"{min(1280, screen_w)}x{min(760, screen_h)}+0+0")
+        root.minsize(min(760, screen_w), min(540, screen_h))
+        # Native VirtualBox GTK/Tk pointer scaling does not agree when Tk
+        # inherits display DPI from a higher-resolution Windows host.
+        root.tk.call("tk", "scaling", 1.0)
         root.configure(bg=BG)
         self.step = 0
         self.mode = tk.StringVar(value="Install LightNAS")
@@ -68,27 +74,63 @@ class Wizard:
                         foreground="#111e23", padding=8)
         shell = tk.Frame(root, bg=BG)
         shell.pack(fill="both", expand=True)
-        self.sidebar = tk.Frame(shell, width=245, bg="#0a1c26", padx=18, pady=24)
+        self.sidebar = tk.Frame(shell, width=200, bg="#0a1c26", padx=12, pady=16)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
-        self.main = tk.Frame(shell, bg=BG, padx=32, pady=30)
+        self.main = tk.Frame(shell, bg=BG, padx=20, pady=16)
         self.main.pack(side="left", fill="both", expand=True)
-        tk.Label(self.sidebar, text="⬡ LightNAS", fg=LIGHT, bg="#0a1c26",
-                 font=("DejaVu Sans", 23, "bold")).pack(anchor="w", pady=(0, 28))
+        self.logo_image = None
+        self.logo_path = os.path.join(os.path.dirname(HERE), "public", "assets", "lightnas-logo.png")
+        self.render_logo(self.sidebar, max_width=175, max_height=65)
+        # Keep a text fallback for inaccessible/corrupt assets.
+        if self.logo_image is None:
+            tk.Label(self.sidebar, text="LightNAS", fg=LIGHT, bg="#0a1c26",
+                     font=("DejaVu Sans", 23, "bold")).pack(anchor="w", pady=(0, 22))
         self.sidebar_steps = tk.Frame(self.sidebar, bg="#0a1c26")
         self.sidebar_steps.pack(fill="x")
         self.content = tk.Frame(self.main, bg=BG)
         self.content.pack(fill="both", expand=True)
         self.footer = tk.Frame(self.main, bg=BG, pady=14)
         self.footer.pack(fill="x")
-        tk.Label(self.footer, text="LightNAS ISO Installer", bg=BG, fg=MUTED,
-                 font=("DejaVu Sans", 10)).pack(side="left")
+        tk.Label(self.footer, text="LightNAS ISO Installer  •  F1 Help  •  Alt+N Next",
+                 bg=BG, fg=MUTED, font=("DejaVu Sans", 9)).pack(side="left")
         self.next_btn = self.button(self.footer, "Next  →", self.next, accent=True)
         self.next_btn.pack(side="right", padx=(12, 0))
         self.button(self.footer, "Cancel", self.cancel).pack(side="right")
         self.back_btn = self.button(self.footer, "←  Back", self.back)
         self.back_btn.pack(side="right", padx=(0, 10))
+        # Hardware-independent keyboard navigation: usable even when VirtualBox
+        # does not capture the mouse or provides no absolute pointing device.
+        root.bind_all("<Alt-n>", lambda _event: self.next())
+        root.bind_all("<Alt-b>", lambda _event: self.back())
+        root.bind_all("<Escape>", lambda _event: self.cancel())
+        root.bind_all("<F1>", lambda _event: self.show_help())
         self.render()
+        self.next_btn.focus_set()
+
+    def render_logo(self, parent, max_width=180, max_height=72):
+        """Load the real branded asset from the ISO, without Pillow/network."""
+        try:
+            if not os.path.isfile(self.logo_path):
+                raise FileNotFoundError(self.logo_path)
+            picture = tk.PhotoImage(file=self.logo_path)
+            factor = max(1, (picture.width() + max_width - 1) // max_width,
+                         (picture.height() + max_height - 1) // max_height)
+            if factor > 1:
+                picture = picture.subsample(factor, factor)
+            self.logo_image = picture
+            tk.Label(parent, image=self.logo_image, bg=parent.cget("bg"),
+                     borderwidth=0).pack(anchor="w", pady=(0, 24))
+        except (tk.TclError, OSError) as exc:
+            self.logo_error = str(exc)
+            self.logo_image = None
+
+    def show_help(self):
+        messagebox.showinfo("LightNAS installer keyboard controls",
+                            "Tab / Shift+Tab: move between controls\\n"
+                            "Space / Enter: activate the focused control\\n"
+                            "Alt+N: Next     Alt+B: Back\\n"
+                            "Esc: Cancel     F1: Help", parent=self.root)
 
     @staticmethod
     def button(parent, text, action, accent=False):
@@ -104,11 +146,11 @@ class Wizard:
                         font=("DejaVu Sans", size, "bold" if bold else "normal"), **kwargs)
 
     def title(self, name, hint):
-        self.label(self.content, name, 27, True).pack(anchor="w", pady=(0, 6))
-        self.label(self.content, hint, 13, color=MUTED).pack(anchor="w", pady=(0, 24))
+        self.label(self.content, name, 23, True).pack(anchor="w", pady=(0, 3))
+        self.label(self.content, hint, 11, color=MUTED).pack(anchor="w", pady=(0, 16))
 
     def panel(self):
-        frame = tk.Frame(self.content, bg=PANEL, padx=22, pady=22,
+        frame = tk.Frame(self.content, bg=PANEL, padx=18, pady=12,
                          highlightbackground=BORDER, highlightthickness=1)
         frame.pack(fill="both", expand=True, pady=(0, 12))
         return frame
@@ -140,10 +182,8 @@ class Wizard:
             mark = "✓" if i < self.step else str(i + 1)
             bg = "#0e5a37" if active else "#0a1c26"
             fg = GREEN if i < self.step else LIGHT if active else MUTED
-            self.label(self.sidebar_steps, f"  {mark}     {name}", 12, active,
-                       color=fg).configure(bg=bg)
             tk.Label(self.sidebar_steps, text=f"  {mark}     {name}", bg=bg,
-                     fg=fg, anchor="w", padx=9, pady=14,
+                     fg=fg, anchor="w", padx=9, pady=9,
                      font=("DejaVu Sans", 12, "bold" if active else "normal")
                      ).pack(fill="x", pady=2)
         self.back_btn.configure(state="disabled" if self.step == 0 or self.install_running else "normal")
@@ -155,7 +195,7 @@ class Wizard:
     def page_0(self):
         self.title("Welcome to LightNAS Installer", "Set up your LightNAS appliance in a few guided steps.")
         frame = self.panel()
-        self.label(frame, "LightNAS", 29, True, color=GREEN).pack(anchor="w", pady=(20, 12))
+        self.label(frame, "LightNAS", 24, True, color=GREEN).pack(anchor="w", pady=(8, 8))
         self.label(frame, "Your private cloud for storage, media, applications, and virtual machines.",
                    14, color=LIGHT, wraplength=650, justify="left").pack(anchor="w", pady=(0, 28))
         for value, description in [
@@ -163,14 +203,19 @@ class Wizard:
             ("Advanced Installation", "Custom disk layouts and filesystems are not yet available in this ISO."),
             ("Rescue Environment", "Exit to the live recovery shell and diagnostic tools.")
         ]:
-            row = tk.Frame(frame, bg=PANEL, pady=8)
+            row = tk.Frame(frame, bg=PANEL, pady=5)
             row.pack(fill="x")
-            tk.Radiobutton(row, text=f"{value}  —  {description}", variable=self.mode,
-                           value=value, bg=PANEL, fg=LIGHT, selectcolor=PANEL2,
-                           activebackground=PANEL, activeforeground=GREEN,
-                           font=("DejaVu Sans", 11),
-                           state="normal" if value != "Advanced Installation" else "disabled"
-                           ).pack(anchor="w")
+            tk.Radiobutton(
+                row, text=f"  {value}  —  {description}", variable=self.mode,
+                value=value, indicatoron=False, anchor="w", justify="left",
+                bg=PANEL2, fg=LIGHT, selectcolor="#125b3c",
+                activebackground="#145d41", activeforeground=LIGHT,
+                bd=0, highlightthickness=1, highlightbackground=BORDER,
+                font=("DejaVu Sans", 11), padx=10, pady=11,
+                cursor="hand2", wraplength=560,
+                disabledforeground=MUTED,
+                state="normal" if value != "Advanced Installation" else "disabled"
+            ).pack(fill="x")
 
     def page_1(self):
         self.title("Storage Configuration", "Select the installation disk. No disk is preselected.")
@@ -272,7 +317,8 @@ class Wizard:
 
     def validate(self):
         if self.step == 0 and self.mode.get() == "Rescue Environment":
-            messagebox.showinfo("LightNAS", "Close the installer to access recovery tools.")
+            if messagebox.askyesno("LightNAS rescue", "Exit to the live recovery console?"):
+                self.root.destroy()
             return False
         if self.step == 1 and not self.disk.get():
             messagebox.showerror("LightNAS", "Select an installation disk.")
