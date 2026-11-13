@@ -30,8 +30,8 @@ try:
         y = widget.winfo_rooty() + widget.winfo_height() // 2
         assert 0 <= x < root.winfo_screenwidth(), (x, y, "outside screen")
         assert 0 <= y < root.winfo_screenheight(), (x, y, "outside screen")
-        subprocess.run(["xdotool", "mousemove", "--sync", str(x), str(y)], check=True)
-        subprocess.run(["xdotool", "click", "1"], check=True)
+        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True, timeout=5)
+        subprocess.run(["xdotool", "click", "1"], check=True, timeout=5)
         for _ in range(10):
             root.update()
             time.sleep(0.03)
