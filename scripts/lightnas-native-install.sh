@@ -49,10 +49,100 @@ mkdir -p "$target"/{dev,proc,sys,run,tmp,mnt,media}
 chmod 1777 "$target/tmp"
 printf 'UUID=%s / ext4 defaults,noatime 0 1\nUUID=%s /boot/efi vfat umask=0077 0 2\n' \
   "$(blkid -s UUID -o value "$root")" "$(blkid -s UUID -o value "$esp")" > "$target/etc/fstab"
-printf 'lightnas\n' >"$target/etc/hostname"
+# Apply only values explicitly supplied by the guided installer.
+hostname_value="${LIGHTNAS_INSTALL_HOSTNAME:-lightnas}"
+[[ "$hostname_value" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]] || die "Invalid hostname"
+printf '%s\n' "$hostname_value" >"$target/etc/hostname"
+if [[ -n "${LIGHTNAS_INSTALL_FQDN:-}" ]]; then
+  [[ "${LIGHTNAS_INSTALL_FQDN}" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$ ]] || die "Invalid FQDN"
+  printf '127.0.1.1 %s %s\n' "$LIGHTNAS_INSTALL_FQDN" "$hostname_value" >>"$target/etc/hosts"
+fi
+if [[ -n "${LIGHTNAS_INSTALL_TIMEZONE:-}" ]]; then
+  tz="$LIGHTNAS_INSTALL_TIMEZONE"
+  [[ "$tz" != *..* && "$tz" != /* && -f "$target/usr/share/zoneinfo/$tz" ]] || die "Invalid time zone"
+  ln -sfn "/usr/share/zoneinfo/$tz" "$target/etc/localtime"
+  printf '%s\n' "$tz" >"$target/etc/timezone"
+fi
+if [[ -n "${LIGHTNAS_INSTALL_ADMIN:-}" ]]; then
+  [[ "${LIGHTNAS_INSTALL_ADMIN}" =~ ^[a-z_][a-z0-9_-]{0,30}$ ]] || die "Invalid administrator username"
+  credential="${LIGHTNAS_INSTALL_PASSWORD_FILE:-}"
+  [[ -n "$credential" && -f "$credential" && ! -L "$credential" ]] || die "Administrator password file missing"
+  [[ "$(stat -c '%a' "$credential")" == 600 && "$(stat -c '%u' "$credential")" == 0 ]] || die "Password file must be root-owned mode 0600"
+  admin_name="$LIGHTNAS_INSTALL_ADMIN"
+  if ! chroot "$target" id "$admin_name" >/dev/null 2>&1; then
+    chroot "$target" useradd -m -s /bin/bash -G sudo "$admin_name"
+  fi
+  # Never pass passwords in command arguments, logs, or environment variables.
+  { printf '%s:' "$admin_name"; cat "$credential"; printf '\n'; } | chroot "$target" chpasswd
+fi
+# The installed appliance is headless. The installer UI belongs only to
+# the live ISO, not the installed boot target.
+chroot "$target" systemctl disable lightnas-display-console.service 2>/dev/null || true
+chroot "$target" systemctl set-default multi-user.target
+rm -f "$target/etc/systemd/system/graphical.target.wants/lightnas-display-console.service"
+cat >"$target/etc/systemd/system/lightnas-console-banner.service" <<'BANNER_UNIT'
+[Unit]
+Description=LightNAS appliance login banner
+After=NetworkManager.service network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/lightnas-installed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lightnas-console-banner
+
+[Install]
+WantedBy=multi-user.target
+BANNER_UNIT
+install -d "$target/usr/local/sbin"
+cat >"$target/usr/local/sbin/lightnas-console-banner" <<'BANNER_SCRIPT'
+#!/bin/bash
+set -eu
+host="$(hostname -s)"
+ip="$(ip -4 -o addr show scope global 2>/dev/null | awk '$2 !~ /^(docker|virbr|veth|br-|lxc)/ {split($4, a, "/"); print a[1]; exit}')"
+ip="${ip:-<appliance-ip>}"
+{
+  printf '\n'
+  printf 'LightNAS Appliance\n'
+  printf 'Web Console: https://%s:3080\n' "$ip"
+  printf 'Hostname:    %s\n' "$host"
+  printf '\nTo manage your LightNAS system, use the web console.\n\n'
+} >/etc/issue
+cp /etc/issue /etc/issue.net
+BANNER_SCRIPT
+chmod 0755 "$target/usr/local/sbin/lightnas-console-banner"
+mkdir -p "$target/etc/systemd/system/multi-user.target.wants"
+ln -sfn ../lightnas-console-banner.service "$target/etc/systemd/system/multi-user.target.wants/lightnas-console-banner.service"
+# Update /etc/issue before the initial login prompt, not only after network-online.
+chroot "$target" /usr/local/sbin/lightnas-console-banner || true
+
 touch "$target/etc/lightnas-installed"
 rm -f "$target/etc/systemd/system/multi-user.target.wants/lightnas-native-installer.service"
 for p in dev proc sys run; do mount --bind "/$p" "$target/$p"; done
+# Generate a unique appliance certificate, never ship TLS private keys in the ISO.
+command -v openssl >/dev/null || die "OpenSSL required for HTTPS setup"
+tls_dir="$target/etc/lightnas/tls"
+install -d -m 0750 "$tls_dir"
+host_san="$(cat "$target/etc/hostname")"
+san="DNS:localhost,DNS:$host_san,IP:127.0.0.1"
+if [[ -n "${LIGHTNAS_INSTALL_FQDN:-}" ]]; then san+=",DNS:$LIGHTNAS_INSTALL_FQDN"; fi
+while read -r ip; do
+  [[ "$ip" =~ ^[0-9]+(\.[0-9]+){3}$ ]] && san+=",IP:$ip"
+done < <(hostname -I | tr " " "\n" | sort -u)
+openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 397 \
+  -keyout "$tls_dir/nas.key" -out "$tls_dir/nas.crt" \
+  -subj "/CN=$host_san" -addext "subjectAltName=$san" \
+  -addext "extendedKeyUsage=serverAuth" >/dev/null 2>&1
+lightnas_gid="$(awk -F: '$1=="lightnas"{print $3}' "$target/etc/group")"
+[[ -n "$lightnas_gid" ]] || die "LightNAS service group missing"
+chown "0:$lightnas_gid" "$tls_dir" "$tls_dir/nas.key" "$tls_dir/nas.crt"
+chmod 0750 "$tls_dir"; chmod 0640 "$tls_dir/nas.key"; chmod 0644 "$tls_dir/nas.crt"
+install -d "$target/etc/systemd/system/lightnas.service.d"
+cat >"$target/etc/systemd/system/lightnas.service.d/20-iso-https.conf" <<'TLS_UNIT'
+[Service]
+Environment=LIGHTNAS_TLS_CERT_FILE=/etc/lightnas/tls/nas.crt
+Environment=LIGHTNAS_TLS_KEY_FILE=/etc/lightnas/tls/nas.key
+TLS_UNIT
 chroot "$target" grub-install --target=i386-pc --recheck "$disk"
 chroot "$target" grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=LightNAS --removable --no-nvram
 chroot "$target" update-grub
