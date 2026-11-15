@@ -37,7 +37,11 @@ test('ISO workflow avoids doc-only rebuild noise and performs a QEMU smoke boot'
   // Superseded PR validation may be cancelled, but production ISO builds
   // must remain serialized and cannot be cancelled by a newer PR.
   assert.ok(workflow.includes("cancel-in-progress: ${{ github.event_name == 'pull_request' }}"));
-  assert.match(workflow, /'lightnas-iso-build'/);
+  // Separate push branch groups prevent a release build on main from displacing
+  // an isolated repair-branch build. A literal shared group breaks that guarantee.
+  assert.ok(workflow.includes("format('lightnas-iso-{0}-{1}', github.event_name, github.ref_name)"));
+  assert.doesNotMatch(workflow, /group:\\s*['"]?lightnas-iso-build['"]?\\s*$/m);
+  assert.match(workflow, /branches:\\s*\\[main\\]/);
   assert.ok(workflow.includes("format('lightnas-iso-pr-{0}', github.event.pull_request.number)"));
   // GitHub rulesets must receive a predictable validate result for *every*
   // PR, even a documentation-only change; full ISO builds remain non-PR only.
