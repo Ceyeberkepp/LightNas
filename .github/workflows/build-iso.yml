@@ -2,7 +2,7 @@ name: Build LightNAS ISO
 
 on:
   push:
-    branches: [main, fix/iso-efi-install-light-theme-hostname-20261115]
+    branches: [main, fix/iso-e2e-xorriso-extraction-20261115]
     paths:
       - 'iso/**'
       - 'src/**'
