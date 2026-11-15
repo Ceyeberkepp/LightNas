@@ -2,7 +2,7 @@ name: Build LightNAS ISO
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/iso-ext4-live-kernel-preflight-20261115]
     paths:
       - 'iso/**'
       - 'src/**'
