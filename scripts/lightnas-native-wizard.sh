@@ -79,14 +79,12 @@ while true; do
       fi
       disk="$(whiptail --title 'Select LightNAS installation disk' --menu 'ALL DATA on the selected disk will be erased.' 22 85 12 "${choices[@]}" 3>&1 1>&2 2>&3)" || continue
       if whiptail --title 'Confirm destructive installation' --yesno "PERMANENTLY ERASE ALL DATA on $disk and install LightNAS? This cannot be undone." 12 76; then
-        if whiptail --inputbox "To confirm, type ERASE followed by the disk path exactly: ERASE:$disk" 12 85 3>&1 1>&2 2>&3 | grep -Fxq "ERASE:$disk"; then
-          export LIGHTNAS_ERASE_CONFIRM="ERASE:$disk"
-          if /bin/bash /opt/lightnas/scripts/lightnas-native-install.sh "$disk" >/run/lightnas-install.log 2>&1; then
-            whiptail --msgbox 'LightNAS installed. Remove the ISO before rebooting.' 10 70
-            exit 0
-          else
-            whiptail --textbox /run/lightnas-install.log 23 85 || true
-          fi
+        export LIGHTNAS_ERASE_CONFIRM="CONFIRM_ERASE:$disk"
+        if /bin/bash /opt/lightnas/scripts/lightnas-native-install.sh "$disk" >/run/lightnas-install.log 2>&1; then
+          whiptail --msgbox 'LightNAS installed. Remove the ISO before rebooting.' 10 70
+          exit 0
+        else
+          whiptail --textbox /run/lightnas-install.log 23 85 || true
         fi
       fi
       ;;
