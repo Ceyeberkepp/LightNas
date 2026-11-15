@@ -53,3 +53,12 @@ test('hostname appears directly below Administrator username, with light/dark se
   assert.match(wizard, /def toggle_theme\(self\):/);
   assert.match(wizard, /"light"/);
 });
+
+test('chroot filesystem mounts precede account and systemd operations', () => {
+  const bind = installer.indexOf('mount --rbind "/$p" "$target/$p"');
+  const account = installer.indexOf('chroot "$target" useradd');
+  const service = installer.indexOf('chroot "$target" systemctl set-default');
+  const boot = installer.indexOf('chroot "$target" grub-install');
+  assert.ok(bind >= 0 && account > bind && service > bind && boot > bind,
+            'Installer must mount /dev /proc /sys /run before chroot commands');
+});
