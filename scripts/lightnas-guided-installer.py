@@ -193,8 +193,8 @@ class Wizard:
         initial["step"] = self.step
         for widget in self.root.winfo_children():
             widget.destroy()
-        Wizard(self.root, theme="light" if self.theme == "dark" else "dark",
-               initial=initial)
+        return Wizard(self.root, theme="light" if self.theme == "dark" else "dark",
+                      initial=initial)
 
     def render_logo(self, parent, max_width=180, max_height=72):
         """Load the real branded asset from the ISO, without Pillow/network."""
@@ -318,8 +318,10 @@ class Wizard:
             tk.Radiobutton(
                 row, text=f"  {value}  —  {description}", variable=self.mode,
                 value=value, indicatoron=False, anchor="w", justify="left",
-                bg=PANEL2, fg=LIGHT, selectcolor="#125b3c",
-                activebackground="#145d41", activeforeground=LIGHT,
+                bg=PANEL2, fg=LIGHT,
+                selectcolor="#c7ecd7" if self.theme == "light" else "#125b3c",
+                activebackground="#d4f5e2" if self.theme == "light" else "#145d41",
+                activeforeground=LIGHT,
                 bd=0, highlightthickness=1, highlightbackground=BORDER,
                 font=("DejaVu Sans", 11), padx=10, pady=11,
                 cursor="hand2", wraplength=560,
