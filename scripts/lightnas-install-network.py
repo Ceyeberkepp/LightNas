@@ -32,6 +32,10 @@ def validate(data):
     mac = data.get("mac") or ""
     if not isinstance(mac, str) or (mac and not MAC.fullmatch(mac)):
         raise ValueError("Invalid MAC address")
+    if interface == "lo":
+        raise ValueError("Loopback cannot be a management network interface")
+    if interface and (Path("/sys/class/net") / interface / "wireless").exists():
+        raise ValueError("Use the Wi-Fi network setup tool for wireless connections; integrated IPv4 profiles currently support Ethernet")
     if interface and mac:
         current = (Path("/sys/class/net") / interface / "address").read_text().strip()
         if current.lower() != mac.lower():
@@ -65,13 +69,12 @@ def stage(data, target):
     directory.mkdir(parents=True, exist_ok=True)
     os.chmod(directory, 0o700)
     iface = settings["interface"]
-    typ = "ethernet"
     connection_id = f"lightnas-management-{iface}"
     lines = [
-        "[connection]", f"id={connection_id}", "type=802-3-ethernet",
+        "[connection]", f"id={connection_id}", "type=ethernet",
         f"interface-name={iface}", "autoconnect=true",
         "autoconnect-priority=100", "",
-        "[802-3-ethernet]",
+        "[ethernet]",
     ]
     if settings["mac"]:
         lines.append(f"mac-address={settings['mac']}")
