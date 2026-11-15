@@ -128,11 +128,11 @@ class Wizard:
         path = os.path.join(HERE, "lightnas-network-setup.py")
         try:
             output = subprocess.run(
-                ["python3", path, "--json"], text=True,
+                ["python3", path, "--json", "--no-wifi-scan"], text=True,
                 capture_output=True, check=True, timeout=30)
             data = json.loads(output.stdout)
             return [item for item in data.get("interfaces", [])
-                    if item.get("type") in ("ethernet", "wifi") and item.get("name")]
+                    if item.get("type") == "ethernet" and item.get("name")]
         except (OSError, ValueError, subprocess.SubprocessError):
             return []
 
@@ -324,7 +324,7 @@ class Wizard:
         self.title("Administrator Account", "Create the local Linux administrator for the appliance console.")
         frame = self.panel()
         self.entry(frame, "Administrator username", self.username)
-        self.entry(frame, "Password (6 characters minimum)", self.password, True)
+        self.entry(frame, "Password (6 minimum; 12+ recommended)", self.password, True)
         self.entry(frame, "Confirm password", self.confirm_password, True)
         self.entry(frame, "Email address (optional)", self.email)
         self.label(frame, "The Linux console account is separate from application-level web authentication.",
@@ -348,8 +348,7 @@ class Wizard:
                            f"IP: {', '.join(selected.get('addresses') or []) or 'DHCP pending'}",
                            color=GREEN).pack(anchor="w", pady=5)
         else:
-            self.label(frame, "No managed Ethernet or Wi-Fi device detected. "
-                       "Check the network driver before installation.",
+            self.label(frame, "No Ethernet adapter detected. Check NIC drivers or use Wi-Fi setup.",
                        color="#ffd36f").pack(anchor="w", pady=5)
         self.selection(frame, "IPv4 assignment", self.network_mode,
                        ["DHCP", "Static IPv4"]).bind(
@@ -451,8 +450,8 @@ class Wizard:
                 return False
             selected = self.network_interface.get()
             if not selected or selected not in self.network_choices:
-                messagebox.showerror("LightNAS", "Select a detected network adapter. "
-                                     "Check NIC drivers if none are shown.")
+                messagebox.showerror("LightNAS", "Select a detected Ethernet adapter. "
+                                     "For Wi-Fi-only devices, use the network setup tool.")
                 return False
             if self.network_mode.get() == "Static IPv4":
                 try:
