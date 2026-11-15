@@ -27,19 +27,16 @@ def run(*args):
 
 
 def extract_boot_image(iso, folder):
-    listing = run("xorriso", "-indev", str(iso), "-find", "/live", "-type", "f", "-print")
-    paths = [line.strip() for line in listing.splitlines() if line.strip().startswith("/live/")]
-    kernels = sorted((p for p in paths if re.search(r"/vmlinuz[^/]*$", p)), key=len)
-    initrds = sorted((p for p in paths if re.search(r"/initrd[^/]*$", p)), key=len)
+    """Extract /live with the same xorriso operation used by ISO CI."""
+    live_dir = folder / "live"
+    run("xorriso", "-osirrox", "on", "-indev", str(iso),
+        "-extract", "/live", str(live_dir))
+    kernels = sorted((p for p in live_dir.glob("vmlinuz*") if p.is_file()), key=lambda p: p.name)
+    initrds = sorted((p for p in live_dir.glob("initrd*") if p.is_file()), key=lambda p: p.name)
     if not kernels or not initrds:
-        raise RuntimeError(f"ISO is missing live kernel/initrd: {paths[:30]}")
-    kernel = folder / "vmlinuz"
-    initrd = folder / "initrd.img"
-    for source, destination in ((kernels[0], kernel), (initrds[0], initrd)):
-        run("xorriso", "-osirrox", "on", "-indev", str(iso),
-            "-extract", source, str(destination))
-    return kernel, initrd
-
+        raise RuntimeError("ISO extraction missing kernel or initrd: " +
+                           repr([p.name for p in live_dir.iterdir()]))
+    return kernels[0], initrds[0]
 
 def spawn_qemu(args, log_path):
     log = log_path.open("w", encoding="utf-8", buffering=1)
