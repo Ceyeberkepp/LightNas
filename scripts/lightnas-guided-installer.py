@@ -332,7 +332,23 @@ class Wizard:
 
     def page_4(self):
         self.title("Network Configuration", "Detected automatically. DHCP is selected by default.")
-        frame = self.panel()
+        outer = self.panel()
+        # A scrollable form keeps static IPv4 fields accessible even when
+        # VirtualBox initially boots at 800x600.
+        canvas = tk.Canvas(outer, bg=PANEL, highlightthickness=0, borderwidth=0)
+        scroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        frame = tk.Frame(canvas, bg=PANEL)
+        window = canvas.create_window((0, 0), anchor="nw", window=frame)
+        frame.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(window, width=e.width))
+        def scroll_wheel(event):
+            if canvas.winfo_exists() and self.step == 4:
+                delta = -1 if event.delta > 0 else 1
+                canvas.yview_scroll(delta, "units")
+        canvas.bind_all("<MouseWheel>", scroll_wheel)
         self.compact_entry(frame, "Hostname", self.hostname)
         self.compact_entry(frame, "FQDN (optional)", self.fqdn)
         if self.network_choices:
