@@ -10,7 +10,13 @@ disk="$(readlink -f "$1")"
 [[ -b "$disk" && "$(lsblk -dn -o TYPE "$disk" | xargs)" == disk ]] || die "Select a whole physical or virtual disk"
 [[ "$(lsblk -dn -o RO "$disk" | xargs)" == 0 ]] || die "Read-only disk"
 (( $(blockdev --getsize64 "$disk") >= 37580963840 )) || die "At least 35 GiB is required"
-[[ "${LIGHTNAS_ERASE_CONFIRM:-}" == "ERASE:$disk" ]] || die "Explicit erase confirmation missing"
+[[ "${LIGHTNAS_ERASE_CONFIRM:-}" == "CONFIRM_ERASE:$disk" || "${LIGHTNAS_ERASE_CONFIRM:-}" == "ERASE:$disk" ]] || die "Explicit erase confirmation missing"
+# Validate network configuration before any destructive operation.
+network_config="${LIGHTNAS_INSTALL_NETWORK_CONFIG:-}"
+if [[ -n "$network_config" ]]; then
+  [[ -f "$network_config" && ! -L "$network_config" ]] || die "Network configuration file missing"
+  python3 /opt/lightnas/scripts/lightnas-install-network.py --config "$network_config" --check || die "Invalid network configuration"
+fi
 source="$(findmnt -no SOURCE /run/live/medium 2>/dev/null || findmnt -no SOURCE /lib/live/mount/medium 2>/dev/null || true)"
 if [[ "$source" == /dev/* ]]; then
   media_parent="$(lsblk -no PKNAME "$source" 2>/dev/null | head -1)"
@@ -47,6 +53,11 @@ rsync -aHAX --numeric-ids --one-file-system \
   / "$target/"
 mkdir -p "$target"/{dev,proc,sys,run,tmp,mnt,media}
 chmod 1777 "$target/tmp"
+# Stage the chosen DHCP/static profile into the installed root only.
+# Never change the live installer network during disk installation.
+if [[ -n "$network_config" ]]; then
+  python3 /opt/lightnas/scripts/lightnas-install-network.py --config "$network_config" --target "$target" || die "Cannot stage network profile"
+fi
 printf 'UUID=%s / ext4 defaults,noatime 0 1\nUUID=%s /boot/efi vfat umask=0077 0 2\n' \
   "$(blkid -s UUID -o value "$root")" "$(blkid -s UUID -o value "$esp")" > "$target/etc/fstab"
 # Apply only values explicitly supplied by the guided installer.
