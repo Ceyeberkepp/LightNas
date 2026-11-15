@@ -222,6 +222,18 @@ class Wizard:
         widget.pack(fill="x", ipady=10)
         return widget
 
+    def compact_entry(self, parent, name, variable):
+        row = tk.Frame(parent, bg=PANEL, pady=3)
+        row.pack(fill="x")
+        tk.Label(row, text=name, bg=PANEL, fg=LIGHT,
+                 width=23, anchor="w", font=("DejaVu Sans", 10)).pack(side="left")
+        field = tk.Entry(row, textvariable=variable, bg=PANEL2, fg=LIGHT,
+                         insertbackground=GREEN, relief="flat",
+                         font=("DejaVu Sans", 11),
+                         highlightbackground=BORDER, highlightthickness=1)
+        field.pack(side="left", fill="x", expand=True, ipady=5)
+        return field
+
     def selection(self, parent, name, variable, values):
         self.label(parent, name, 11, True).pack(anchor="w", pady=(12, 4))
         widget = ttk.Combobox(parent, textvariable=variable, values=values,
@@ -321,8 +333,8 @@ class Wizard:
     def page_4(self):
         self.title("Network Configuration", "Detected automatically. DHCP is selected by default.")
         frame = self.panel()
-        self.entry(frame, "Hostname", self.hostname)
-        self.entry(frame, "Fully qualified domain name (optional)", self.fqdn)
+        self.compact_entry(frame, "Hostname", self.hostname)
+        self.compact_entry(frame, "FQDN (optional)", self.fqdn)
         if self.network_choices:
             self.selection(frame, "Management network adapter",
                            self.network_interface, self.network_choices).bind(
@@ -344,10 +356,9 @@ class Wizard:
                            "<<ComboboxSelected>>", lambda _event: self.toggle_static())
         self.static_frame = tk.Frame(frame, bg=PANEL)
         self.static_frame.pack(fill="x", pady=(2, 0))
-        self.entry(self.static_frame, "IPv4 address / prefix (e.g. 192.168.1.100/24)",
-                   self.static_address)
-        self.entry(self.static_frame, "Default gateway", self.static_gateway)
-        self.entry(self.static_frame, "DNS servers (comma or space separated)", self.static_dns)
+        self.compact_entry(self.static_frame, "IP / prefix (192.168.1.10/24)", self.static_address)
+        self.compact_entry(self.static_frame, "Default gateway", self.static_gateway)
+        self.compact_entry(self.static_frame, "DNS servers (comma separated)", self.static_dns)
         self.toggle_static()
         self.label(frame, "Settings will be saved to the installed appliance. "
                    "The installer does not disrupt your live network.",
@@ -497,6 +508,14 @@ class Wizard:
         self.root.destroy()
 
     def run_install(self, confirmation):
+        # Read Tk variables on the UI thread before the install worker starts.
+        config_snapshot = self.network_payload()
+        admin_snapshot = self.username.get()
+        password_snapshot = self.password.get()
+        hostname_snapshot = self.hostname.get()
+        fqdn_snapshot = self.fqdn.get()
+        timezone_snapshot = self.timezone.get()
+        target_snapshot = self.disk.get()
         self.install_running = True
         self.back_btn.configure(state="disabled")
         self.next_btn.configure(state="disabled")
@@ -509,21 +528,21 @@ class Wizard:
                 fd, credential_path = tempfile.mkstemp(prefix="lightnas-admin-", dir="/run")
                 os.fchmod(fd, 0o600)
                 with os.fdopen(fd, "w") as file:
-                    file.write(self.password.get())
+                    file.write(password_snapshot)
                 network_fd, network_path = tempfile.mkstemp(prefix="lightnas-network-", dir="/run")
                 os.fchmod(network_fd, 0o600)
                 with os.fdopen(network_fd, "w") as network_file:
-                    json.dump(self.network_payload(), network_file)
+                    json.dump(config_snapshot, network_file)
                 env = dict(os.environ)
                 env.update(LIGHTNAS_INSTALL_NETWORK_CONFIG=network_path,
                            LIGHTNAS_ERASE_CONFIRM=confirmation,
-                           LIGHTNAS_INSTALL_ADMIN=self.username.get(),
+                           LIGHTNAS_INSTALL_ADMIN=admin_snapshot,
                            LIGHTNAS_INSTALL_PASSWORD_FILE=credential_path,
-                           LIGHTNAS_INSTALL_HOSTNAME=self.hostname.get(),
-                           LIGHTNAS_INSTALL_FQDN=self.fqdn.get(),
-                           LIGHTNAS_INSTALL_TIMEZONE=self.timezone.get())
+                           LIGHTNAS_INSTALL_HOSTNAME=hostname_snapshot,
+                           LIGHTNAS_INSTALL_FQDN=fqdn_snapshot,
+                           LIGHTNAS_INSTALL_TIMEZONE=timezone_snapshot)
                 process = subprocess.Popen(
-                    ["/bin/bash", os.path.join(HERE, "lightnas-native-install.sh"), self.disk.get()],
+                    ["/bin/bash", os.path.join(HERE, "lightnas-native-install.sh"), target_snapshot],
                     env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
                 for line in process.stdout:
                     self.events.put(("line", line))
