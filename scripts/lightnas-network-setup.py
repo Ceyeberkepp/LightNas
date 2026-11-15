@@ -27,7 +27,7 @@ def valid_fqdn(name):
     return bool(labels) and all(LABEL_RE.fullmatch(label) for label in labels)
 
 
-def discover():
+def discover(skip_wifi_scan=False):
     links = json.loads(run("ip", "-j", "link", "show") or "[]")
     addresses = json.loads(run("ip", "-j", "-4", "addr", "show") or "[]")
     routes = json.loads(run("ip", "-j", "-4", "route", "show", "default") or "[]")
@@ -56,7 +56,7 @@ def discover():
                      "gateway": route_by_dev.get(name),
                      "dns": dns_by_dev.get(name, [])})
     wifi = []
-    if any(n["type"] == "wifi" for n in nics):
+    if not skip_wifi_scan and any(n["type"] == "wifi" for n in nics):
         # \\ escapes SSID colons in terse mode; a plain SSID list avoids
         # treating arbitrary SSID content as shell syntax.
         wifi = sorted(set(run("nmcli", "-t", "-f", "SSID", "device",
@@ -149,6 +149,7 @@ def configure(args):
 def main():
     parser = argparse.ArgumentParser(description="LightNAS network discovery and configuration")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--no-wifi-scan", action="store_true", help="Skip SSID scanning for fast installer NIC discovery")
     parser.add_argument("--apply", action="store_true", help="Explicitly apply network changes")
     parser.add_argument("--interface")
     parser.add_argument("--method", choices=("dhcp", "static"), default="dhcp")
@@ -169,7 +170,7 @@ def main():
         except (ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
             parser.error(str(exc))
     else:
-        result = discover()
+        result = discover(skip_wifi_scan=args.no_wifi_scan)
     if args.json:
         print(json.dumps(result, indent=2))
     else:
