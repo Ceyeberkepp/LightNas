@@ -62,3 +62,11 @@ test('chroot filesystem mounts precede account and systemd operations', () => {
   assert.ok(bind >= 0 && account > bind && service > bind && boot > bind,
             'Installer must mount /dev /proc /sys /run before chroot commands');
 });
+
+test('native installation verifies ext4/vfat kernel support before erasing the disk', () => {
+  const preflight = installer.indexOf('modprobe ext4');
+  const vfat = installer.indexOf('modprobe vfat');
+  const destructive = installer.indexOf('sgdisk --zap-all');
+  assert.ok(preflight > 0 && vfat > preflight && destructive > vfat,
+    'Filesystem kernel support must be verified before partition table mutation');
+});
