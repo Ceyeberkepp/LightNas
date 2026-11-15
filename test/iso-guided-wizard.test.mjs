@@ -48,7 +48,7 @@ test('EFI filesystem label is within the FAT volume label limit', () => {
 test('hostname appears directly below Administrator username, with light/dark selector', () => {
   const adminPage = wizard.split('    def page_3(self):')[1].split('    def page_4(self):')[0];
   const networkPage = wizard.split('    def page_4(self):')[1].split('    def page_5(self):')[0];
-  assert.match(adminPage, /self\\.entry\\(frame, "Administrator username", self\\.username\\)[\\s\\S]*?self\\.entry\\(frame, "Hostname", self\\.hostname\\)/);
+  assert.match(adminPage, /self\\.compact_entry\\(frame, "Administrator username", self\\.username\\)[\\s\\S]*?self\\.compact_entry\\(frame, "Hostname", self\\.hostname\\)/);
   assert.doesNotMatch(networkPage, /self\\.compact_entry\\(frame, "Hostname"/);
   assert.match(wizard, /def toggle_theme\\(self\\):/);
   assert.match(wizard, /"light"/);
