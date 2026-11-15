@@ -40,6 +40,7 @@ jobs:
           set -Eeuo pipefail
           bash -n iso/build.sh scripts/lightnas-network-wizard.sh scripts/lightnas-native-install.sh scripts/lightnas-native-wizard.sh
           python3 -m py_compile scripts/lightnas-network-setup.py scripts/lightnas-network-gui.py scripts/lightnas-guided-installer.py scripts/lightnas-install-network.py
+          python3 -m py_compile test/iso-qemu-install.py
           python3 -m unittest discover -s test -p 'test_iso_network_stage.py'
           grep -q -- '--debian-installer false' iso/build.sh
           ! grep -q -- '--debian-installer-gui true' iso/build.sh
@@ -68,7 +69,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             debootstrap xorriso squashfs-tools debian-archive-keyring cpio curl \
-            qemu-system-x86 ovmf xvfb python3-tk xdotool dosfstools
+            qemu-system-x86 ovmf xvfb python3-tk xdotool dosfstools python3-pexpect
           curl -fsSLo /tmp/live-build.deb \
             https://deb.debian.org/debian/pool/main/l/live-build/live-build_20250505+deb13u1_all.deb
           echo "58e09779881cbcc631c49ceb703413e0247a87db01823e597b2a1c40a2afd8f4  /tmp/live-build.deb" | sha256sum -c -
@@ -309,7 +310,12 @@ jobs:
 
           echo "ISO remained UEFI-bootable for the smoke-test window."
 
+      - name: Full native install, disk reboot and HTTPS qualification
+        run: |
+          timeout 1800s python3 test/iso-qemu-install.py dist/LightNAS-amd64.iso
+
       - uses: actions/upload-artifact@v6
+        if: success()
         with:
           name: LightNAS-amd64-iso
           retention-days: 3
