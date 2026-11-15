@@ -5,6 +5,7 @@ No target disk is preselected. The destructive install is delegated to the
 existing native installer after two separate operator confirmations.
 """
 import json
+import ipaddress
 import os
 import queue
 import re
@@ -12,7 +13,7 @@ import subprocess
 import tempfile
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STEPS = ("Welcome", "Storage", "Locale", "Administrator", "Network", "Summary", "Install")
@@ -63,6 +64,18 @@ class Wizard:
         self.language = tk.StringVar(value="English (US)")
         self.keyboard = tk.StringVar(value="US")
         self.network_mode = tk.StringVar(value="DHCP")
+        self.network_interface = tk.StringVar(value="")
+        self.static_address = tk.StringVar(value="")
+        self.static_gateway = tk.StringVar(value="")
+        self.static_dns = tk.StringVar(value="")
+        self.network_info = self.detect_network()
+        self.network_choices = [item["name"] for item in self.network_info]
+        if self.network_choices:
+            preferred = sorted(self.network_info, key=lambda i:
+                               (not bool(i.get("gateway")), not bool(i.get("addresses")),
+                                i.get("type") != "ethernet"))[0]
+            self.network_interface.set(preferred["name"])
+            self.load_network_defaults()
         self.events = queue.Queue()
         self.install_running = False
         self.install_done = False
@@ -108,6 +121,41 @@ class Wizard:
         root.after(1000, self.capture_input_diagnostics)
         self.render()
         self.next_btn.focus_set()
+
+    @staticmethod
+    def detect_network():
+        """Read the same interface inventory used by LightNAS Network Setup."""
+        path = os.path.join(HERE, "lightnas-network-setup.py")
+        try:
+            output = subprocess.run(
+                ["python3", path, "--json"], text=True,
+                capture_output=True, check=True, timeout=30)
+            data = json.loads(output.stdout)
+            return [item for item in data.get("interfaces", [])
+                    if item.get("type") in ("ethernet", "wifi") and item.get("name")]
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return []
+
+    def load_network_defaults(self):
+        nic = next((item for item in self.network_info
+                    if item["name"] == self.network_interface.get()), None)
+        if nic:
+            self.static_address.set((nic.get("addresses") or [""])[0])
+            self.static_gateway.set(nic.get("gateway") or "")
+            self.static_dns.set(", ".join(nic.get("dns") or []))
+
+    def network_payload(self):
+        nic = next((item for item in self.network_info
+                    if item["name"] == self.network_interface.get()), None)
+        return {
+            "mode": "static" if self.network_mode.get() == "Static IPv4" else "dhcp",
+            "interface": self.network_interface.get(),
+            "mac": (nic or {}).get("mac") or "",
+            "address": self.static_address.get().strip(),
+            "gateway": self.static_gateway.get().strip(),
+            "dns": [x.strip() for x in self.static_dns.get().replace(",", " ").split()
+                    if x.strip()]
+        }
 
     def render_logo(self, parent, max_width=180, max_height=72):
         """Load the real branded asset from the ISO, without Pillow/network."""
@@ -264,25 +312,56 @@ class Wizard:
         self.title("Administrator Account", "Create the local Linux administrator for the appliance console.")
         frame = self.panel()
         self.entry(frame, "Administrator username", self.username)
-        self.entry(frame, "Password (12 characters minimum)", self.password, True)
+        self.entry(frame, "Password (6 characters minimum)", self.password, True)
         self.entry(frame, "Confirm password", self.confirm_password, True)
         self.entry(frame, "Email address (optional)", self.email)
         self.label(frame, "The Linux console account is separate from application-level web authentication.",
                    color=MUTED, wraplength=680).pack(anchor="w", pady=20)
 
     def page_4(self):
-        self.title("Network Configuration", "Set the appliance hostname and review network connectivity.")
+        self.title("Network Configuration", "Detected automatically. DHCP is selected by default.")
         frame = self.panel()
         self.entry(frame, "Hostname", self.hostname)
         self.entry(frame, "Fully qualified domain name (optional)", self.fqdn)
-        self.selection(frame, "IP configuration", self.network_mode, ["DHCP", "Manual (open network setup)"])
-        self.label(frame, "Detected IP addresses: " + (command("hostname", "-I").strip() or "Not yet connected"),
-                   color=GREEN).pack(anchor="w", pady=(18, 8))
-        self.button(frame, "Configure Ethernet / Wi-Fi", self.open_network).pack(anchor="w", pady=8)
-        self.label(frame, "Networking is configured on the live system using NetworkManager and "
-                   "its persistent profiles are transferred to the installed appliance.",
-                   color=MUTED, wraplength=700, justify="left").pack(anchor="w", pady=12)
-        self.label(frame, "Management console: HTTPS on port 3080", color=GREEN).pack(anchor="w", pady=8)
+        if self.network_choices:
+            self.selection(frame, "Management network adapter",
+                           self.network_interface, self.network_choices).bind(
+                               "<<ComboboxSelected>>",
+                               lambda _event: self.refresh_network_fields())
+            selected = next((n for n in self.network_info
+                             if n["name"] == self.network_interface.get()), None)
+            if selected:
+                self.label(frame,
+                           f"Detected: {selected['name']} ({selected['type']})  "
+                           f"IP: {', '.join(selected.get('addresses') or []) or 'DHCP pending'}",
+                           color=GREEN).pack(anchor="w", pady=5)
+        else:
+            self.label(frame, "No managed Ethernet or Wi-Fi device detected. "
+                       "Check the network driver before installation.",
+                       color="#ffd36f").pack(anchor="w", pady=5)
+        self.selection(frame, "IPv4 assignment", self.network_mode,
+                       ["DHCP", "Static IPv4"]).bind(
+                           "<<ComboboxSelected>>", lambda _event: self.toggle_static())
+        self.static_frame = tk.Frame(frame, bg=PANEL)
+        self.static_frame.pack(fill="x", pady=(2, 0))
+        self.entry(self.static_frame, "IPv4 address / prefix (e.g. 192.168.1.100/24)",
+                   self.static_address)
+        self.entry(self.static_frame, "Default gateway", self.static_gateway)
+        self.entry(self.static_frame, "DNS servers (comma or space separated)", self.static_dns)
+        self.toggle_static()
+        self.label(frame, "Settings will be saved to the installed appliance. "
+                   "The installer does not disrupt your live network.",
+                   color=MUTED, wraplength=690, justify="left").pack(anchor="w", pady=8)
+
+    def refresh_network_fields(self):
+        self.load_network_defaults()
+        self.render()
+
+    def toggle_static(self):
+        if self.network_mode.get() == "Static IPv4":
+            self.static_frame.pack(fill="x", pady=(2, 0))
+        else:
+            self.static_frame.pack_forget()
 
     def page_5(self):
         self.title("Installation Summary", "Review these settings before installation.")
@@ -294,7 +373,14 @@ class Wizard:
             ("Administrator", self.username.get()),
             ("Hostname", self.hostname.get()),
             ("FQDN", self.fqdn.get() or "Not set"),
-            ("Network", self.network_mode.get()),
+            ("Network", self.network_mode.get() + " • " +
+             (self.network_interface.get() or "not detected")),
+            ("IPv4 address", self.static_address.get() if
+             self.network_mode.get() == "Static IPv4" else "Automatic (DHCP)"),
+            ("Gateway", self.static_gateway.get() if
+             self.network_mode.get() == "Static IPv4" else "Automatic"),
+            ("DNS", self.static_dns.get() if
+             self.network_mode.get() == "Static IPv4" else "Automatic"),
             ("Web management", "HTTPS :3080")
         ]
         for name, value in values:
@@ -340,8 +426,8 @@ class Wizard:
             if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", self.username.get()):
                 messagebox.showerror("LightNAS", "Invalid administrator username.")
                 return False
-            if len(self.password.get()) < 12 or self.password.get() != self.confirm_password.get() or "\n" in self.password.get() or ":" in self.password.get():
-                messagebox.showerror("LightNAS", "Passwords must match, have 12+ characters, and contain no colon or newline.")
+            if len(self.password.get()) < 6 or self.password.get() != self.confirm_password.get() or "\n" in self.password.get() or ":" in self.password.get():
+                messagebox.showerror("LightNAS", "Passwords must match, have at least 6 characters, and contain no colon or newline.")
                 return False
         if self.step == 4:
             if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", self.hostname.get()):
@@ -352,6 +438,23 @@ class Wizard:
                                             for part in self.fqdn.get().split("."))):
                 messagebox.showerror("LightNAS", "Enter a valid FQDN.")
                 return False
+            selected = self.network_interface.get()
+            if not selected or selected not in self.network_choices:
+                messagebox.showerror("LightNAS", "Select a detected network adapter. "
+                                     "Check NIC drivers if none are shown.")
+                return False
+            if self.network_mode.get() == "Static IPv4":
+                try:
+                    address = ipaddress.IPv4Interface(self.static_address.get().strip())
+                    gateway = ipaddress.IPv4Address(self.static_gateway.get().strip())
+                    servers = self.network_payload()["dns"]
+                    if gateway not in address.network or gateway == address.ip or not servers:
+                        raise ValueError("Gateway must be inside the subnet and DNS is required")
+                    for server in servers:
+                        ipaddress.IPv4Address(server)
+                except ValueError as exc:
+                    messagebox.showerror("Invalid static network configuration", str(exc))
+                    return False
         return True
 
     def next(self):
@@ -367,13 +470,11 @@ class Wizard:
             disk = self.disk.get()
             if not messagebox.askyesno("Erase selected disk?", f"ALL partitions and data on {disk} will be destroyed. Continue?"):
                 return
-            typed = simpledialog.askstring("Confirm disk erase", f"Type ERASE:{disk} to proceed.")
-            if typed != f"ERASE:{disk}":
-                messagebox.showwarning("LightNAS", "No changes were made.")
-                return
+            # One deliberate confirmation is sufficient. The native installer
+            # still validates the selected whole disk and refuses boot media.
             self.step = 6
             self.render()
-            self.run_install(typed)
+            self.run_install(f"CONFIRM_ERASE:{disk}")
             return
         self.step += 1
         self.render()
@@ -403,13 +504,19 @@ class Wizard:
 
         def worker():
             credential_path = None
+            network_path = None
             try:
                 fd, credential_path = tempfile.mkstemp(prefix="lightnas-admin-", dir="/run")
                 os.fchmod(fd, 0o600)
                 with os.fdopen(fd, "w") as file:
                     file.write(self.password.get())
+                network_fd, network_path = tempfile.mkstemp(prefix="lightnas-network-", dir="/run")
+                os.fchmod(network_fd, 0o600)
+                with os.fdopen(network_fd, "w") as network_file:
+                    json.dump(self.network_payload(), network_file)
                 env = dict(os.environ)
-                env.update(LIGHTNAS_ERASE_CONFIRM=confirmation,
+                env.update(LIGHTNAS_INSTALL_NETWORK_CONFIG=network_path,
+                           LIGHTNAS_ERASE_CONFIRM=confirmation,
                            LIGHTNAS_INSTALL_ADMIN=self.username.get(),
                            LIGHTNAS_INSTALL_PASSWORD_FILE=credential_path,
                            LIGHTNAS_INSTALL_HOSTNAME=self.hostname.get(),
@@ -424,11 +531,12 @@ class Wizard:
             except OSError as error:
                 self.events.put(("error", str(error)))
             finally:
-                if credential_path:
-                    try:
-                        os.unlink(credential_path)
-                    except OSError:
-                        pass
+                for path in (credential_path, network_path):
+                    if path:
+                        try:
+                            os.unlink(path)
+                        except OSError:
+                            pass
         threading.Thread(target=worker, daemon=True).start()
         self.root.after(150, self.poll)
 
