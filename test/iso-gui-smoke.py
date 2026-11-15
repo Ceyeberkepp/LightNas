@@ -66,6 +66,18 @@ try:
     root.update()
     assert wizard.step == 5, "Static IP settings did not advance to Summary"
     assert not wizard.install_running
+    # A single explicit OK on the destructive warning should start installation.
+    # Replace the actual disk installer with a spy: no disk writes are possible.
+    captured = []
+    original_confirm = module.messagebox.askyesno
+    module.messagebox.askyesno = lambda *a, **kw: True
+    wizard.run_install = lambda token: captured.append(token)
+    try:
+        click(wizard.next_btn)
+    finally:
+        module.messagebox.askyesno = original_confirm
+    assert captured == ["CONFIRM_ERASE:/dev/lightnas-TEST-ONLY"], captured
+    assert wizard.step == 6, "Confirmation should open installation progress"
     print("LightNAS GUI smoke PASS: real logo loaded; X11 mouse clicks, Next/Back, validation/navigation work")
 finally:
     root.destroy()
