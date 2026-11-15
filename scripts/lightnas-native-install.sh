@@ -41,7 +41,7 @@ part() { if [[ "$disk" =~ [0-9]$ ]]; then echo "${disk}p$1"; else echo "${disk}$
 esp="$(part 2)"; root="$(part 3)"
 for i in {1..30}; do [[ -b "$esp" && -b "$root" ]] && break; sleep 1; done
 [[ -b "$esp" && -b "$root" ]] || die "Kernel did not detect partitions"
-mkfs.vfat -F32 -n LIGHTNAS_EFI "$esp"
+mkfs.vfat -F32 -n LNAS_EFI "$esp"
 mkfs.ext4 -F -L LIGHTNAS_ROOT "$root"
 mount "$root" "$target"
 mkdir -p "$target/boot/efi"
@@ -53,6 +53,13 @@ rsync -aHAX --numeric-ids --one-file-system \
   / "$target/"
 mkdir -p "$target"/{dev,proc,sys,run,tmp,mnt,media}
 chmod 1777 "$target/tmp"
+# Mount the essential kernel filesystems BEFORE any chroot operation. Linux
+# account tools, systemctl and GRUB otherwise run in an incomplete environment
+# (the live root copy deliberately excludes /dev, /proc, /sys and /run).
+for p in dev proc sys run; do
+  mount --rbind "/$p" "$target/$p"
+  mount --make-rslave "$target/$p"
+done
 # Stage the chosen DHCP/static profile into the installed root only.
 # Never change the live installer network during disk installation.
 if [[ -n "$network_config" ]]; then
@@ -129,7 +136,6 @@ chroot "$target" /usr/local/sbin/lightnas-console-banner || true
 
 touch "$target/etc/lightnas-installed"
 rm -f "$target/etc/systemd/system/multi-user.target.wants/lightnas-native-installer.service"
-for p in dev proc sys run; do mount --bind "/$p" "$target/$p"; done
 # Generate a unique appliance certificate, never ship TLS private keys in the ISO.
 command -v openssl >/dev/null || die "OpenSSL required for HTTPS setup"
 tls_dir="$target/etc/lightnas/tls"

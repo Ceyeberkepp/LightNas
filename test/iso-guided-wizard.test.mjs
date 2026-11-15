@@ -37,3 +37,28 @@ test('wizard Python compiles and is included in image build', () => {
     new URL('../scripts/lightnas-guided-installer.py', import.meta.url).pathname]);
   assert.match(build, /cp -a[\s\S]*\$\{REPO_ROOT\}\/scripts/);
 });
+
+test('EFI filesystem label is within the FAT volume label limit', () => {
+  const match = installer.match(/mkfs\.vfat\s+-F32\s+-n\s+([A-Z0-9_]+)/);
+  assert.ok(match, 'Expected explicit EFI FAT label');
+  assert.ok(match[1].length <= 11, `FAT label too long: ${match[1]}`);
+  assert.equal(match[1], 'LNAS_EFI');
+});
+
+test('hostname appears directly below Administrator username, with light/dark selector', () => {
+  const adminPage = wizard.split('    def page_3(self):')[1].split('    def page_4(self):')[0];
+  const networkPage = wizard.split('    def page_4(self):')[1].split('    def page_5(self):')[0];
+  assert.match(adminPage, /self\.compact_entry\(frame, "Administrator username", self\.username\)[\s\S]*?self\.compact_entry\(frame, "Hostname", self\.hostname\)/);
+  assert.doesNotMatch(networkPage, /self\.compact_entry\(frame, "Hostname"/);
+  assert.match(wizard, /def toggle_theme\(self\):/);
+  assert.match(wizard, /"light"/);
+});
+
+test('chroot filesystem mounts precede account and systemd operations', () => {
+  const bind = installer.indexOf('mount --rbind "/$p" "$target/$p"');
+  const account = installer.indexOf('chroot "$target" useradd');
+  const service = installer.indexOf('chroot "$target" systemctl set-default');
+  const boot = installer.indexOf('chroot "$target" grub-install');
+  assert.ok(bind >= 0 && account > bind && service > bind && boot > bind,
+            'Installer must mount /dev /proc /sys /run before chroot commands');
+});
