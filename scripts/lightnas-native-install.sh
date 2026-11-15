@@ -41,7 +41,7 @@ part() { if [[ "$disk" =~ [0-9]$ ]]; then echo "${disk}p$1"; else echo "${disk}$
 esp="$(part 2)"; root="$(part 3)"
 for i in {1..30}; do [[ -b "$esp" && -b "$root" ]] && break; sleep 1; done
 [[ -b "$esp" && -b "$root" ]] || die "Kernel did not detect partitions"
-mkfs.vfat -F32 -n LIGHTNAS_EFI "$esp"
+mkfs.vfat -F32 -n LNAS_EFI "$esp"
 mkfs.ext4 -F -L LIGHTNAS_ROOT "$root"
 mount "$root" "$target"
 mkdir -p "$target/boot/efi"
