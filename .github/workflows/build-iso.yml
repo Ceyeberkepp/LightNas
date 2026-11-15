@@ -39,7 +39,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           bash -n iso/build.sh scripts/lightnas-network-wizard.sh scripts/lightnas-native-install.sh scripts/lightnas-native-wizard.sh
-          python3 -m py_compile scripts/lightnas-network-setup.py scripts/lightnas-network-gui.py scripts/lightnas-guided-installer.py
+          python3 -m py_compile scripts/lightnas-network-setup.py scripts/lightnas-network-gui.py scripts/lightnas-guided-installer.py scripts/lightnas-install-network.py
+          python3 -m unittest discover -s test -p 'test_iso_network_stage.py'
           grep -q -- '--debian-installer false' iso/build.sh
           ! grep -q -- '--debian-installer-gui true' iso/build.sh
           test -s scripts/lightnas-native-install.sh
@@ -92,6 +93,8 @@ jobs:
           python3 -m py_compile scripts/lightnas-network-setup.py
           python3 -m py_compile scripts/lightnas-network-gui.py
           python3 -m py_compile scripts/lightnas-guided-installer.py
+          python3 -m py_compile scripts/lightnas-install-network.py
+          python3 -m unittest discover -s test -p 'test_iso_network_stage.py'
           timeout 45s xvfb-run -a -s '-screen 0 1280x800x24' python3 test/iso-gui-smoke.py
           timeout 45s xvfb-run -a -s '-screen 0 800x600x24' python3 test/iso-gui-smoke.py
           grep -q 'lightnas-installer.desktop' iso/build.sh
