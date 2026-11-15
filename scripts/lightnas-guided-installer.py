@@ -261,12 +261,12 @@ class Wizard:
         widget.pack(fill="x", ipady=10)
         return widget
 
-    def compact_entry(self, parent, name, variable):
+    def compact_entry(self, parent, name, variable, secret=False):
         row = tk.Frame(parent, bg=PANEL, pady=3)
         row.pack(fill="x")
         tk.Label(row, text=name, bg=PANEL, fg=LIGHT,
                  width=23, anchor="w", font=("DejaVu Sans", 10)).pack(side="left")
-        field = tk.Entry(row, textvariable=variable, bg=PANEL2, fg=LIGHT,
+        field = tk.Entry(row, textvariable=variable, show="•" if secret else "", bg=PANEL2, fg=LIGHT,
                          insertbackground=GREEN, relief="flat",
                          font=("DejaVu Sans", 11),
                          highlightbackground=BORDER, highlightthickness=1)
@@ -365,13 +365,14 @@ class Wizard:
     def page_3(self):
         self.title("Administrator Account", "Create the local Linux administrator for the appliance console.")
         frame = self.panel()
-        self.entry(frame, "Administrator username", self.username)
-        self.entry(frame, "Hostname", self.hostname)
-        self.entry(frame, "Password (6 minimum; 12+ recommended)", self.password, True)
-        self.entry(frame, "Confirm password", self.confirm_password, True)
-        self.entry(frame, "Email address (optional)", self.email)
-        self.label(frame, "The Linux console account is separate from application-level web authentication.",
-                   color=MUTED, wraplength=680).pack(anchor="w", pady=20)
+        self.compact_entry(frame, "Administrator username", self.username)
+        self.compact_entry(frame, "Hostname", self.hostname)
+        self.compact_entry(frame, "Password (6 minimum)", self.password, True)
+        self.compact_entry(frame, "Confirm password", self.confirm_password, True)
+        self.compact_entry(frame, "Email (optional)", self.email)
+        self.label(frame, "The console account is separate from LightNAS web authentication. "
+                   "Use a stronger password for production.",
+                   color=MUTED, wraplength=650).pack(anchor="w", pady=8)
 
     def page_4(self):
         self.title("Network Configuration", "Detected automatically. DHCP is selected by default.")
