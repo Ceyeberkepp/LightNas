@@ -2,7 +2,7 @@ name: Build LightNAS ISO
 
 on:
   push:
-    branches: [main, fix/iso-e2e-xorriso-extraction-20261115]
+    branches: [main]
     paths:
       - 'iso/**'
       - 'src/**'
@@ -22,10 +22,10 @@ on:
 permissions:
   contents: read
 
-# Heavy release ISO builds serialize, while lightweight PR validation does
-# not sit behind a 2.5 GB ISO build. Superseded PR checks are cancelled.
+# Separate each pushed branch from main and PR validation. A fix-branch push
+# must not cancel or displace the release build already running on main.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('lightnas-iso-pr-{0}', github.event.pull_request.number) || 'lightnas-iso-build' }}
+  group: ${{ github.event_name == 'pull_request' && format('lightnas-iso-pr-{0}', github.event.pull_request.number) || format('lightnas-iso-{0}-{1}', github.event_name, github.ref_name) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
