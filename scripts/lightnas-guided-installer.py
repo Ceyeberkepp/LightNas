@@ -20,6 +20,17 @@ STEPS = ("Welcome", "Storage", "Locale", "Administrator", "Network", "Summary", 
 BG, PANEL, PANEL2 = "#07131c", "#10252b", "#172b33"
 GREEN, LIGHT, MUTED, BORDER = "#83f36b", "#f5f9fc", "#aec0c8", "#31565a"
 
+def set_theme(theme):
+    """Set shared Tk color tokens before constructing the current wizard."""
+    global BG, PANEL, PANEL2, GREEN, LIGHT, MUTED, BORDER
+    if theme == "light":
+        BG, PANEL, PANEL2 = "#f4f8f6", "#ffffff", "#e7f0ec"
+        GREEN, LIGHT, MUTED, BORDER = "#16834b", "#142c30", "#45606a", "#b7d0c6"
+    else:
+        BG, PANEL, PANEL2 = "#07131c", "#10252b", "#172b33"
+        GREEN, LIGHT, MUTED, BORDER = "#83f36b", "#f5f9fc", "#aec0c8", "#31565a"
+
+
 
 def command(*args):
     try:
@@ -39,7 +50,9 @@ def available_disks():
 
 
 class Wizard:
-    def __init__(self, root):
+    def __init__(self, root, theme="dark", initial=None):
+        set_theme(theme)
+        self.theme = theme
         self.root = root
         root.title("LightNAS ISO Installer")
         # Respect the detected virtual framebuffer. Fixed 1280x760 windows
@@ -80,6 +93,14 @@ class Wizard:
         self.install_running = False
         self.install_done = False
         self.disks = available_disks()
+        if initial:
+            for key, value in initial.items():
+                if key == "step":
+                    self.step = value
+                else:
+                    field = getattr(self, key, None)
+                    if isinstance(field, tk.StringVar):
+                        field.set(value)
         style = ttk.Style(root)
         if "clam" in style.theme_names():
             style.theme_use("clam")
@@ -99,6 +120,10 @@ class Wizard:
         if self.logo_image is None:
             tk.Label(self.sidebar, text="LightNAS", fg=LIGHT, bg="#0a1c26",
                      font=("DejaVu Sans", 23, "bold")).pack(anchor="w", pady=(0, 22))
+        self.theme_button = self.button(self.sidebar,
+                                        "☀  Light mode" if theme == "dark" else "☾  Dark mode",
+                                        self.toggle_theme)
+        self.theme_button.pack(side="bottom", fill="x", pady=(12, 0))
         self.sidebar_steps = tk.Frame(self.sidebar, bg="#0a1c26")
         self.sidebar_steps.pack(fill="x")
         self.content = tk.Frame(self.main, bg=BG)
@@ -156,6 +181,20 @@ class Wizard:
             "dns": [x.strip() for x in self.static_dns.get().replace(",", " ").split()
                     if x.strip()]
         }
+
+    def toggle_theme(self):
+        if self.install_running:
+            return
+        keys = ("mode", "disk", "hostname", "fqdn", "username", "email",
+                "password", "confirm_password", "timezone", "language",
+                "keyboard", "network_mode", "network_interface",
+                "static_address", "static_gateway", "static_dns")
+        initial = {key: getattr(self, key).get() for key in keys}
+        initial["step"] = self.step
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        Wizard(self.root, theme="light" if self.theme == "dark" else "dark",
+               initial=initial)
 
     def render_logo(self, parent, max_width=180, max_height=72):
         """Load the real branded asset from the ISO, without Pillow/network."""
@@ -251,12 +290,13 @@ class Wizard:
             active = i == self.step
             mark = "✓" if i < self.step else str(i + 1)
             bg = "#0e5a37" if active else "#0a1c26"
-            fg = GREEN if i < self.step else LIGHT if active else MUTED
+            fg = "#83f36b" if i < self.step else "#ffffff" if active else "#aec0c8"
             tk.Label(self.sidebar_steps, text=f"  {mark}     {name}", bg=bg,
                      fg=fg, anchor="w", padx=9, pady=9,
                      font=("DejaVu Sans", 12, "bold" if active else "normal")
                      ).pack(fill="x", pady=2)
         self.back_btn.configure(state="disabled" if self.step == 0 or self.install_running else "normal")
+        self.theme_button.configure(state="disabled" if self.install_running else "normal")
         self.next_btn.configure(text="Install  →" if self.step == 5 else
                                 "Finish" if self.step == 6 and self.install_done else
                                 "Next  →", state="disabled" if self.install_running else "normal")
@@ -324,6 +364,7 @@ class Wizard:
         self.title("Administrator Account", "Create the local Linux administrator for the appliance console.")
         frame = self.panel()
         self.entry(frame, "Administrator username", self.username)
+        self.entry(frame, "Hostname", self.hostname)
         self.entry(frame, "Password (6 minimum; 12+ recommended)", self.password, True)
         self.entry(frame, "Confirm password", self.confirm_password, True)
         self.entry(frame, "Email address (optional)", self.email)
@@ -349,7 +390,6 @@ class Wizard:
                 delta = -1 if event.delta > 0 else 1
                 canvas.yview_scroll(delta, "units")
         canvas.bind_all("<MouseWheel>", scroll_wheel)
-        self.compact_entry(frame, "Hostname", self.hostname)
         self.compact_entry(frame, "FQDN (optional)", self.fqdn)
         if self.network_choices:
             self.selection(frame, "Management network adapter",
@@ -449,6 +489,9 @@ class Wizard:
             messagebox.showerror("LightNAS", "Select an installation disk.")
             return False
         if self.step == 3:
+            if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", self.hostname.get()):
+                messagebox.showerror("LightNAS", "Enter a valid hostname.")
+                return False
             if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", self.username.get()):
                 messagebox.showerror("LightNAS", "Invalid administrator username.")
                 return False
@@ -533,6 +576,7 @@ class Wizard:
         target_snapshot = self.disk.get()
         self.install_running = True
         self.back_btn.configure(state="disabled")
+        self.theme_button.configure(state="disabled")
         self.next_btn.configure(state="disabled")
         self.root.protocol("WM_DELETE_WINDOW", self.cancel)
 
