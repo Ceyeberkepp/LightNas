@@ -1037,7 +1037,7 @@ fi
 echo "=== Synchronizing Debian kernel and ZFS DKMS inside live root ==="
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y linux-image-amd64 linux-headers-amd64 zfs-dkms
-kernel_version="$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -printf '%f\\n' | sort -V | tail -1)"
+kernel_version="$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
 [[ -n "$kernel_version" ]] || { echo "ERROR: No kernel module tree installed" >&2; exit 1; }
 for module in ext4 fat vfat; do
   modinfo -k "$kernel_version" "$module" >/dev/null 2>&1 || {
@@ -1195,13 +1195,13 @@ echo "ext4, fat and vfat kernel modules are present in the live root filesystem.
 # Use the exact kernel/initrd pair from the packaged root, never a mismatched
 # independent live-build kernel. Do not upload an image if extraction fails.
 mapfile -t packaged_kernels < <(
-  sed -nE 's@.*/(lib|usr/lib)/modules/([^/]+)/updates/dkms/zfs\\.ko(\\.(xz|zst|gz))?$@\\2@p' "$MODULE_LIST" | sort -Vu -r
+  sed -nE 's@.*/(lib|usr/lib)/modules/([^/]+)/updates/dkms/zfs\.ko(\.(xz|zst|gz))?$@\2@p' "$MODULE_LIST" | sort -Vu -r
 )
 matched_kernel=""
 for candidate in "${packaged_kernels[@]}"; do
   compatible=1
   for fs in ext4 vfat fat; do
-    if ! grep -Eq "/(lib|usr/lib)/modules/${candidate}/kernel/fs/.*/${fs}\\.ko(\\.(xz|zst|gz))?$" "$MODULE_LIST"; then
+    if ! grep -Eq "/(lib|usr/lib)/modules/${candidate}/kernel/fs/.*/${fs}\.ko(\.(xz|zst|gz))?$" "$MODULE_LIST"; then
       compatible=0
       break
     fi
@@ -1212,8 +1212,8 @@ for candidate in "${packaged_kernels[@]}"; do
 done
 [[ -n "$matched_kernel" ]] || {
   echo "ERROR: No packaged kernel has matching ext4, fat, vfat AND ZFS modules." >&2
-  printf 'ZFS kernel versions: %s\\n' "${packaged_kernels[*]}" >&2
-  grep -E '/(lib|usr/lib)/modules/.*/kernel/fs/.*/(ext4|fat|vfat)\\.ko' "$MODULE_LIST" | head -30 >&2 || true
+  printf 'ZFS kernel versions: %s\n' "${packaged_kernels[*]}" >&2
+  grep -E '/(lib|usr/lib)/modules/.*/kernel/fs/.*/(ext4|fat|vfat)\.ko' "$MODULE_LIST" | head -30 >&2 || true
   exit 1
 }
 echo "Using packaged LightNAS kernel: $matched_kernel"
