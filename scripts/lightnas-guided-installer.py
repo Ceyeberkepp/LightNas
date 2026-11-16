@@ -108,7 +108,7 @@ class Wizard:
                         foreground="#111e23", padding=8)
         shell = tk.Frame(root, bg=BG)
         shell.pack(fill="both", expand=True)
-        self.sidebar = tk.Frame(shell, width=200, bg="#0a1c26", padx=12, pady=16)
+        self.sidebar = tk.Frame(shell, width=200, bg=PANEL2, padx=12, pady=16)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
         self.main = tk.Frame(shell, bg=BG, padx=20, pady=16)
@@ -118,13 +118,13 @@ class Wizard:
         self.render_logo(self.sidebar, max_width=175, max_height=65)
         # Keep a text fallback for inaccessible/corrupt assets.
         if self.logo_image is None:
-            tk.Label(self.sidebar, text="LightNAS", fg=LIGHT, bg="#0a1c26",
+            tk.Label(self.sidebar, text="LightNAS", fg=LIGHT, bg=PANEL2,
                      font=("DejaVu Sans", 23, "bold")).pack(anchor="w", pady=(0, 22))
         self.theme_button = self.button(self.sidebar,
                                         "☀  Light mode" if theme == "dark" else "☾  Dark mode",
                                         self.toggle_theme)
         self.theme_button.pack(side="bottom", fill="x", pady=(12, 0))
-        self.sidebar_steps = tk.Frame(self.sidebar, bg="#0a1c26")
+        self.sidebar_steps = tk.Frame(self.sidebar, bg=PANEL2)
         self.sidebar_steps.pack(fill="x")
         self.content = tk.Frame(self.main, bg=BG)
         self.content.pack(fill="both", expand=True)
@@ -289,8 +289,8 @@ class Wizard:
         for i, name in enumerate(STEPS):
             active = i == self.step
             mark = "✓" if i < self.step else str(i + 1)
-            bg = "#0e5a37" if active else "#0a1c26"
-            fg = "#83f36b" if i < self.step else "#ffffff" if active else "#aec0c8"
+            bg = ("#d5f0e0" if self.theme == "light" else "#0e5a37") if active else PANEL2
+            fg = GREEN if i < self.step else LIGHT if active else MUTED
             tk.Label(self.sidebar_steps, text=f"  {mark}     {name}", bg=bg,
                      fg=fg, anchor="w", padx=9, pady=9,
                      font=("DejaVu Sans", 12, "bold" if active else "normal")
