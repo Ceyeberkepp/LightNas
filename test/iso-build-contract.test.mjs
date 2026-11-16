@@ -65,3 +65,21 @@ test('ISO workflow avoids doc-only rebuild noise and performs a QEMU smoke boot'
   assert.match(workflow, /public\/\*\*/);
   assert.match(workflow, /config\/\*\*/);
 });
+
+test('kernel module probe treats Debian + release names literally', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const build = await readFile(new URL('../iso/build.sh', import.meta.url), 'utf8');
+  const probe = build.match(/if ! awk -v path="\/\$\{candidate\}\/kernel\/fs\/" -v mod="\$\{fs\}" '([\s\S]*?)' "\$MODULE_LIST"/);
+  assert.ok(probe, 'Installer ISO must use literal release paths in its module probe');
+  const listing = [
+    'squashfs-root/usr/lib/modules/6.12.117+deb13-amd64/kernel/fs/ext4/ext4.ko.xz',
+    'squashfs-root/usr/lib/modules/6.12.117+deb13-amd64/kernel/fs/fat/fat.ko.xz',
+    'squashfs-root/usr/lib/modules/6.12.117+deb13-amd64/kernel/fs/fat/vfat.ko.xz'
+  ].join('\n') + '\n';
+  for (const mod of ['ext4','fat','vfat']) {
+    const result = spawnSync('awk', ['-v', 'path=/6.12.117+deb13-amd64/kernel/fs/', '-v', 'mod='+mod, probe[1]], {input:listing, encoding:'utf8'});
+    assert.equal(result.status, 0, mod + ': ' + result.stderr);
+  }
+  const wrongKernel = spawnSync('awk', ['-v', 'path=/6.12.118+deb13-amd64/kernel/fs/', '-v', 'mod=ext4', probe[1]], {input:listing, encoding:'utf8'});
+  assert.notEqual(wrongKernel.status, 0);
+});
