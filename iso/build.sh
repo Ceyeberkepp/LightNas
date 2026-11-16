@@ -1031,6 +1031,27 @@ fi
 # ZFS VALIDATION
 # ------------------------------------------------------------
 #
+# Debian live-build can fetch a newer linux-image during the binary stage.
+# Build the ZFS module against the currently installed kernel/headers in the
+# live root *before* squashfs is created, never against an orphaned old kernel.
+echo "=== Synchronizing Debian kernel and ZFS DKMS inside live root ==="
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y linux-image-amd64 linux-headers-amd64 zfs-dkms
+kernel_version="$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+[[ -n "$kernel_version" ]] || { echo "ERROR: No kernel module tree installed" >&2; exit 1; }
+for module in ext4 fat vfat; do
+  modinfo -k "$kernel_version" "$module" >/dev/null 2>&1 || {
+    echo "ERROR: $module module not installed for live kernel $kernel_version" >&2
+    exit 1
+  }
+done
+dkms autoinstall -k "$kernel_version"
+depmod -a "$kernel_version"
+modinfo -k "$kernel_version" zfs >/dev/null || {
+  echo "ERROR: ZFS module failed to build for live kernel $kernel_version" >&2
+  exit 1
+}
+echo "Matched kernel storage modules: $kernel_version"
 echo
 echo "=== Verifying LightNAS ZFS kernel support ==="
 
@@ -1174,19 +1195,32 @@ echo "ext4, fat and vfat kernel modules are present in the live root filesystem.
 # Use the exact kernel/initrd pair from the packaged root, never a mismatched
 # independent live-build kernel. Do not upload an image if extraction fails.
 mapfile -t packaged_kernels < <(
-  sed -nE 's@.*/(lib|usr/lib)/modules/([^/]+)/updates/dkms/zfs\.ko(\.(xz|zst|gz))?$@\2@p' "$MODULE_LIST" | sort -u
+  sed -nE 's@.*/(lib|usr/lib)/modules/([^/]+)/updates/dkms/zfs\.ko(\.(xz|zst|gz))?$@\2@p' "$MODULE_LIST" | sort -Vu -r
 )
-[[ "${#packaged_kernels[@]}" -eq 1 ]] || {
-  printf 'ERROR: expected exactly one packaged ZFS kernel, found: %s\n' "${packaged_kernels[*]}" >&2
+matched_kernel=""
+for candidate in "${packaged_kernels[@]}"; do
+  compatible=1
+  for fs in ext4 vfat fat; do
+    # Match kernel release literally: Debian names contain '+' which is a
+    # regex quantifier, so grep -E silently misses real modules.
+    if ! awk -v path="/${candidate}/kernel/fs/" -v mod="${fs}" '
+      index($0, path) && $0 ~ ("/" mod "\\.ko(\\.(xz|zst|gz))?$") { found = 1 }
+      END { exit !found }
+    ' "$MODULE_LIST"; then
+      compatible=0
+      break
+    fi
+  done
+  [[ "$compatible" -eq 1 ]] || continue
+  matched_kernel="$candidate"
+  break
+done
+[[ -n "$matched_kernel" ]] || {
+  echo "ERROR: No packaged kernel has matching ext4, fat, vfat AND ZFS modules." >&2
+  printf 'ZFS kernel versions: %s\n' "${packaged_kernels[*]}" >&2
+  grep -E '/(lib|usr/lib)/modules/.*/kernel/fs/.*/(ext4|fat|vfat)\.ko' "$MODULE_LIST" | head -30 >&2 || true
   exit 1
 }
-matched_kernel="${packaged_kernels[0]}"
-for fs in ext4 vfat fat; do
-  grep -Eq "/(lib|usr/lib)/modules/${matched_kernel}/kernel/fs/.*/${fs}\.ko(\.(xz|zst|gz))?$" "$MODULE_LIST" || {
-    echo "ERROR: filesystem module ${fs} missing for packaged kernel ${matched_kernel}" >&2
-    exit 1
-  }
-done
 echo "Using packaged LightNAS kernel: $matched_kernel"
 SYNC_TEMP="$(mktemp -d)"
 trap 'rm -f "$MODULE_LIST"; rm -rf "$SYNC_TEMP"' EXIT

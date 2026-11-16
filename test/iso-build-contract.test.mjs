@@ -41,7 +41,7 @@ test('ISO workflow avoids doc-only rebuild noise and performs a QEMU smoke boot'
   // an isolated repair-branch build. A literal shared group breaks that guarantee.
   assert.ok(workflow.includes("format('lightnas-iso-{0}-{1}', github.event_name, github.ref_name)"));
   assert.doesNotMatch(workflow, /group:\\s*['"]?lightnas-iso-build['"]?\\s*$/m);
-  assert.match(workflow, /branches:\\s*\\[main(?:,\\s*fix\\/iso-kernel-module-integrity-20261115)?\\]/);
+  assert.match(workflow, /branches:\\s*\\[main(?:,\\s*fix\\/iso-dkms-kernel-version-sync-20261115)?\\]/);
   // Allow only the currently isolated repair-branch ISO qualification trigger.
   assert.doesNotMatch(workflow, /branches:\\s*\\[\\s*fix\\//);
   assert.ok(workflow.includes("format('lightnas-iso-pr-{0}', github.event.pull_request.number)"));
@@ -64,4 +64,22 @@ test('ISO workflow avoids doc-only rebuild noise and performs a QEMU smoke boot'
   assert.match(workflow, /src\/\*\*/);
   assert.match(workflow, /public\/\*\*/);
   assert.match(workflow, /config\/\*\*/);
+});
+
+test('kernel module probe treats Debian + release names literally', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const build = await readFile(new URL('../iso/build.sh', import.meta.url), 'utf8');
+  const probe = build.match(/if ! awk -v path="\/\$\{candidate\}\/kernel\/fs\/" -v mod="\$\{fs\}" '([\s\S]*?)' "\$MODULE_LIST"/);
+  assert.ok(probe, 'Installer ISO must use literal release paths in its module probe');
+  const listing = [
+    'squashfs-root/usr/lib/modules/6.12.117+deb13-amd64/kernel/fs/ext4/ext4.ko.xz',
+    'squashfs-root/usr/lib/modules/6.12.117+deb13-amd64/kernel/fs/fat/fat.ko.xz',
+    'squashfs-root/usr/lib/modules/6.12.117+deb13-amd64/kernel/fs/fat/vfat.ko.xz'
+  ].join('\n') + '\n';
+  for (const mod of ['ext4','fat','vfat']) {
+    const result = spawnSync('awk', ['-v', 'path=/6.12.117+deb13-amd64/kernel/fs/', '-v', 'mod='+mod, probe[1]], {input:listing, encoding:'utf8'});
+    assert.equal(result.status, 0, mod + ': ' + result.stderr);
+  }
+  const wrongKernel = spawnSync('awk', ['-v', 'path=/6.12.118+deb13-amd64/kernel/fs/', '-v', 'mod=ext4', probe[1]], {input:listing, encoding:'utf8'});
+  assert.notEqual(wrongKernel.status, 0);
 });
