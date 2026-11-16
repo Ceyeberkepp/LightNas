@@ -1201,7 +1201,12 @@ matched_kernel=""
 for candidate in "${packaged_kernels[@]}"; do
   compatible=1
   for fs in ext4 vfat fat; do
-    if ! grep -Eq "/(lib|usr/lib)/modules/${candidate}/kernel/fs/.*/${fs}\.ko(\.(xz|zst|gz))?$" "$MODULE_LIST"; then
+    # Match kernel release literally: Debian names contain '+' which is a
+    # regex quantifier, so grep -E silently misses real modules.
+    if ! awk -v path="/${candidate}/kernel/fs/" -v mod="${fs}" '
+      index($0, path) && $0 ~ ("/" mod "\\.ko(\\.(xz|zst|gz))?$") { found = 1 }
+      END { exit !found }
+    ' "$MODULE_LIST"; then
       compatible=0
       break
     fi
