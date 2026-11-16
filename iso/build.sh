@@ -1174,15 +1174,15 @@ echo "ext4, fat and vfat kernel modules are present in the live root filesystem.
 # Use the exact kernel/initrd pair from the packaged root, never a mismatched
 # independent live-build kernel. Do not upload an image if extraction fails.
 mapfile -t packaged_kernels < <(
-  sed -nE 's@.*/(lib|usr/lib)/modules/([^/]+)/updates/dkms/zfs\\.ko(\\.(xz|zst|gz))?$@\\2@p' "$MODULE_LIST" | sort -u
+  sed -nE 's@.*/(lib|usr/lib)/modules/([^/]+)/updates/dkms/zfs\.ko(\.(xz|zst|gz))?$@\2@p' "$MODULE_LIST" | sort -u
 )
 [[ "${#packaged_kernels[@]}" -eq 1 ]] || {
-  printf 'ERROR: expected exactly one packaged ZFS kernel, found: %s\\n' "${packaged_kernels[*]}" >&2
+  printf 'ERROR: expected exactly one packaged ZFS kernel, found: %s\n' "${packaged_kernels[*]}" >&2
   exit 1
 }
 matched_kernel="${packaged_kernels[0]}"
 for fs in ext4 vfat fat; do
-  grep -Eq "/(lib|usr/lib)/modules/${matched_kernel}/kernel/fs/.*/${fs}\\.ko(\\.(xz|zst|gz))?$" "$MODULE_LIST" || {
+  grep -Eq "/(lib|usr/lib)/modules/${matched_kernel}/kernel/fs/.*/${fs}\.ko(\.(xz|zst|gz))?$" "$MODULE_LIST" || {
     echo "ERROR: filesystem module ${fs} missing for packaged kernel ${matched_kernel}" >&2
     exit 1
   }
@@ -1304,7 +1304,7 @@ if [[ -d binary/boot/grub || -d binary/isolinux || -d binary/syslinux ]]; then
   # actual ISO contents, not only the working tree and boot menu paths.
   while IFS= read -r -d '' live_file; do
     update_args+=(-update "$live_file" "/${live_file#binary/}")
-  done < <(find binary/live -maxdepth 1 -type f \\( -name 'vmlinuz*' -o -name 'initrd*' \\) -print0)
+  done < <(find binary/live -maxdepth 1 -type f \( -name 'vmlinuz*' -o -name 'initrd*' \) -print0)
   (( ${#update_args[@]} > 0 )) || {
     echo 'ERROR: no boot menu configuration files found to remaster.' >&2
     exit 1
