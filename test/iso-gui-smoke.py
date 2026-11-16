@@ -23,18 +23,19 @@ try:
     root.update()
     assert wizard.logo_image is not None, "Branded asset is missing or could not be loaded"
     assert wizard.step == 0
+    assert wizard.theme == "light", "Light Mode must be the installation default"
     assert wizard.next_btn.cget("state") == "normal"
     # Switching appearance must preserve entered credentials and current page.
     wizard.username.set("testadmin")
     wizard.hostname.set("lightnas01")
     wizard = wizard.toggle_theme()
     root.update()
-    assert wizard.theme == "light"
+    assert wizard.theme == "dark"
     assert wizard.username.get() == "testadmin"
     assert wizard.hostname.get() == "lightnas01"
     wizard = wizard.toggle_theme()
     root.update()
-    assert wizard.theme == "dark"
+    assert wizard.theme == "light"
     wizard.username.set("admin")
 
     # XTest pointer events exercise the real rendered UI, not Python callbacks.

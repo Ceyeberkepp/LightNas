@@ -70,3 +70,13 @@ test('native installation verifies ext4/vfat kernel support before erasing the d
   assert.ok(preflight > 0 && vfat > preflight && destructive > vfat,
     'Filesystem kernel support must be verified before partition table mutation');
 });
+
+test('installer defaults to light mode and shows real filesystem copy progress', () => {
+  assert.match(wizard, /def __init__\(self, root, theme="light", initial=None\)/);
+  assert.match(wizard, /self\.progress_label\.configure\(text="Installation started/);
+  assert.match(wizard, /value\.startswith\("LIGHTNAS_STAGE:"\)/);
+  assert.match(installer, /LIGHTNAS_STAGE:Mounting the newly formatted partitions/);
+  assert.match(installer, /LIGHTNAS_STAGE:Copying LightNAS system files/);
+  assert.match(installer, /--out-format="Copying %n"/);
+  assert.match(installer, /LIGHTNAS_STAGE:Filesystem copy completed/);
+});

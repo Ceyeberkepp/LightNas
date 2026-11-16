@@ -50,7 +50,7 @@ def available_disks():
 
 
 class Wizard:
-    def __init__(self, root, theme="dark", initial=None):
+    def __init__(self, root, theme="light", initial=None):
         set_theme(theme)
         self.theme = theme
         self.root = root
@@ -470,8 +470,10 @@ class Wizard:
         self.log.pack(fill="both", expand=True)
         if self.install_done:
             self.progress_label.configure(text="Installation complete. Remove the ISO and reboot.")
-        elif not self.install_running:
-            self.progress_label.configure(text="Installation has not started.")
+        elif self.install_running:
+            self.progress_label.configure(text="Installing LightNAS — see live progress below.")
+        else:
+            self.progress_label.configure(text="Ready to install.")
 
     def open_network(self):
         path = os.path.join(HERE, "lightnas-network-gui.py")
@@ -578,6 +580,7 @@ class Wizard:
         timezone_snapshot = self.timezone.get()
         target_snapshot = self.disk.get()
         self.install_running = True
+        self.progress_label.configure(text="Installation started — preparing disk and copying LightNAS.")
         self.back_btn.configure(state="disabled")
         self.theme_button.configure(state="disabled")
         self.next_btn.configure(state="disabled")
@@ -622,11 +625,19 @@ class Wizard:
         self.root.after(150, self.poll)
 
     def poll(self):
-        while not self.events.empty():
+        # File-copy logging may produce thousands of lines. Process a bounded
+        # batch per Tk frame so the graphical installer stays responsive.
+        for _ in range(150):
+            if self.events.empty():
+                break
             kind, value = self.events.get_nowait()
             if kind == "line":
+                if value.startswith("LIGHTNAS_STAGE:"):
+                    self.progress_label.configure(text=value.partition(":")[2].strip())
                 self.log.configure(state="normal")
                 self.log.insert("end", value)
+                if int(self.log.index("end-1c").split(".")[0]) > 6000:
+                    self.log.delete("1.0", "1000.0")
                 self.log.see("end")
                 self.log.configure(state="disabled")
             else:
