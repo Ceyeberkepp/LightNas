@@ -1152,6 +1152,23 @@ fi
 
 echo "ZFS module confirmed inside final LightNAS filesystem."
 
+# The live kernel must be able to mount the ext4 root and FAT EFI volumes.
+# Earlier QEMU install qualification exposed that these modules were absent
+# at runtime despite ZFS passing the build-only verification.
+echo "=== Checking live ISO storage kernel modules ==="
+MODULE_LIST="$(mktemp)"
+trap 'rm -f "$MODULE_LIST"' EXIT
+unsquashfs -l "$SQUASHFS" >"$MODULE_LIST"
+for fs in ext4 vfat fat; do
+  if ! grep -Eq "/(lib|usr/lib)/modules/[^/]+/kernel/fs/.*/${fs}\\.ko(\\.(xz|zst|gz))?$" "$MODULE_LIST"; then
+    echo "ERROR: Live root filesystem is missing ${fs}.ko for ext4/FAT storage." >&2
+    echo "Refusing to publish an ISO that cannot mount its installation disk." >&2
+    exit 1
+  fi
+done
+echo "ext4, fat and vfat kernel modules are present in the live root filesystem."
+
+
 #
 # Final bootloader branding repair: live-build may regenerate GRUB *after*
 # binary hooks. Remaster changed menu files into the ISO and replay El Torito
