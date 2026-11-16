@@ -80,3 +80,12 @@ test('installer defaults to light mode and shows real filesystem copy progress',
   assert.match(installer, /--out-format="Copying %n"/);
   assert.match(installer, /LIGHTNAS_STAGE:Filesystem copy completed/);
 });
+
+
+test('installer light theme includes the sidebar and all step indicators', () => {
+  assert.match(wizard, /self\.sidebar = tk\.Frame\(shell, width=200, bg=PANEL2/);
+  assert.match(wizard, /self\.sidebar_steps = tk\.Frame\(self\.sidebar, bg=PANEL2\)/);
+  assert.match(wizard, /bg = \("#d5f0e0" if self\.theme == "light" else "#0e5a37"\) if active else PANEL2/);
+  assert.match(wizard, /fg = GREEN if i < self\.step else LIGHT if active else MUTED/);
+  assert.doesNotMatch(wizard, /bg="#0a1c26"/);
+});
