@@ -76,9 +76,15 @@ def run_installer(child, log):
         "mountpoint -q /proc || mount -t proc proc /proc; "
         "mountpoint -q /sys || mount -t sysfs sysfs /sys; "
         "mountpoint -q /dev || mount -t devtmpfs devtmpfs /dev; "
+        "echo '=== live kernel filesystem diagnostics ==='; "
+        "uname -r; ls -la /lib/modules /usr/lib/modules 2>&1; "
+        "find /lib/modules -maxdepth 3 -type d 2>/dev/null | head -25; "
         "modprobe ext4 && modprobe vfat && grep -w ext4 /proc/filesystems && "
-        "grep -w vfat /proc/filesystems || { "
-        "echo 'LIGHTNAS_E2E_MODULE_PREFLIGHT_FAILED'; exit 65; }; "
+        "grep -w vfat /proc/filesystems; fs_ret=$?; "
+        "if [ \"$fs_ret\" -ne 0 ]; then "
+        "echo 'LIGHTNAS_E2E_MODULE_PREFLIGHT_FAILED'; "
+        "printf '\\nLIGHTNAS_E2E_INSTALL_EXIT:%s\\n' \"$fs_ret\"; "
+        "else "
         "printf %s test-password-2026 >/run/lightnas-ci-password; "
         "chmod 600 /run/lightnas-ci-password; "
         "LIGHTNAS_ERASE_CONFIRM=CONFIRM_ERASE:/dev/vda "
@@ -89,7 +95,7 @@ def run_installer(child, log):
         "/bin/bash /opt/lightnas/scripts/lightnas-native-install.sh /dev/vda "
         ">/run/lightnas-ci-install.log 2>&1; "
         "ret=$?; tail -n 55 /run/lightnas-ci-install.log; "
-        "printf '\\nLIGHTNAS_E2E_INSTALL_EXIT:%s\\n' \"$ret\""
+        "printf '\\nLIGHTNAS_E2E_INSTALL_EXIT:%s\\n' \"$ret\"; fi"
     )
     try:
         child.expect(r"LIGHTNAS_E2E_INSTALL_EXIT:([0-9]+)", timeout=1200)

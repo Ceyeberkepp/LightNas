@@ -41,7 +41,9 @@ test('ISO workflow avoids doc-only rebuild noise and performs a QEMU smoke boot'
   // an isolated repair-branch build. A literal shared group breaks that guarantee.
   assert.ok(workflow.includes("format('lightnas-iso-{0}-{1}', github.event_name, github.ref_name)"));
   assert.doesNotMatch(workflow, /group:\\s*['"]?lightnas-iso-build['"]?\\s*$/m);
-  assert.match(workflow, /branches:\\s*\\[main\\]/);
+  assert.match(workflow, /branches:\\s*\\[main(?:,\\s*fix\\/iso-kernel-module-integrity-20261115)?\\]/);
+  // Allow only the currently isolated repair-branch ISO qualification trigger.
+  assert.doesNotMatch(workflow, /branches:\\s*\\[\\s*fix\\//);
   assert.ok(workflow.includes("format('lightnas-iso-pr-{0}', github.event.pull_request.number)"));
   // GitHub rulesets must receive a predictable validate result for *every*
   // PR, even a documentation-only change; full ISO builds remain non-PR only.

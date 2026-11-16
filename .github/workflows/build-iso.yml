@@ -2,7 +2,7 @@ name: Build LightNAS ISO
 
 on:
   push:
-    branches: [main, fix/iso-ext4-live-kernel-preflight-20261115]
+    branches: [main, fix/iso-kernel-module-integrity-20261115]
     paths:
       - 'iso/**'
       - 'src/**'
@@ -10,6 +10,8 @@ on:
       - 'config/**'
       - '.github/workflows/build-iso.yml'
       - 'scripts/lightnas-guided-installer.py'
+      - 'scripts/lightnas-native-install.sh'
+      - 'test/iso-qemu-install.py'
       - 'scripts/lightnas-network-*.py'
       - 'scripts/lightnas-network-wizard.sh'
       - 'public/assets/lightnas-logo.png'
