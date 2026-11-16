@@ -24,6 +24,14 @@ if [[ "$source" == /dev/* ]]; then
 fi
 [[ -z "$(lsblk -nr -o MOUNTPOINTS "$disk" | tr -d '[:space:]')" ]] || die "Selected disk has mounted filesystems"
 for cmd in sgdisk wipefs mkfs.vfat mkfs.ext4 rsync grub-install update-grub; do command -v "$cmd" >/dev/null || die "Missing dependency $cmd"; done
+# Do not erase an installation target if the running live kernel cannot
+# mount the filesystems we are about to create. Direct init=/bin/bash QEMU
+# qualification skips normal udev/systemd module loading, so load explicitly.
+command -v modprobe >/dev/null || die "Missing kernel module loader (modprobe)"
+modprobe ext4 || die "Live kernel cannot load ext4 support; disk untouched"
+modprobe vfat || die "Live kernel cannot load EFI FAT support; disk untouched"
+grep -qw ext4 /proc/filesystems || die "ext4 support unavailable; disk untouched"
+grep -qw vfat /proc/filesystems || die "vfat support unavailable; disk untouched"
 target=/mnt/lightnas-install-target
 [[ ! -e "$target/etc/fstab" ]] || die "Installation target mountpoint is in use"
 mkdir -p "$target"
