@@ -49,16 +49,20 @@ part() { if [[ "$disk" =~ [0-9]$ ]]; then echo "${disk}p$1"; else echo "${disk}$
 esp="$(part 2)"; root="$(part 3)"
 for i in {1..30}; do [[ -b "$esp" && -b "$root" ]] && break; sleep 1; done
 [[ -b "$esp" && -b "$root" ]] || die "Kernel did not detect partitions"
+echo "LIGHTNAS_STAGE:Formatting the EFI and system partitions..."
 mkfs.vfat -F32 -n LNAS_EFI "$esp"
 mkfs.ext4 -F -L LIGHTNAS_ROOT "$root"
-mount "$root" "$target"
+echo "LIGHTNAS_STAGE:Mounting the newly formatted partitions..."
+mount -t ext4 "$root" "$target" || die "Cannot mount new LightNAS root filesystem ($root)"
 mkdir -p "$target/boot/efi"
-mount "$esp" "$target/boot/efi"
-rsync -aHAX --numeric-ids --one-file-system \
+mount -t vfat "$esp" "$target/boot/efi" || die "Cannot mount EFI system partition ($esp)"
+echo "LIGHTNAS_STAGE:Copying LightNAS system files (this can take several minutes)..."
+rsync -aHAX --numeric-ids --one-file-system --out-format="Copying %n" \
   --exclude='/dev/*' --exclude='/proc/*' --exclude='/sys/*' \
   --exclude='/run/*' --exclude='/tmp/*' --exclude='/mnt/*' \
   --exclude='/media/*' --exclude='/lost+found' \
-  / "$target/"
+  / "$target/" || die "Copying the LightNAS system to $root failed"
+echo "LIGHTNAS_STAGE:Filesystem copy completed. Configuring the installed system..."
 mkdir -p "$target"/{dev,proc,sys,run,tmp,mnt,media}
 chmod 1777 "$target/tmp"
 # Mount the essential kernel filesystems BEFORE any chroot operation. Linux
