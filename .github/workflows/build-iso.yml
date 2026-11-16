@@ -31,7 +31,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # PRs run fast configuration checks, not another 2.5 GB ISO build.
+  # Pull requests also build and qualify the real ISO on disposable QEMU disks.
   validate:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
@@ -60,7 +60,8 @@ jobs:
           timeout 45s xvfb-run -a -s '-screen 0 1280x800x24' python3 test/iso-gui-smoke.py
           timeout 45s xvfb-run -a -s '-screen 0 800x600x24' python3 test/iso-gui-smoke.py
   iso:
-    if: github.event_name != 'pull_request'
+    needs: [validate]
+    if: always() && (github.event_name != 'pull_request' || needs.validate.result == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     steps:
