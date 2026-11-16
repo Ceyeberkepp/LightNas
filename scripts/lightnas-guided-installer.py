@@ -625,13 +625,19 @@ class Wizard:
         self.root.after(150, self.poll)
 
     def poll(self):
-        while not self.events.empty():
+        # File-copy logging may produce thousands of lines. Process a bounded
+        # batch per Tk frame so the graphical installer stays responsive.
+        for _ in range(150):
+            if self.events.empty():
+                break
             kind, value = self.events.get_nowait()
             if kind == "line":
                 if value.startswith("LIGHTNAS_STAGE:"):
                     self.progress_label.configure(text=value.partition(":")[2].strip())
                 self.log.configure(state="normal")
                 self.log.insert("end", value)
+                if int(self.log.index("end-1c").split(".")[0]) > 6000:
+                    self.log.delete("1.0", "1000.0")
                 self.log.see("end")
                 self.log.configure(state="disabled")
             else:
