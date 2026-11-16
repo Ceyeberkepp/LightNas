@@ -889,7 +889,7 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 CONSOLE_STATUS
-systemctl enable lightnas-console-status.service >/dev/null 2>&1 || true
+systemctl disable lightnas-console-status.service >/dev/null 2>&1 || true
 
 cat >/var/lib/lightnas-ui/.config/openbox/autostart <<'AUTOSTART'
 # LightNAS launches Chromium directly from lightnas-xsession.
@@ -900,13 +900,13 @@ chown lightnas-ui:lightnas-ui /var/lib/lightnas-ui/.config/openbox/autostart
 # own the display or expose a generic Debian login screen on the appliance.
 systemctl disable lightdm.service >/dev/null 2>&1 || true
 systemctl mask lightdm.service >/dev/null 2>&1 || true
-systemctl enable lightnas-display-console.service >/dev/null 2>&1 || true
+systemctl disable lightnas-display-console.service >/dev/null 2>&1 || true
 
 cat >/etc/issue <<'ISSUE'
 LightNAS 1.0
 Private cloud storage appliance · Debian 13 base
-Local control center starts automatically
-Web control center: http://<this-system-IP>:3080
+Console login is available on tty1
+Web control center: https://<this-system-IP>:3080
 
 ISSUE
 cp /etc/issue /etc/issue.net
@@ -946,8 +946,8 @@ plymouth-set-default-theme lightnas || true
 
 systemctl disable lightdm.service >/dev/null 2>&1 || true
 systemctl mask lightdm.service >/dev/null 2>&1 || true
-systemctl enable lightnas-display-console.service >/dev/null 2>&1 || true
-systemctl set-default graphical.target >/dev/null 2>&1 || true
+systemctl disable lightnas-display-console.service >/dev/null 2>&1 || true
+systemctl set-default multi-user.target >/dev/null 2>&1 || true
 
 # Reserve VT7 for the LightNAS graphical appliance. The console is managed by
 # the dedicated service; no automatic tty1 login is necessary or permitted.
