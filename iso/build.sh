@@ -1168,6 +1168,53 @@ for fs in ext4 vfat fat; do
 done
 echo "ext4, fat and vfat kernel modules are present in the live root filesystem."
 
+# A Debian live-build binary-stage kernel can differ from the one whose
+# modules were installed in the squashfs. This happened in CI: vmlinuz
+# 6.12.117 was paired with /lib/modules/6.12.107, breaking ext4 mounts.
+# Use the exact kernel/initrd pair from the packaged root, never a mismatched
+# independent live-build kernel. Do not upload an image if extraction fails.
+mapfile -t packaged_kernels < <(
+  sed -nE 's@.*/(lib|usr/lib)/modules/([^/]+)/updates/dkms/zfs\\.ko(\\.(xz|zst|gz))?$@\\2@p' "$MODULE_LIST" | sort -u
+)
+[[ "${#packaged_kernels[@]}" -eq 1 ]] || {
+  printf 'ERROR: expected exactly one packaged ZFS kernel, found: %s\\n' "${packaged_kernels[*]}" >&2
+  exit 1
+}
+matched_kernel="${packaged_kernels[0]}"
+for fs in ext4 vfat fat; do
+  grep -Eq "/(lib|usr/lib)/modules/${matched_kernel}/kernel/fs/.*/${fs}\\.ko(\\.(xz|zst|gz))?$" "$MODULE_LIST" || {
+    echo "ERROR: filesystem module ${fs} missing for packaged kernel ${matched_kernel}" >&2
+    exit 1
+  }
+done
+echo "Using packaged LightNAS kernel: $matched_kernel"
+SYNC_TEMP="$(mktemp -d)"
+trap 'rm -f "$MODULE_LIST"; rm -rf "$SYNC_TEMP"' EXIT
+for part in vmlinuz initrd.img; do
+  source_file="boot/${part}-${matched_kernel}"
+  output_file="$SYNC_TEMP/$part"
+  if [[ -s "chroot/$source_file" ]]; then
+    cp "chroot/$source_file" "$output_file"
+  elif ! unsquashfs -cat "$SQUASHFS" "$source_file" >"$output_file"; then
+    echo "ERROR: cannot extract $source_file for packaged module kernel" >&2
+    exit 1
+  fi
+  [[ -s "$output_file" ]] || {
+    echo "ERROR: no matching $part for kernel $matched_kernel" >&2
+    exit 1
+  }
+done
+kernel_files=(binary/live/vmlinuz*)
+initrd_files=(binary/live/initrd*)
+[[ -f "${kernel_files[0]}" && -f "${initrd_files[0]}" ]] || {
+  echo 'ERROR: live-build did not generate kernel/initrd output paths' >&2
+  exit 1
+}
+for dest in "${kernel_files[@]}"; do install -m 0644 "$SYNC_TEMP/vmlinuz" "$dest"; done
+for dest in "${initrd_files[@]}"; do install -m 0644 "$SYNC_TEMP/initrd.img" "$dest"; done
+echo "Aligned every ISO boot kernel/initrd path to kernel $matched_kernel"
+
+
 
 #
 # Final bootloader branding repair: live-build may regenerate GRUB *after*
@@ -1253,6 +1300,11 @@ if [[ -d binary/boot/grub || -d binary/isolinux || -d binary/syslinux ]]; then
     done < <(find "binary/$subdir" -type f \
       \( -name '*.cfg' -o -name '*.conf' -o -name 'splash.png' \) -print0)
   done
+  # Kernel and initrd files were aligned after live-build; update the
+  # actual ISO contents, not only the working tree and boot menu paths.
+  while IFS= read -r -d '' live_file; do
+    update_args+=(-update "$live_file" "/${live_file#binary/}")
+  done < <(find binary/live -maxdepth 1 -type f \\( -name 'vmlinuz*' -o -name 'initrd*' \\) -print0)
   (( ${#update_args[@]} > 0 )) || {
     echo 'ERROR: no boot menu configuration files found to remaster.' >&2
     exit 1
