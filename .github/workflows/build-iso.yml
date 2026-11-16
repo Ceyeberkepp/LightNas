@@ -2,7 +2,7 @@ name: Build LightNAS ISO
 
 on:
   push:
-    branches: [main, fix/iso-dkms-kernel-version-sync-20261115]
+    branches: [main, fix/installer-light-default-progress-20261116]
     paths:
       - 'iso/**'
       - 'src/**'
