@@ -617,7 +617,7 @@ class Wizard:
                         install_log.flush()
                         self.events.put(("line", line))
                     code = process.wait()
-                    install_log.write(f"LightNAS installer exit code: {code}\\n")
+                    install_log.write(f"LightNAS installer exit code: {code}\n")
                     install_log.flush()
                 self.events.put(("done", code))
             except OSError as error:
