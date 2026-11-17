@@ -609,9 +609,17 @@ class Wizard:
                 process = subprocess.Popen(
                     ["/bin/bash", os.path.join(HERE, "lightnas-native-install.sh"), target_snapshot],
                     env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-                for line in process.stdout:
-                    self.events.put(("line", line))
-                self.events.put(("done", process.wait()))
+                # Preserve the full installation log if VirtualBox/Xorg exits
+                # before the GUI can show an error or the final success screen.
+                with open("/var/log/lightnas-native-install.log", "a", encoding="utf-8") as install_log:
+                    for line in process.stdout:
+                        install_log.write(line)
+                        install_log.flush()
+                        self.events.put(("line", line))
+                    code = process.wait()
+                    install_log.write(f"LightNAS installer exit code: {code}\n")
+                    install_log.flush()
+                self.events.put(("done", code))
             except OSError as error:
                 self.events.put(("error", str(error)))
             finally:

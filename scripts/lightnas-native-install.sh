@@ -4,6 +4,10 @@ set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 die() { echo "LightNAS installer: $*" >&2; exit 1; }
 [[ $EUID == 0 ]] || die "Root privileges required"
+# A graphical Xorg crash must never allow a second installer to erase the disk
+# while the first installation continues in the background.
+exec 9>/run/lightnas-install.lock
+flock -n 9 || die "Another LightNAS installation is still running; refusing concurrent disk operations"
 [[ -e /run/live/medium || -e /lib/live/mount/medium ]] || die "Boot from the LightNAS live ISO first"
 [[ $# == 1 && "$1" == /dev/* ]] || die "Provide exactly one disk path"
 disk="$(readlink -f "$1")"
