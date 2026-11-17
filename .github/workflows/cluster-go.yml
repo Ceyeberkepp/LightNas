@@ -1,0 +1,26 @@
+name: Cluster Go safety tests
+on:
+  pull_request:
+    paths:
+      - 'cluster/**'
+      - '.github/workflows/cluster-go.yml'
+  push:
+    paths:
+      - 'cluster/**'
+      - '.github/workflows/cluster-go.yml'
+permissions:
+  contents: read
+jobs:
+  failover-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cluster/go.mod
+      - name: Go unit tests and race detector
+        working-directory: cluster
+        run: go test -race -count=1 ./...
+      - name: Static checks
+        working-directory: cluster
+        run: go vet ./...
