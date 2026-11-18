@@ -85,7 +85,34 @@ export async function runtimeInventory() {
 
 async function runDocker(args, timeout = 180000) {
   if (process.env.LIGHTNAS_DOCKER_ENABLED !== '1') throw Object.assign(new Error('Docker actions are disabled. The operator must explicitly enable them on a Docker host.'), { status: 409 });
-  const response = await exclusive(() => command('docker', args, timeout));
+  const response = await exclusive(async () => {
+    const first = await command('docker', args, timeout);
+    if (first.ok || args[0] !== 'run') return first;
+    // Only retry the specific LXC policy-admin denial. This is a scoped
+    // per-container compatibility option, never a host/daemon-wide bypass.
+    const nested = await readFile('/run/systemd/container', 'utf8').catch(() => '');
+    const lxc = nested.trim() === 'lxc' ||
+      (await readFile('/proc/1/environ').catch(() => Buffer.alloc(0))).includes(Buffer.from('container=lxc'));
+    if (!lxc || !/docker-default|apparmor_parser/i.test(first.error) ||
+        !/access denied|policy admin|permission denied/i.test(first.error)) return first;
+    // A failed 'docker run' can leave a container in Created state. Only
+    // remove that exact newly-created container if its name and image match
+    // this operation; never delete volumes or a running/stopped workload.
+    const nameIndex = args.indexOf('--name');
+    const name = nameIndex >= 0 ? args[nameIndex + 1] : '';
+    const image = args[args.length - 1];
+    if (!name || !image) return first;
+    const inspect = await command('docker', ['inspect', name, '--format', '{{.State.Status}}|{{.Config.Image}}'], 10000);
+    if (!inspect.ok || inspect.output !== `created|${image}`) return first;
+    const cleanup = await command('docker', ['rm', name], 10000);
+    if (!cleanup.ok) return { ok:false, error:`Unable to safely clean up the failed Created container before compatibility retry: ${cleanup.error}` };
+    const retryArgs = [...args];
+    // Docker run options must precede the image; use a position after run.
+    retryArgs.splice(1, 0, '--security-opt', 'apparmor=unconfined');
+    const retry = await command('docker', retryArgs, timeout);
+    if (!retry.ok) return { ok:false, error:`Nested-LXC AppArmor compatibility retry failed: ${retry.error}` };
+    return retry;
+  });
   if (!response.ok) throw Object.assign(new Error(`Docker: ${response.error}`), { status: 409 });
   return response.output;
 }
