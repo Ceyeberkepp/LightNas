@@ -3140,6 +3140,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const certPath = process.env.LIGHTNAS_TLS_CERT_FILE;
   const keyPath = process.env.LIGHTNAS_TLS_KEY_FILE;
   if (Boolean(certPath) !== Boolean(keyPath)) throw new Error('Both TLS certificate and private key must be configured.');
+  // Production management UI is HTTPS-only. HTTP is permitted solely for
+  // explicitly opted-in local development on loopback.
+  const localDevHttp = process.env.NAS_DEV === '1' &&
+    process.env.LIGHTNAS_ALLOW_INSECURE_LOOPBACK === '1' &&
+    (host === '127.0.0.1' || host === '::1' || host === 'localhost');
+  if (!certPath && !localDevHttp) {
+    throw new Error('HTTPS required: configure LIGHTNAS_TLS_CERT_FILE and LIGHTNAS_TLS_KEY_FILE before starting the LightNAS management UI. HTTP is not allowed.');
+  }
   const tls = certPath ? { cert: await readFile(certPath), key: await readFile(keyPath), minVersion: 'TLSv1.2' } : null;
   await recoverResumableImports();
   createServer({ tls }).listen(port, host, () => {
