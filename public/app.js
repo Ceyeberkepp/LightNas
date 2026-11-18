@@ -2023,14 +2023,31 @@ function chunkUploadRequest(path, file, onProgress) {
 }
 
 async function ensureUploadDirectories(paths) {
-  const folders = new Set();
+  const byDepth = new Map();
   for (const path of paths) {
     const parts = String(path || '').split('/').filter(Boolean);
-    for (let index = 1; index < parts.length; index += 1) folders.add(parts.slice(0, index).join('/'));
+    for (let index = 1; index < parts.length; index += 1) {
+      const depth = index;
+      if (!byDepth.has(depth)) byDepth.set(depth, new Set());
+      byDepth.get(depth).add(parts.slice(0, index).join('/'));
+    }
   }
-  for (const folder of [...folders].sort((a, b) => a.split('/').length - b.split('/').length)) {
-    try { await request(`/api/files?path=${encodeURIComponent(folder)}`, { method: 'POST', body: '{}' }); }
-    catch (error) { if (error.status !== 409) throw error; }
+  // Parent directories must exist before their children, but independent
+  // folders at the same depth can be created concurrently. Limit in-flight
+  // requests to avoid overloading small appliances.
+  for (const depth of [...byDepth.keys()].sort((a, b) => a - b)) {
+    const folders = [...byDepth.get(depth)];
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(6, folders.length) }, async () => {
+      while (next < folders.length) {
+        const folder = folders[next++];
+        try {
+          await request(`/api/files?path=${encodeURIComponent(folder)}`, { method: 'POST', body: '{}' });
+        } catch (error) {
+          if (error.status !== 409) throw error;
+        }
+      }
+    }));
   }
 }
 
