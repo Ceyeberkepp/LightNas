@@ -1,5 +1,27 @@
 import {setProfileImageSource} from './profile-image-source.js';
 
+function applySettingsTab(tab) {
+  const dashboard = document.querySelector('[data-settings-tab-content]');
+  const branding = document.querySelector('[data-branding-tab-panel]');
+  if (!dashboard || !branding) return;
+  const selected = tab === 'branding' ? 'branding' : 'general';
+  document.querySelectorAll('[data-settings-tab]').forEach(button => {
+    const active = button.dataset.settingsTab === selected;
+    button.setAttribute('aria-selected', String(active));
+    button.classList.toggle('active', active);
+  });
+  dashboard.querySelectorAll(':scope > *').forEach(panel => {
+    if (panel === branding) panel.hidden = selected !== 'branding';
+    else panel.hidden = selected === 'branding';
+  });
+}
+document.addEventListener('click', event => {
+  const tab = event.target.closest?.('[data-settings-tab]');
+  if (!tab) return;
+  applySettingsTab(tab.dataset.settingsTab);
+});
+
+
 function refreshBrowserFavicon() {
   const icon = document.querySelector('link[rel="icon"]');
   if (icon) icon.href = '/api/branding/favicon?v=' + Date.now();
@@ -2357,9 +2379,13 @@ function settingsView() {
   const canSoftware = settingsPermission('settings.software.view') || canSoftwareManage;
   const canMfa = settingsPermission('security.mfa.manage');
   return `${pageHead('Settings & security', 'Only the settings sections assigned to your account are shown.')}
-    <section class="settings-dashboard">
+    <nav class="lightnas-settings-tabs" aria-label="Settings tabs">
+      <button type="button" class="secondary" data-settings-tab="general" aria-selected="true">General</button>
+      ${canGeneral ? '<button type="button" class="secondary" data-settings-tab="branding" aria-selected="false">Appliance identity & branding</button>' : ''}
+    </nav>
+    <section class="settings-dashboard" data-settings-tab-content>
       ${!canGeneral && !canPassword && !canSoftware && !canMfa ? '<div class="module-note"><b>No settings sections assigned.</b> Ask an administrator to grant the specific Settings & security sections you need.</div>' : ''}
-      ${canGeneral ? `<form id="settings-form" class="panel settings-general-card settings-collapsible ${settingsSectionCollapsed('general') ? 'collapsed' : ''}" data-settings-section="general">
+      ${canGeneral ? `<form id="settings-form" class="panel settings-general-card settings-collapsible ${settingsSectionCollapsed('general') ? 'collapsed' : ''}" data-settings-section="general" data-branding-tab-panel>
         <div class="settings-card-head"><div><span class="eyebrow">GENERAL</span><h2>Appliance identity & branding</h2><p class="muted">Use either a text logo or a picture logo, then match the interface color to your brand.</p></div>${settingsCollapseButton('general','Appliance identity & branding')}</div>
         <div class="settings-section-body" ${settingsSectionCollapsed('general') ? 'hidden' : ''}>
         <div class="settings-general-grid branding-settings-grid">
