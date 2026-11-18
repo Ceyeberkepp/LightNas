@@ -973,6 +973,7 @@ async function api(req, res, url) {
       logoMode: config.logoMode === 'text' ? 'text' : 'picture',
       logo: true,
       customLogo: Boolean(config.logoExt),
+      customFavicon: Boolean(config.faviconExt),
       defaultBranding: usesDefaultBranding(config),
       accentColor: /^#[0-9a-f]{6}$/i.test(String(config.accentColor || '')) ? config.accentColor : '#00b83f',
       sidebarColor: /^#[0-9a-f]{6}$/i.test(String(config.sidebarColor || '')) ? config.sidebarColor : '#ffffff',
@@ -1152,6 +1153,21 @@ async function api(req, res, url) {
   if (req.method === 'POST' && url.pathname === '/api/logout') {
     sessions.delete(cookies(req).nas_session);
     return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, '', 0) });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/branding/favicon') {
+    const ext = store.state.config?.faviconExt;
+    if (!ext) return send(res, 404, { error: 'No custom favicon configured.' });
+    const type = { png: 'image/png', ico: 'image/x-icon' }[ext];
+    if (!type) return send(res, 404, { error: 'Invalid favicon configuration.' });
+    try {
+      const data = await readFile(join(brandingRoot, 'favicon.' + ext));
+      res.writeHead(200, { 'Content-Type': type, 'Content-Length': data.length, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': csp });
+      return res.end(data);
+    } catch (error) {
+      if (error.code === 'ENOENT') return send(res, 404, { error: 'Favicon unavailable.' });
+      throw error;
+    }
   }
 
   if (req.method === 'GET' && url.pathname === '/api/branding/logo') {
@@ -1435,6 +1451,30 @@ async function api(req, res, url) {
     return send(res, 200, { ok: true, avatar: false });
   }
 
+  if (url.pathname === '/api/branding/favicon' && (req.method === 'PUT' || req.method === 'DELETE')) {
+    if (!isAdmin && !hasPermission(permissions, 'settings.general.manage') && !hasPermission(permissions, 'settings.manage')) return send(res, 403, { error: 'General settings permission is required.' });
+    if (context.apiToken) return send(res, 403, { error: 'Interactive session required.' });
+    if (req.method === 'DELETE') {
+      for (const ext of ['png','ico']) await rm(join(brandingRoot, 'favicon.' + ext), { force: true }).catch(() => {});
+      delete store.state.config.faviconExt;
+      await store.save();
+      return send(res, 200, { ok: true, customFavicon: false });
+    }
+    const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    const ext = { 'image/png': 'png', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico' }[type];
+    if (!ext) return send(res, 415, { error: 'Use PNG or ICO favicon.' });
+    const data = await bodyBuffer(req, 1024 * 1024, 'Favicon must be under 1 MiB.');
+    const valid = ext === 'png'
+      ? data.length >= 24 && validProfileImage(data, 'png')
+      : data.length >= 22 && data[0] === 0 && data[1] === 0 && data[2] === 1 && data[3] === 0 && data.readUInt16LE(4) > 0;
+    if (!valid) return send(res, 415, { error: 'Invalid favicon image data.' });
+    await mkdir(brandingRoot, { recursive: true, mode: 0o700 });
+    await writeFile(join(brandingRoot, 'favicon.' + ext), data, { mode: 0o600 });
+    for (const old of ['png','ico']) if (old !== ext) await rm(join(brandingRoot, 'favicon.' + old), { force: true }).catch(() => {});
+    store.state.config.faviconExt = ext;
+    await store.save();
+    return send(res, 200, { ok: true, customFavicon: true });
+  }
   if (req.method === 'PUT' && url.pathname === '/api/branding/logo') {
     if (!isAdmin && !hasPermission(permissions, 'settings.general.manage') && !hasPermission(permissions, 'settings.manage')) return send(res, 403, { error: 'General settings permission is required.' });
     const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
