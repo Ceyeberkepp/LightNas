@@ -10,6 +10,7 @@ function applySettingsTab(tab) {
     button.setAttribute('aria-selected', String(active));
     button.classList.toggle('active', active);
   });
+  branding.hidden = selected !== 'branding';
   dashboard.querySelectorAll(':scope > *').forEach(panel => {
     if (panel === branding) panel.hidden = selected !== 'branding';
     else panel.hidden = selected === 'branding';
@@ -2385,7 +2386,7 @@ function settingsView() {
     </nav>
     <section class="settings-dashboard" data-settings-tab-content>
       ${!canGeneral && !canPassword && !canSoftware && !canMfa ? '<div class="module-note"><b>No settings sections assigned.</b> Ask an administrator to grant the specific Settings & security sections you need.</div>' : ''}
-      ${canGeneral ? `<form id="settings-form" class="panel settings-general-card settings-collapsible ${settingsSectionCollapsed('general') ? 'collapsed' : ''}" data-settings-section="general" data-branding-tab-panel>
+      ${canGeneral ? `<form id="settings-form" class="panel settings-general-card settings-collapsible ${settingsSectionCollapsed('general') ? 'collapsed' : ''}" data-settings-section="general" data-branding-tab-panel hidden>
         <div class="settings-card-head"><div><span class="eyebrow">GENERAL</span><h2>Appliance identity & branding</h2><p class="muted">Use either a text logo or a picture logo, then match the interface color to your brand.</p></div>${settingsCollapseButton('general','Appliance identity & branding')}</div>
         <div class="settings-section-body" ${settingsSectionCollapsed('general') ? 'hidden' : ''}>
         <div class="settings-general-grid branding-settings-grid">
