@@ -533,6 +533,26 @@ if systemctl is-active --quiet "${SERVICE_NAME}.service"; then
     exit 1
   fi
 fi
+# Pick a free HTTPS management port for fresh installs without disrupting
+# existing listeners. Keep upgrades on their established port.
+LIGHTNAS_WEB_PORT=3080
+if [[ "${EXISTING_INSTALL}" == "0" ]]; then
+  LIGHTNAS_WEB_PORT="$(python3 - <<'PY_LIGHTNAS_PORT'
+import socket
+for port in range(3080, 3101):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind(('0.0.0.0', port))
+        except OSError:
+            continue
+        print(port)
+        break
+else:
+    raise SystemExit('No available LightNAS HTTPS port in 3080-3100')
+PY_LIGHTNAS_PORT
+)" || { echo "No available HTTPS management port; aborting." >&2; exit 1; }
+fi
+echo "      Selected HTTPS management port: ${LIGHTNAS_WEB_PORT}"
 TLS_SERVICE_ENV=""
 if [[ "${LIGHTNAS_LOCAL_TLS}" == "1" ]]; then
   install -d -m 0750 -o root -g lightnas /etc/lightnas/tls
@@ -609,7 +629,7 @@ Environment=LIGHTNAS_HOST_SOCKET=/run/lightnas/host-agent.sock
 Environment=NODE_ENV=production
 Environment=NODE_OPTIONS=--max-old-space-size=256
 Environment=NAS_HOST=0.0.0.0
-Environment=NAS_PORT=3080
+Environment=NAS_PORT=${LIGHTNAS_WEB_PORT}
 ${TLS_SERVICE_ENV}
 Environment=NAS_DATA_FILE=${DATA_DIRECTORY}/state.json
 ExecStart=${NODE_BINARY} ${INSTALL_DIRECTORY}/src/server.mjs
@@ -675,7 +695,7 @@ if [[ "${RUNTIME_PROVISION_NEEDED}" == "1" ]]; then
 fi
 
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
-  ufw allow 3080/tcp >/dev/null
+  ufw allow ${LIGHTNAS_WEB_PORT}/tcp >/dev/null
 fi
 
 # Optional on the base 2 GiB NAS; UI installation uses an approved root job.
@@ -706,12 +726,12 @@ for attempt in {1..15}; do
   if systemctl is-active --quiet "${SERVICE_NAME}.service" && \
      curl --silent --show-error --fail --max-time 5 \
        --cacert /etc/lightnas/tls/nas.crt \
-       https://127.0.0.1:3080/api/status >/dev/null 2>&1; then
+       https://127.0.0.1:${LIGHTNAS_WEB_PORT}/api/status >/dev/null 2>&1; then
     address="$(hostname -I 2>/dev/null | awk '{print $1}')"
     echo
     echo "LightNAS installation completed. Runtime results:"
     cat "${DATA_DIRECTORY}/runtime-status.txt"
-    echo "Open: https://${address:-SERVER-IP}:3080"
+    echo "Open: https://${address:-SERVER-IP}:${LIGHTNAS_WEB_PORT}"
     echo "Import the local certificate into your trusted store to avoid browser warnings."
     exit 0
   fi
