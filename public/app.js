@@ -3461,7 +3461,17 @@ function bindViewActions() {
     if (terminalWindow) terminalWindow.focus();
     else toast('The browser blocked the terminal window. Allow pop-ups for this LightNAS site.');
   }));
-  $$('[data-app-action]', $('#content')).forEach(button => button.addEventListener('click', async () => {
+  // Explain nested-LXC AppArmor failures in the Apps GUI without silently
+  // weakening Docker container isolation or changing the host configuration.
+  const appActionError = error => {
+    const message = String(error?.message || 'Application operation failed.');
+    if (/docker-default|apparmor_parser|not policy admin/i.test(message) &&
+        /apparmor|policy admin/i.test(message)) {
+      return 'Docker cannot load its AppArmor profile inside this LXC. The application was not started. Ask the Proxmox administrator to review nested-container AppArmor policy; do not disable host AppArmor. An explicit per-container compatibility override may work but reduces isolation. Details: ' + message;
+    }
+    return message;
+  };
+  $('[data-app-action]', $('#content')).forEach(button => button.addEventListener('click', async () => {
     const { appId, appAction, appInstance, appHostPort } = button.dataset;
     const instanceName = appInstance || 'default';
     if (appAction === 'remove' && !confirm(`Remove ${appId} instance "${instanceName}"? Its saved app data will remain on this NAS.`)) return;
@@ -3474,7 +3484,7 @@ function bindViewActions() {
       await loadRuntimes(true);
       toast(`${instanceName}: ${appAction} complete.`);
     }
-    catch (error) { toast(error.message); button.disabled = false; }
+    catch (error) { toast(appActionError(error)); button.disabled = false; }
   }));
   for (const [selector, path, message] of [['#container-form', '/api/containers', 'Container created.'], ['#vm-form', '/api/vms', 'VM creation submitted. Check the host task status.']]) {
     $(selector, $('#content'))?.addEventListener('submit', async event => {
