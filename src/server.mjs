@@ -1157,7 +1157,11 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/branding/favicon') {
     const ext = store.state.config?.faviconExt;
-    if (!ext) return send(res, 404, { error: 'No custom favicon configured.' });
+    if (!ext) {
+      const data = await readFile(join(publicRoot, 'assets/lightnas-logo.png'));
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': data.length, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(data);
+    }
     const type = { png: 'image/png', ico: 'image/x-icon' }[ext];
     if (!type) return send(res, 404, { error: 'Invalid favicon configuration.' });
     try {
