@@ -36,11 +36,11 @@ func (r LocalRuntime) Start(ctx context.Context, w Workload, target string) erro
  if !safeName(w.ID) {return errors.New("invalid workload name")}
  switch w.Kind {
  case VM:
-  return r.Runner.Run(ctx,"virsh","start","--",w.ID)
+  return r.Runner.Run(ctx,"virsh","start",w.ID)
  case Container:
   return r.Runner.Run(ctx,"lxc-start","-n",w.ID)
  case App:
-  return r.Runner.Run(ctx,"docker","start","--",w.ID)
+  return r.Runner.Run(ctx,"docker","start",w.ID)
  default:
   return errors.New("unsupported workload kind")
  }
