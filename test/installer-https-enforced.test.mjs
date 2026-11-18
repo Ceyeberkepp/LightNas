@@ -72,7 +72,7 @@ test('one-click installer cannot report success on an untrusted or plaintext lis
  const final=installer.slice(start);
  assert.match(final,/systemctl is-active --quiet "\$\{SERVICE_NAME\}\.service"/);
  assert.match(final,/--cacert \/etc\/lightnas\/tls\/nas\.crt/);
- assert.match(final,/https:\/\/127\.0\.0\.1:3080\/api\/status/);
+ assert.match(final,/https:\/\/127\.0\.0\.1:\$\{LIGHTNAS_WEB_PORT\}\/api\/status/);
  assert.match(final,/echo "Open: https:\/\//);
  assert.doesNotMatch(final,/curl\s+-k/);
  assert.doesNotMatch(final,/echo http/);
@@ -85,4 +85,12 @@ test('Bash syntax remains valid for install and migration scripts',()=>{
   const run=spawnSync('bash',['-n',f],{encoding:'utf8'});
   assert.equal(run.status,0,relative+': '+run.stderr);
  }
+});
+
+test('fresh installer chooses available HTTPS port and uses it consistently',()=>{
+ assert.match(installer,/for port in range\(3080, 3101\)/);
+ assert.match(installer,/sock\.bind\(\('0\.0\.0\.0', port\)\)/);
+ assert.match(installer,/Environment=NAS_PORT=\$\{LIGHTNAS_WEB_PORT\}/);
+ assert.match(installer,/ufw allow \$\{LIGHTNAS_WEB_PORT\}\/tcp/);
+ assert.match(installer,/https:\/\/127\.0\.0\.1:\$\{LIGHTNAS_WEB_PORT\}\/api\/status/);
 });
