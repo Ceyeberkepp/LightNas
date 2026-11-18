@@ -6,7 +6,6 @@ import (
  "errors"
  "fmt"
  "sort"
- "time"
 )
 
 type Workload struct {
@@ -72,6 +71,3 @@ func DryRun(p Plan) (Report,error) {
  return r,nil
 }
 
-// Time-based freshness must be established from trusted replication metadata,
-// never from an unverified caller timestamp.
-var _ = time.Second
