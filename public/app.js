@@ -1,4 +1,34 @@
 import {setProfileImageSource} from './profile-image-source.js';
+
+function refreshBrowserFavicon() {
+  const icon = document.querySelector('link[rel="icon"]');
+  if (icon) icon.href = '/api/branding/favicon?v=' + Date.now();
+}
+document.addEventListener('change', async event => {
+  if (event.target?.id !== 'favicon-upload') return;
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const error = document.querySelector('[data-favicon-error]');
+  if (file.size > 1024 * 1024) { if (error) error.textContent = 'Favicon must be under 1 MiB.'; return; }
+  try {
+    const response = await fetch('/api/branding/favicon', { method: 'PUT', headers: { 'Content-Type': file.type || (file.name.toLowerCase().endsWith('.ico') ? 'image/x-icon' : 'application/octet-stream') }, body: file, credentials: 'same-origin' });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Favicon upload failed.');
+    if (error) error.textContent = 'Favicon saved.';
+    refreshBrowserFavicon();
+  } catch (cause) { if (error) error.textContent = cause.message; }
+  event.target.value = '';
+});
+document.addEventListener('click', async event => {
+  if (event.target?.id !== 'favicon-reset') return;
+  const error = document.querySelector('[data-favicon-error]');
+  try {
+    const response = await fetch('/api/branding/favicon', { method: 'DELETE', credentials: 'same-origin' });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Favicon reset failed.');
+    if (error) error.textContent = 'Default favicon restored.';
+    refreshBrowserFavicon();
+  } catch (cause) { if (error) error.textContent = cause.message; }
+});
+
 import {STORAGE_PROVIDERS} from './storage-providers.js';
 import {approveStoragePreview} from './storage-mutation-client.js';
 if (window.LIGHTNAS_PRODUCT_MODE === 'hypervisor') document.body.classList.add('product-hypervisor');
@@ -2362,6 +2392,11 @@ function settingsView() {
           </div>
         </div>
         <div class="form-error" data-logo-error role="alert"></div>
+        <div class="general-logo-actions" style="margin-top:1rem">
+          <label class="primary upload-button">Upload browser favicon (PNG or ICO)<input id="favicon-upload" type="file" accept="image/png,image/x-icon,image/vnd.microsoft.icon,.ico" hidden></label>
+          <button class="secondary" type="button" id="favicon-reset">Restore default favicon</button>
+        </div>
+        <div class="form-error" data-favicon-error role="alert"></div>
         <div class="settings-save-row"><button class="primary" type="submit">Save general settings</button></div>
         <div class="form-error" role="alert"></div>
         </div>
