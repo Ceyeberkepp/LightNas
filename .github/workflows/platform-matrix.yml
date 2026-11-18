@@ -59,10 +59,16 @@ jobs:
             node --test test/platform-qualification.test.mjs test/kubernetes.test.mjs
             python3 -m unittest discover -s test -p platform_preflight_test.py
             mkdir -p /tmp/lightnas-smoke
-            NAS_DATA_FILE=/tmp/lightnas-smoke/state.json NAS_HOST=127.0.0.1 NAS_PORT=3081 NODE_OPTIONS=--max-old-space-size=256 node src/server.mjs >/tmp/lightnas-smoke/log 2>&1 &
+            openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=localhost" \\
+              -addext "subjectAltName=IP:127.0.0.1" \\
+              -keyout /tmp/lightnas-smoke/key.pem -out /tmp/lightnas-smoke/cert.pem >/dev/null 2>&1
+            NAS_DATA_FILE=/tmp/lightnas-smoke/state.json NAS_HOST=127.0.0.1 NAS_PORT=3081 \\
+              LIGHTNAS_TLS_CERT_FILE=/tmp/lightnas-smoke/cert.pem \\
+              LIGHTNAS_TLS_KEY_FILE=/tmp/lightnas-smoke/key.pem \\
+              NODE_OPTIONS=--max-old-space-size=256 node src/server.mjs >/tmp/lightnas-smoke/log 2>&1 &
             pid=$!
             trap "kill $pid 2>/dev/null || true" EXIT
-            for attempt in $(seq 1 60); do curl -fsS http://127.0.0.1:3081/api/status && exit 0; sleep 1; done
+            for attempt in $(seq 1 60); do curl --fail --silent --show-error --cacert /tmp/lightnas-smoke/cert.pem https://127.0.0.1:3081/api/status && exit 0; sleep 1; done
             cat /tmp/lightnas-smoke/log
             exit 1
           '
