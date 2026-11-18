@@ -1,4 +1,57 @@
 import {setProfileImageSource} from './profile-image-source.js';
+
+function applySettingsTab(tab) {
+  const dashboard = document.querySelector('[data-settings-tab-content]');
+  const branding = document.querySelector('[data-branding-tab-panel]');
+  if (!dashboard || !branding) return;
+  const selected = tab === 'branding' ? 'branding' : 'general';
+  document.querySelectorAll('[data-settings-tab]').forEach(button => {
+    const active = button.dataset.settingsTab === selected;
+    button.setAttribute('aria-selected', String(active));
+    button.classList.toggle('active', active);
+  });
+  branding.hidden = selected !== 'branding';
+  dashboard.querySelectorAll(':scope > *').forEach(panel => {
+    if (panel === branding) panel.hidden = selected !== 'branding';
+    else panel.hidden = selected === 'branding';
+  });
+}
+document.addEventListener('click', event => {
+  const tab = event.target.closest?.('[data-settings-tab]');
+  if (!tab) return;
+  applySettingsTab(tab.dataset.settingsTab);
+});
+
+
+function refreshBrowserFavicon() {
+  const icon = document.querySelector('link[rel="icon"]');
+  if (icon) icon.href = '/api/branding/favicon?v=' + Date.now();
+}
+document.addEventListener('change', async event => {
+  if (event.target?.id !== 'favicon-upload') return;
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const error = document.querySelector('[data-favicon-error]');
+  if (file.size > 1024 * 1024) { if (error) error.textContent = 'Favicon must be under 1 MiB.'; return; }
+  try {
+    const response = await fetch('/api/branding/favicon', { method: 'PUT', headers: { 'Content-Type': file.type || (file.name.toLowerCase().endsWith('.ico') ? 'image/x-icon' : 'application/octet-stream') }, body: file, credentials: 'same-origin' });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Favicon upload failed.');
+    if (error) error.textContent = 'Favicon saved.';
+    refreshBrowserFavicon();
+  } catch (cause) { if (error) error.textContent = cause.message; }
+  event.target.value = '';
+});
+document.addEventListener('click', async event => {
+  if (event.target?.id !== 'favicon-reset') return;
+  const error = document.querySelector('[data-favicon-error]');
+  try {
+    const response = await fetch('/api/branding/favicon', { method: 'DELETE', credentials: 'same-origin' });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Favicon reset failed.');
+    if (error) error.textContent = 'Default favicon restored.';
+    refreshBrowserFavicon();
+  } catch (cause) { if (error) error.textContent = cause.message; }
+});
+
 import {STORAGE_PROVIDERS} from './storage-providers.js';
 import {approveStoragePreview} from './storage-mutation-client.js';
 if (window.LIGHTNAS_PRODUCT_MODE === 'hypervisor') document.body.classList.add('product-hypervisor');
@@ -2327,9 +2380,13 @@ function settingsView() {
   const canSoftware = settingsPermission('settings.software.view') || canSoftwareManage;
   const canMfa = settingsPermission('security.mfa.manage');
   return `${pageHead('Settings & security', 'Only the settings sections assigned to your account are shown.')}
-    <section class="settings-dashboard">
+    <nav class="lightnas-settings-tabs" aria-label="Settings tabs">
+      <button type="button" class="secondary" data-settings-tab="general" aria-selected="true">General</button>
+      ${canGeneral ? '<button type="button" class="secondary" data-settings-tab="branding" aria-selected="false">Appliance identity & branding</button>' : ''}
+    </nav>
+    <section class="settings-dashboard" data-settings-tab-content>
       ${!canGeneral && !canPassword && !canSoftware && !canMfa ? '<div class="module-note"><b>No settings sections assigned.</b> Ask an administrator to grant the specific Settings & security sections you need.</div>' : ''}
-      ${canGeneral ? `<form id="settings-form" class="panel settings-general-card settings-collapsible ${settingsSectionCollapsed('general') ? 'collapsed' : ''}" data-settings-section="general">
+      ${canGeneral ? `<form id="settings-form" class="panel settings-general-card settings-collapsible ${settingsSectionCollapsed('general') ? 'collapsed' : ''}" data-settings-section="general" data-branding-tab-panel hidden>
         <div class="settings-card-head"><div><span class="eyebrow">GENERAL</span><h2>Appliance identity & branding</h2><p class="muted">Use either a text logo or a picture logo, then match the interface color to your brand.</p></div>${settingsCollapseButton('general','Appliance identity & branding')}</div>
         <div class="settings-section-body" ${settingsSectionCollapsed('general') ? 'hidden' : ''}>
         <div class="settings-general-grid branding-settings-grid">
@@ -2362,6 +2419,11 @@ function settingsView() {
           </div>
         </div>
         <div class="form-error" data-logo-error role="alert"></div>
+        <div class="general-logo-actions" style="margin-top:1rem">
+          <label class="primary upload-button">Upload browser favicon (PNG or ICO)<input id="favicon-upload" type="file" accept="image/png,image/x-icon,image/vnd.microsoft.icon,.ico" hidden></label>
+          <button class="secondary" type="button" id="favicon-reset">Restore default favicon</button>
+        </div>
+        <div class="form-error" data-favicon-error role="alert"></div>
         <div class="settings-save-row"><button class="primary" type="submit">Save general settings</button></div>
         <div class="form-error" role="alert"></div>
         </div>
