@@ -3478,7 +3478,7 @@ function bindViewActions() {
     if (terminalWindow) terminalWindow.focus();
     else toast('The browser blocked the terminal window. Allow pop-ups for this LightNAS site.');
   }));
-  $$('[data-app-action]', $('#content')).forEach(button => button.addEventListener('click', async () => {
+  $document.querySelectorAll('#content [data-app-action]').forEach(button => button.addEventListener('click', async () => {
     const { appId, appAction, appInstance, appHostPort } = button.dataset;
     const instanceName = appInstance || 'default';
     if (appAction === 'remove' && !confirm(`Remove ${appId} instance "${instanceName}"? Its saved app data will remain on this NAS.`)) return;
