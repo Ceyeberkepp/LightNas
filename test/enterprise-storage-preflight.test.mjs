@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {assessCephStatus} from '../src/enterprise-storage-preflight.mjs';
+const healthy=()=>({health:{status:'HEALTH_OK'},monmap:{mons:[{name:'a'},{name:'b'},{name:'c'}]},quorum_names:['a','b','c'],osdmap:{osdmap:{num_osds:3,num_up_osds:3,num_in_osds:3}},pgmap:{num_pgs:8,pgs_by_state:[{state_name:'active+clean',count:8}]}});
+test('accepts complete healthy read-only Ceph status',()=>{const r=assessCephStatus(healthy());assert.equal(r.ready,true);assert.equal(r.readOnly,true);assert.equal(r.osdsTotal,3);});
+test('fails closed for missing cluster evidence',()=>{const r=assessCephStatus({});assert.equal(r.ready,false);assert.ok(r.reasons.length>=4);});
+test('requires monitor majority',()=>{const s=healthy();s.quorum_names=['a'];assert.match(assessCephStatus(s).reasons.join(' '),/majority/);});
+test('rejects unknown quorum members',()=>{const s=healthy();s.quorum_names=['a','b','z'];assert.match(assessCephStatus(s).reasons.join(' '),/unknown/);});
+test('rejects down OSDs and degraded PGs',()=>{const s=healthy();s.osdmap.osdmap.num_up_osds=2;s.pgmap.pgs_by_state=[{state_name:'active+degraded',count:8}];const r=assessCephStatus(s);assert.equal(r.ready,false);assert.match(r.reasons.join(' '),/OSDs/);assert.match(r.reasons.join(' '),/Placement/);});
+test('rejects contradictory PG counts',()=>{const s=healthy();s.pgmap.pgs_by_state[0].count=7;assert.equal(assessCephStatus(s).ready,false);});
+test('accepts JSON status text and rejects invalid data',()=>{assert.equal(assessCephStatus(JSON.stringify(healthy())).ready,true);assert.throws(()=>assessCephStatus(null),TypeError);});
