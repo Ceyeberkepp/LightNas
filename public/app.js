@@ -34,7 +34,7 @@ document.addEventListener('change', async event => {
   const error = document.querySelector('[data-favicon-error]');
   if (file.size > 1024 * 1024) { if (error) error.textContent = 'Favicon must be under 1 MiB.'; return; }
   try {
-    const response = await fetch('/api/branding/favicon', { method: 'PUT', headers: { 'Content-Type': file.type || (file.name.toLowerCase().endsWith('.ico') ? 'image/x-icon' : 'application/octet-stream') }, body: file, credentials: 'same-origin' });
+    const response = await fetch('/api/branding/favicon', { method: 'PUT', headers: { 'X-LightNAS-Request': '1', 'Content-Type': file.type || (file.name.toLowerCase().endsWith('.ico') ? 'image/x-icon' : 'application/octet-stream') }, body: file, credentials: 'same-origin' });
     if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Favicon upload failed.');
     if (error) error.textContent = 'Favicon saved.';
     refreshBrowserFavicon();
@@ -45,7 +45,7 @@ document.addEventListener('click', async event => {
   if (event.target?.id !== 'favicon-reset') return;
   const error = document.querySelector('[data-favicon-error]');
   try {
-    const response = await fetch('/api/branding/favicon', { method: 'DELETE', credentials: 'same-origin' });
+    const response = await fetch('/api/branding/favicon', { method: 'DELETE', headers: { 'X-LightNAS-Request': '1' }, credentials: 'same-origin' });
     if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Favicon reset failed.');
     if (error) error.textContent = 'Default favicon restored.';
     refreshBrowserFavicon();
@@ -3471,7 +3471,7 @@ function bindViewActions() {
     }
     return message;
   };
-  $('[data-app-action]', $('#content')).forEach(button => button.addEventListener('click', async () => {
+  document.querySelectorAll('#content [data-app-action]').forEach(button => button.addEventListener('click', async () => {
     const { appId, appAction, appInstance, appHostPort } = button.dataset;
     const instanceName = appInstance || 'default';
     if (appAction === 'remove' && !confirm(`Remove ${appId} instance "${instanceName}"? Its saved app data will remain on this NAS.`)) return;
