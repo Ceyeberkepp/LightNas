@@ -72,7 +72,7 @@ test('one-click installer cannot report success on an untrusted or plaintext lis
  const final=installer.slice(start);
  assert.match(final,/systemctl is-active --quiet "\$\{SERVICE_NAME\}\.service"/);
  assert.match(final,/--cacert \/etc\/lightnas\/tls\/nas\.crt/);
- assert.match(final,/https:\/\/127\.0\.0\.1:3080\/api\/status/);
+ assert.match(final,/https:\/\/127\.0\.0\.1:\$\{LIGHTNAS_WEB_PORT\}\/api\/status/);
  assert.match(final,/echo "Open: https:\/\//);
  assert.doesNotMatch(final,/curl\s+-k/);
  assert.doesNotMatch(final,/echo http/);
