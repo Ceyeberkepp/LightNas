@@ -42,3 +42,10 @@ Use the system trusted CA certificates, or enter the remote server certificate's
 Registering a mounted LVM/thin-LVM, ZFS, RBD or iSCSI volume makes its existing filesystem usable for the selected content types. This flow does not create a VG, allocate a raw thin LV, log in to a new iSCSI target, map a new RBD image, import/format a disk or create a ZFS pool. Prepare/expose that backing storage first; destructive disk initialization remains a separate approved operation.
 
 The compact storage dialog and content checkbox layout are retained.
+
+
+## Enterprise cluster preflight (development)
+
+The first enterprise-storage increment provides a **read-only Ceph status evaluator** in `src/enterprise-storage-preflight.mjs`. It consumes the JSON returned by `ceph status --format json` and refuses to qualify a cluster when monitor quorum, OSD availability, or PG health cannot be verified. This is a standalone assessment helper, **not** a Ceph installer, host agent, cluster manager, or production-readiness certificate. It does not execute commands or change any disks.
+
+NFS client mounts and managed single-node NFS exports already exist. Highly available NFSv4 gateways backed by CephFS require a separate implementation and failover tests; do not advertise them as implemented.
