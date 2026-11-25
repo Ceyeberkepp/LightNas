@@ -35,3 +35,18 @@ test('fully unhealthy inventory returns no replica placements', () => {
   assert.equal(result.ok,false);
   assert.deepEqual(result.nodes,[]);
 });
+
+
+test('replicas require sufficient capacity for the entire chunk', () => {
+  const inventory = nodes();
+  inventory[0].freeBytes = 511;
+  inventory[1].freeBytes = 512;
+  const result = placeReplicas({objectId:'chunk',nodes:inventory,requiredBytes:512});
+  assert.equal(result.ok,true);
+  assert.equal(result.nodes.includes('a'),false);
+  assert.equal(result.nodes.includes('b'),true);
+  assert.equal(placeReplicas({objectId:'chunk',nodes:inventory,requiredBytes:513}).ok,false);
+  for (const requiredBytes of [0,-1,1.5,Infinity,NaN]) {
+    assert.throws(()=>placeReplicas({objectId:'chunk',nodes:inventory,requiredBytes}),/invalid placement/);
+  }
+});
